@@ -446,6 +446,7 @@ export function createPythonScheduleClaimRenderer(
         owner: input.owner,
         mirrorPath: input.mirrorPath,
         dispatchedAt: now().toISOString(),
+        workflowProfile: input.workflowProfile,
       }),
       encoding: 'utf8',
       maxBuffer: 1024 * 1024,
@@ -2141,6 +2142,7 @@ function makeStore(
     mirroredAt: schedule.mirroredAt,
     mirrorPath: schedule.mirrorPath,
     version: schedule.version,
+    workflowProfile: schedule.workflowProfile ?? null,
   });
 
   const scheduleSnapshot = (document: StoreDocument): ScheduleSnapshot => ({
@@ -2291,6 +2293,7 @@ function makeStore(
             mirroredAt: null,
             mirrorPath: input.mirrorPath,
             version: 1,
+            workflowProfile: input.workflowProfile,
             seedBytes: null,
             seedDigest: null,
             seedAuthorized: false,
@@ -2381,6 +2384,7 @@ function makeStore(
             nextAt: input.occurrence.nextAt,
             owner: clone(schedule.owner),
             mirrorPath: schedule.mirrorPath,
+            workflowProfile: schedule.workflowProfile ?? null,
           });
           const card = clone(rendered.card) as JsonObject;
           const meta = card.meta;
@@ -2787,6 +2791,11 @@ function makeStore(
             mirroredAt: null,
             mirrorPath: seed.path,
             version: 1,
+            // P6-F1: every seeded cadence today is agent-owned (`EXPECTED_SEED_OWNER_BY_CADENCE`), and
+            // `cadence` is the profile the ruling names for exactly this class of row — a system agent's
+            // HEARTBEAT.md cadence with no workflow definition to fall back to. A future workflow-owner
+            // seed (none exist yet) gets `null`, same as an operator-created workflow-owner schedule.
+            workflowProfile: seed.owner.type === 'agent' ? 'cadence' : null,
             seedBytes: seed.sourceBytes,
             seedDigest: seed.sourceDigest,
             seedAuthorized: plan.marker.releaseSha !== null,

@@ -109,6 +109,12 @@ NODE_PROXY_USER = "kb-node-proxy"
 NODE_PROXY_UID = 987
 TAILNET_PROXY_UID = 0
 NODE_PROXY_UNITS = ("kb-node-proxy.service", "kb-whois.service", "kb-whois.socket")
+# The systemd `kb-dispatch.service`/`.timer` pair that used to live here (ruling
+# queue/inbox/2c3d4e5f-708192a3.md) was WITHDRAWN by a later ruling (review finding B-1, 2026-09-21):
+# `scripts/dispatch.py` writes bare, uncommitted filesystem changes, and a timer invoking it
+# unattended on the VM would freeze the ops-checkout drain on its first due tick. The replacement is
+# the dashboard daemon's own internal tick (`dashboard/server/schedules/tick.ts`, gated on
+# `KB_COORDINATION_PUBLICATION=outbox`) — no separate account, unit, or provisioning step.
 # The root-owned host-node map: authorization derives a node's HostKind from THIS file only [design:416].
 HOST_NODE_MAP_DIR = "/etc/kb-dashboard"
 HOST_NODE_MAP_PATH = "/etc/kb-dashboard/host-nodes.json"

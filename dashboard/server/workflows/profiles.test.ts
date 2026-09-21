@@ -6,7 +6,7 @@ import { codexSandboxMode, toolCapArgv } from '../control/workflowProfiles.ts';
 
 describe('workflow execution profiles', () => {
   it('exposes every server-owned profile the shipped definitions reference, including the readonly checker and C1 scanner', () => {
-    expect(workflowProfileIds()).toEqual(new Set(['checker-readonly', 'research', 'gmail-triage', 'drive-author', 'producer', 'scanner']));
+    expect(workflowProfileIds()).toEqual(new Set(['checker-readonly', 'research', 'gmail-triage', 'drive-author', 'producer', 'scanner', 'cadence']));
   });
 
   it('gives the scanner profile exactly Read/Glob/Grep/Write — no Bash, no Edit (removes the git bypass)', () => {
@@ -87,5 +87,27 @@ describe('workflow execution profiles', () => {
     // so `read-only` would have left a codex research worker unable to write its brief for a second,
     // unrelated reason. Network is pinned off for codex regardless (CODEX_CONFIGURATION_PINS).
     expect(codexSandboxMode(research!.allowedTools)).toBe('workspace-write');
+  });
+
+  /**
+   * P6-F1 (2026-09-17 ruling): `cadence` is the execution profile every agent-owner schedule must now
+   * name. It is defined as `research` plus `Write` — which, since `research` already carries `Write`
+   * (the 2026-09-16 fix above), means the two tool sets are identical today. Pinning that equality (not
+   * just each list) is deliberate: a future edit to `research` should force a conscious decision about
+   * whether `cadence` moves with it.
+   */
+  it('gives the cadence profile exactly the research tool set (research + Write, already equal) and nothing forbidden', () => {
+    const profiles = new Map(loadWorkflowProfiles().map((profile) => [profile.id, profile.allowedTools]));
+    const cadence = profiles.get('cadence');
+    const research = profiles.get('research');
+    expect(cadence).toBeDefined();
+    expect(cadence).toEqual(['WebSearch', 'WebFetch', 'Read', 'Glob', 'Grep', 'Write']);
+    expect(cadence).toEqual(research);
+    expect(cadence).not.toContain('Bash');
+    expect(cadence).not.toContain('Edit');
+    for (const forbidden of FORBIDDEN_WORKFLOW_TOOLS) {
+      expect(cadence).not.toContain(forbidden);
+    }
+    expect(codexSandboxMode(cadence!)).toBe('workspace-write');
   });
 });

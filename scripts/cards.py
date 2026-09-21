@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import secrets
 import sys
 import time
@@ -190,10 +191,30 @@ def render(card: Card) -> bytes:
     return f"---\n{fm}---\n\n{card.body}".encode("utf-8")
 
 
+# Byte-identical to `dashboard/server/workflows/defs.ts`'s `SAFE_EXECUTION_PROFILE_ID_RE` and
+# `dashboard/server/services/scheduleService.ts`'s `SAFE_WORKFLOW_PROFILE_ID_RE` -- one shape, copied
+# verbatim in each of the three places it is checked (none is importable from the other two).
+_WORKFLOW_PROFILE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9:._-]{0,127}$")
+
+
 def schedule_occurrence_claim(*, schedule_id: str, scheduled_for: str,
                               owner: dict, mirror_path: str,
-                              dispatched_at: str) -> dict:
-    """Build the one deterministic card payload persisted by a schedule claim."""
+                              dispatched_at: str,
+                              workflow_profile: str | None = None) -> dict:
+    """Build the one deterministic card payload persisted by a schedule claim.
+
+    P6-F1 (2026-09-17 ruling): an AGENT-owner cadence (``owner["type"] == "agent"``) has no workflow
+    definition to fall back to for a tool cap, so it must carry its schedule's stored
+    ``workflowProfile`` and the rendered card must stamp it as ``meta.profile`` -- the exact field
+    ``dashboard/server/control/queueBridge.ts``'s ``cardToWorkflowRequest`` requires
+    (``requireMetaString(card.meta.profile, 'profile')``) before it will synthesize a launchable
+    one-stage workflow for a bare (non-``workflow-def``) card. Before this, an agent-owner cadence's
+    card ALWAYS failed there with a 400 the moment the queue bridge picked it up -- the schedule
+    ticked and a card landed in ``queue/inbox``, but nothing ever launched from it. A workflow-owner
+    cadence is unaffected: its profile is read from the definition file itself
+    (``registeredWorkflowRequest``), so ``workflow_profile`` is expected ``None`` for it and is not
+    written into the card at all.
+    """
     if (not isinstance(schedule_id, str) or len(schedule_id) != 64
             or any(ch not in "0123456789abcdef" for ch in schedule_id)):
         raise ValidationError("schedule id must be a lowercase SHA-256")
@@ -219,6 +240,13 @@ def schedule_occurrence_claim(*, schedule_id: str, scheduled_for: str,
             raise ValidationError("schedule workflow project is invalid")
         extra["workflow-def"] = owner_id
         extra["parameters"] = {}
+    else:
+        if (not isinstance(workflow_profile, str)
+                or not _WORKFLOW_PROFILE_ID_RE.match(workflow_profile)):
+            raise ValidationError(
+                "agent-owner schedule claim requires a valid workflowProfile (P6-F1)"
+            )
+        extra["profile"] = workflow_profile
     card = new_card(
         project=project,
         action=f"cadence:{owner_id}",
@@ -308,6 +336,7 @@ def _main(argv: list[str] | None = None) -> int:
             owner=request["owner"],
             mirror_path=request["mirrorPath"],
             dispatched_at=request["dispatchedAt"],
+            workflow_profile=request.get("workflowProfile"),
         )
     except (KeyError, TypeError, ValueError, ValidationError, json.JSONDecodeError) as error:
         print(str(error)[:256], file=sys.stderr)

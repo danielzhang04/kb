@@ -1,0 +1,123 @@
+# Schedule-dispatch tick (daemon-internal)
+
+Ruling: `queue/inbox/2c3d4e5f-708192a3.md` (decide:vm-dispatch-tick-source), approved by Daniel
+2026-09-17, **amended 2026-09-21** (review finding B-1). The original design — a systemd timer
+(`kb-dispatch.timer`) driving `scripts/dispatch.py` every 5 minutes as its own unattended process —
+was **withdrawn** before ever being started on prod: `dispatch.py` writes queue cards and ledger rows
+as bare, uncommitted filesystem changes (no git step, no `KB_COORDINATION_PUBLICATION` awareness), and
+on the VM (`KB_COORDINATION_PUBLICATION=outbox`, origin `disabled://`) the first tick with anything due
+would have left an untracked file that no outbox bundle carries — tripping
+`deploy/apply_ops_reconciliation.py`'s dirty-checkout guard and freezing EVERY later coordination write
+until a human cleaned it up by hand. `dashboard/server/control/queueBridge.ts`'s
+`publishBridgeWakeCard` documents the identical failure mode for a different caller
+(`agent_runner.py#wake_me`) that hit exactly this before being fixed.
+
+## What fires, and how often
+
+There is no separate systemd unit, account, or provisioning step. The **dashboard daemon itself**
+runs a schedule tick on an interval, from `dashboard/server/schedules/tick.ts`
+(`startScheduleTick`/`runScheduleTick`), wired in `dashboard/server/index.ts#buildApp` alongside the
+human-request sweeper and merge-poll timers.
+
+- **Gated on publication mode.** The tick only ever fires when
+  `KB_COORDINATION_PUBLICATION=outbox` (the VM) — `resolveScheduleTickIntervalMs` (`server/index.ts`)
+  returns `0` (disabled) in any other mode, regardless of the interval env var. Desktop/dev never
+  ticks.
+- **Interval:** `DASHBOARD_SCHEDULE_TICK_MS`, default `300000` (5 minutes, matching the withdrawn
+  timer's `OnCalendar=*:0/5`). `DASHBOARD_SCHEDULE_TICK_MS=0` disables it even in outbox mode. The VM
+  unit (`deploy/systemd/kb-dashboard.service`) refuses drop-ins (see the sshd/prod-window guard
+  posture elsewhere in this repo for why), so if this ever needs to be set on prod, the env line goes
+  directly in the unit fragment, not a drop-in.
+- **Does not fire immediately on boot** — only on the first interval elapse after the daemon has
+  finished startup/hydration (`runScheduleBootMigrations` completes in `start()` before `buildApp`,
+  where the tick timer is created, ever runs).
+
+## What one tick does
+
+1. Inside `withOpsTransaction` (the daemon's single-writer ops-checkout lock — no other coordination
+   write in this process can interleave), spawn `scripts/dispatch.py` as a subprocess:
+   ```
+   python3 -B /opt/kb-releases/current/scripts/dispatch.py --tier cloud --agent dispatcher-cloud
+   ```
+   argv and cwd exactly as the withdrawn systemd unit ran it — cwd is the **ops checkout**
+   (`surfaceCtx.repoRoot`, `/var/lib/kb/ops` on the VM), so `dispatch.py`'s own `Path.cwd()` resolves
+   queue/ledgers against live coordination state; the script path resolves from
+   `defaultPlatformRoot()` (`DASHBOARD_PLATFORM_ROOT`, `/opt/kb-releases/current` on the VM unit) — the
+   same release-root resolution every other python shell-out in this codebase uses
+   (`createPythonScheduleClaimRenderer`, `runPythonSync`). This reuses `dispatch.py`'s existing
+   cron/claim logic unchanged — it is **not** reimplemented in TypeScript.
+2. Re-derive exactly what changed via `git status --porcelain=v1 -z --untracked-files=all`. If
+   **anything** outside `queue/**` or `ledgers/dispatch/**` changed, the whole tick is refused: every
+   changed path (tracked and untracked) is reverted (`git checkout --` / delete), nothing is
+   committed, and the refusal is logged. This is a defensive check against a `dispatch.py` bug or an
+   out-of-band write — `dispatch_stored_schedules` and `release_dependents` are only ever supposed to
+   touch those two prefixes.
+3. Otherwise, commit exactly that path set through `commitPreparedCoordination` — the SAME governed
+   writer `publishBridgeWakeCard` uses for the wake-me card fix, with the SAME publication-mode
+   handling and the SAME asymmetric failure discipline: a failure **before** the commit lands cleans
+   up (revert everything, log, let the next tick retry); a failure **after** the commit lands (e.g. the
+   outbox spool step) never deletes a now-tracked path — it only logs loudly with the commit sha, since
+   deleting would re-stage exactly the dirty-checkout freeze this whole design exists to prevent.
+
+## Exactly-once / overlap handling
+
+- **In-process flag**: `startScheduleTick` skips a tick entirely if the previous one is still running
+  — no queuing, no overlap.
+- **`withOpsTransaction`**: even without the flag, the daemon's single-writer ops lock would serialize
+  two overlapping ticks; the flag exists so a slow tick doesn't queue a redundant `dispatch.py` spawn
+  behind it.
+- Underneath both, `dispatch.py`'s own claim/advance state machine (unchanged by this ruling) is what
+  makes a REPLAYED tick a no-op for an individual occurrence: a schedule's `nextAt` only advances after
+  a successful claim, and a claim already past `card-saved` or `ledger-appended` returns that phase
+  directly rather than re-writing the card or re-appending the ledger row
+  (`scripts/dispatch.py:dispatch_claimed_occurrence`). Proven end-to-end over the real Unix-socket
+  server in `tests/test_schedule_store.py:test_double_tick_dispatches_the_due_occurrence_exactly_once_over_the_real_socket`.
+
+## Failure / retry
+
+A failed tick (subprocess non-zero exit, a foreign-path refusal, a pre-commit git failure) commits
+nothing and logs an error line; the checkout is always left clean. The next scheduled tick (at most
+`DASHBOARD_SCHEDULE_TICK_MS` later) retries — no exponential backoff, matching the original ruling.
+
+## Observability
+
+```
+journalctl -u kb-dashboard | grep schedule-tick
+```
+
+Each tick logs exactly one summary line:
+
+```
+schedule-tick: due=<n> dispatched=<n> paths=<n> committed=<sha|none>
+```
+
+`due`/`dispatched` are parsed from `dispatch.py`'s own `"dispatched N card(s)"` stdout line (every
+entry it returns was both due and processed in the same call, so there is no separate "due" count to
+report). `paths` is the number of relpaths committed this tick (`0` on a no-op or a refused tick).
+`committed` is the coordination commit sha, or `none`. Any failure additionally logs a second line
+(`schedule-tick error: ...`) with the detail.
+
+## Disable
+
+Set `DASHBOARD_SCHEDULE_TICK_MS=0` in the unit fragment (`deploy/systemd/kb-dashboard.service`;
+drop-ins are refused, so this line goes directly in the unit) and restart `kb-dashboard.service`.
+Disabling does not touch already-claimed occurrences or the schedules themselves — they stay armed;
+it only stops new ticks from firing.
+
+## Sandbox posture
+
+There is no separate unit, so there is no separate sandbox to reason about: the tick runs inside the
+`kb-dashboard.service` process itself, under that unit's existing `User=`/`Group=`/`ReadOnlyPaths=`/
+`ReadWritePaths=` (`/var/lib/kb/ops` `/var/lib/kb/state`). The subprocess it spawns
+(`scripts/dispatch.py`) only ever writes `queue/` cards and `ledgers/dispatch/` rows inside the ops
+checkout, enforced by this module's own path-scope guard (step 2 above) rather than by systemd
+`ReadWritePaths` narrowing, since there is no longer a separate unit to narrow.
+
+## Provisioning
+
+None. No account, unit file, or `bootstrap_vm.py`/`validate_vm_runtime.py` step exists for this
+anymore — the withdrawn `kb-dispatch.service`/`kb-dispatch.timer` pair, `provision_dispatch_timer()`,
+and `validate_dispatch_units()` were all removed as part of the 2026-09-21 amendment. The tick ships
+and activates with every dashboard release; there is nothing to provision separately, and nothing to
+start as a gated production-window step — it starts (or stays disabled) with the daemon, governed
+entirely by `KB_COORDINATION_PUBLICATION` and `DASHBOARD_SCHEDULE_TICK_MS`.

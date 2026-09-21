@@ -19,8 +19,9 @@
  *
  * Prod-targeting scripts fall into three classes:
  *   OPEN class    — monitoring, launching workflows, resolving gates/interventions,
- *                   and schedule management. Runs with NO window, still only in its
- *                   reviewed argument shape, still subject to the standing blocks.
+ *                   schedule management, and archiving a closed-out run (prod-archive-run.ps1,
+ *                   O4). Runs with NO window, still only in its reviewed argument shape, still
+ *                   subject to the standing blocks.
  *   WINDOWED class — deploy, drain, canary, stop, preflight, anything that drives a
  *                   signing key (prod-sign-approval.ps1, the kb-human-approval
  *                   ssh-keygen sign command), and anything that PLACES a signed call
@@ -58,6 +59,7 @@
 'use strict';
 
 const fs = require('fs');
+const crypto = require('crypto');
 
 const PROD_HOST_IP = '100.89.73.118';
 const PROD_URL = 'kb.tail82dd4f.ts.net';
@@ -70,6 +72,15 @@ const MAX_WINDOW_MS = 3 * 60 * 60 * 1000;
 
 const DEPLOY_SHA = '7e09fd4fcbae5e66299af3c756041b49437fc6b3';
 const BROKER_DIGEST = '4586d91930a1b4f00f350a2b5324a9347073b10d67c9cf0edfd47abe4f988c2b';
+
+// A-2: O4 (prod-archive-run.ps1) lives under the main, branch-switching checkout (KBDIR), not the
+// tighter-controlled kb-rehearsal tooling tree every other allowlisted script lives under, so its
+// path match alone proves nothing about its CONTENT. Pinned like C2's DEPLOY_SHA/BROKER_DIGEST.
+// KB_ARCHIVE_SCRIPT_PATH is a test-only override (mirrors KB_PROD_WINDOW_AUDIT's pattern) — real
+// fleet runs never set it, so the real KBDIR path below is always what actually executes.
+const ARCHIVE_SCRIPT_REAL_PATH = 'C:\\Users\\danie\\kb\\scripts\\prod\\prod-archive-run.ps1';
+const ARCHIVE_SCRIPT_PATH = process.env.KB_ARCHIVE_SCRIPT_PATH || ARCHIVE_SCRIPT_REAL_PATH;
+const ARCHIVE_SCRIPT_SHA256 = 'bb3c056a3ce476cac59f3a70991d893d75d7c87721b01ca82442b041f3a6b958';
 
 const MAX_STDIN = 1024 * 1024;
 
@@ -132,6 +143,31 @@ const SAFE_ARG = '(?:"' + SAFE_INNER + '*"|\'' + SAFE_INNER + '*\'|' + SAFE_UNQU
 // C13's -Key, C14) picks up the tightened grammar with no other changes.
 const PATHARG = SAFE_ARG;
 
+// A-1 fix: rehearsal argument groups, embeddable INSIDE an anchored allowlist shape at the exact
+// position the target script's own param block accepts them (read from each script under
+// kb-rehearsal\tooling with the Read tool before wiring these in). Before this fix, isRehearsal()
+// (below) recognising one of these tokens ANYWHERE in the command short-circuited classification
+// entirely, so a well-formed rehearsal marker waived not just the prod window but the ENTIRE
+// shape grammar — including O4's/C2's metacharacter exclusion, which is how a `-Reason "ok
+// $(Get-Date)"` payload rode past every check (review finding A-1, probe1/probe2). Now these
+// groups are part of the grammar itself: a rehearsal invocation must still match one of the
+// reviewed shapes end-to-end (openMatch/allowlistMatch always run — see decide()), and
+// isRehearsal() is consulted ONLY to decide whether the WINDOW requirement is waived, never
+// whether shape validation runs at all.
+const VM_LOCALHOST_ARG_GROUP = '(?:\\s+-vm\\s+["\']?root@localhost["\']?)?';
+const URL_REHEARSAL_ARG_GROUP = '(?:\\s+-url\\s+["\']?https?://(?:127\\.0\\.0\\.1|localhost):(?:4317|4417)["\']?)?';
+const SSHSHIMDIR_ARG_GROUP = '(?:\\s+-sshshimdir\\s+' + PATHARG + ')?';
+// -SshShimDir prepends its value onto PATH for every ssh/scp call the script makes (kb-deploy.ps1,
+// vm-preflight-prod.ps1, the drain-v2 scripts), REGARDLESS of what -VM resolves to — a shimmed
+// "ssh"/"scp" on that PATH would be picked up even on an invocation still pointed at real prod.
+// It must never be independently reachable; it is only ever safe nested immediately after a
+// genuine rehearsal -VM root@localhost marker, never as its own top-level optional group.
+function vmRehearsalGroup(includeUrl) {
+  return '(?:\\s+-vm\\s+["\']?root@localhost["\']?'
+    + (includeUrl ? URL_REHEARSAL_ARG_GROUP : '')
+    + SSHSHIMDIR_ARG_GROUP + ')?';
+}
+
 // Optionally quoted paths under the tooling tree (SAFE_T), under the tooling tree's `rehearsal`
 // subtree (SAFE_T_REHEARSAL), or under either the tooling tree or kb-backups
 // (SAFE_T_OR_BACKUPS) — each with a `..` traversal veto, the same discipline P() uses for fixed
@@ -148,19 +184,29 @@ const SAFE_T_OR_BACKUPS = '["\']?(?:' + T + '|' + BACKUPS + ')' + B + NO_TRAVERS
 // release deploy does NOT reinstall). It defaults to the prod public file, so prod needs no
 // argument at all; the parameter exists so the rehearsal host can be handed a throwaway public
 // key instead, and is therefore constrained to a non-traversing path under the tooling tree.
+// A-1: vm-preflight-prod.ps1's own -VM param (rehearsal-only; the script's header names this
+// exact exemption) and -SshShimDir (the rehearsal WSL sshd's Git-Bash shim dir) are now part of
+// the grammar, not a classifier bypass.
 const C1 = new RegExp(PRE + PS + '-file\\s+' + P('vm-preflight-prod.ps1')
-  + '(?:\\s+-step\\s+[a-z0-9_-]+(?:\\s+-signersfile\\s+' + SAFE_T + ')?)?$');
+  + '(?:\\s+-step\\s+[a-z0-9_-]+(?:\\s+-signersfile\\s+' + SAFE_T + ')?)?'
+  + vmRehearsalGroup(false) + '$');
 
-// C2 — the deploy, pinned sha + broker digest, NO other parameters
+// C2 — the deploy, pinned sha + broker digest, plus the script's own rehearsal-only -VM/-URL/
+// -SshShimDir params (A-1: now grammar, not a bypass — see kb-deploy.ps1's own header comment).
 const C2 = new RegExp(PRE + PS + '-file\\s+' + P('kb-deploy.ps1')
   + '\\s+-signingkey\\s+' + PATHARG
   + '\\s+-sha\\s+' + DEPLOY_SHA
-  + '\\s+-brokerdigest\\s+' + BROKER_DIGEST + '$');
+  + '\\s+-brokerdigest\\s+' + BROKER_DIGEST
+  + vmRehearsalGroup(true) + '$');
 
-// C3/C5 — the three `-Command "& '<script>'"` drain shapes, no arguments
+// C3/C5 — the three `-Command "& '<script>'"` drain shapes. A-1: each of these scripts' own
+// header documents a "REHEARSAL: add -VM/-URL/.../-SshShimDir" override set; those are now
+// anchored, optional groups INSIDE the quoted command string (the only place PowerShell -Command
+// accepts them here), not a classifier bypass.
 function cmdShape(rel) {
   const body = rel.split('/').map(function (s) { return s.replace(/\./g, '\\.'); }).join(B);
-  return new RegExp(PRE + PS + '-command\\s+"\\s*&\\s*\'' + T + B + body + '\'\\s*"$');
+  return new RegExp(PRE + PS + '-command\\s+"\\s*&\\s*\'' + T + B + body + '\''
+    + vmRehearsalGroup(true) + '\\s*"$');
 }
 const C3 = cmdShape('drain-v2/drain-step1-v2.ps1');
 const C5A = cmdShape('drain-v2/drain-step2-v2.ps1');
@@ -179,7 +225,8 @@ const C6B = new RegExp(PRE + PS + '-file\\s+' + P('prod-canary-launch.ps1')
 // O1 — generic workflow runner, OPEN class: any safe workflow id, no window needed.
 const O1 = new RegExp(PRE + PS + '-file\\s+' + P('prod-run-workflow.ps1')
   + '\\s+-workflow\\s+([a-z0-9][a-z0-9-]{0,60})'
-  + '(?:\\s+-topic\\s+([a-z0-9._-]{1,40}))?$');
+  + '(?:\\s+-topic\\s+([a-z0-9._-]{1,40}))?'
+  + URL_REHEARSAL_ARG_GROUP + '$');
 
 // O2 — prod-respond.ps1, OPEN class: resolve a gate/intervention with a safe reason.
 // Built from the same SAFE_INNER class as SAFE_ARG above (backtick, `$`, `;`, `&`, `|`, `%`,
@@ -191,7 +238,8 @@ const ACTOR_ARG = '(daniel|boss|worker:[a-z0-9][a-z0-9._-]{0,63})';
 const O2 = new RegExp(PRE + PS + '-file\\s+' + P('prod-respond.ps1')
   + '\\s+-run\\s+([a-z0-9-]{1,80})\\s+-request\\s+([a-z0-9-]{1,80})'
   + '\\s+-decision\\s+(approve|retry|abandon)\\s+-reason\\s+' + REASON
-  + '(?:\\s+-actor\\s+' + ACTOR_ARG + ')?$');
+  + '(?:\\s+-actor\\s+' + ACTOR_ARG + ')?'
+  + URL_REHEARSAL_ARG_GROUP + '$');
 
 // O3 — prod-schedules.ps1's four modes, OPEN class. `tpath` matches an optionally quoted path
 // under T (the -List's -Out) or under a fixed subfolder of T (the snapshot paths), with a `..`
@@ -202,14 +250,54 @@ function tpath(subSegments) {
   return '["\']?' + T + B + afterT + '(?!.*\\.\\.)[a-z0-9_.\\\\/-]+["\']?';
 }
 const O3_LIST = new RegExp(PRE + PS + '-file\\s+' + P('prod-schedules.ps1')
-  + '\\s+-list(?:\\s+-out\\s+' + tpath([]) + ')?$');
+  + '\\s+-list(?:\\s+-out\\s+' + tpath([]) + ')?' + URL_REHEARSAL_ARG_GROUP + '$');
 const O3_DISARM = new RegExp(PRE + PS + '-file\\s+' + P('prod-schedules.ps1')
-  + '\\s+-disarmagentcadences\\s+-snapshot\\s+' + tpath(['rehearsal', 'p8']) + '$');
+  + '\\s+-disarmagentcadences\\s+-snapshot\\s+' + tpath(['rehearsal', 'p8']) + URL_REHEARSAL_ARG_GROUP + '$');
 const O3_ARM = new RegExp(PRE + PS + '-file\\s+' + P('prod-schedules.ps1')
-  + '\\s+-armfromsnapshot\\s+' + tpath(['rehearsal', 'p8']) + '$');
+  + '\\s+-armfromsnapshot\\s+' + tpath(['rehearsal', 'p8']) + URL_REHEARSAL_ARG_GROUP + '$');
 const CRON_ARG = '("[0-9*/,\\s-]{9,40}"|\'[0-9*/,\\s-]{9,40}\')';
 const O3_CREATE = new RegExp(PRE + PS + '-file\\s+' + P('prod-schedules.ps1')
-  + '\\s+-createworkflowschedule\\s+self-lint-report\\s+-cron\\s+' + CRON_ARG + '$');
+  + '\\s+-createworkflowschedule\\s+self-lint-report\\s+-cron\\s+' + CRON_ARG + URL_REHEARSAL_ARG_GROUP + '$');
+
+// O4 — prod-archive-run.ps1, OPEN class: archive a terminal/closed-out run with an audited
+// reason. Mirrors O2's grammar exactly (same REASON/ACTOR_ARG classes as prod-respond.ps1's plain
+// shape). Unlike every other allowlisted script this one lives IN THE REPO (scripts/prod/), not
+// the kb-rehearsal tooling tree, so it gets its own KBDIR-anchored path matcher (PKB) instead of
+// reusing P() (which is hard-coded to T).
+function PKB(rel) {
+  const body = rel.split('/').map(function (seg) { return seg.replace(/\./g, '\\.'); }).join(B);
+  return '["\']?' + KBDIR + B + body + '["\']?';
+}
+const O4 = new RegExp(PRE + PS + '-file\\s+' + PKB('scripts/prod/prod-archive-run.ps1')
+  + '\\s+-run\\s+([a-z0-9-]{1,80})\\s+-reason\\s+' + REASON
+  + '(?:\\s+-actor\\s+' + ACTOR_ARG + ')?'
+  + URL_REHEARSAL_ARG_GROUP + '$');
+
+/**
+ * A-2: O4's shape match proves the COMMAND is well-formed, not that the SCRIPT at that path is the
+ * reviewed one — the main checkout at KBDIR is not content-pinned and routinely switches branches
+ * (unlike every other allowlisted script, which lives under the tighter-controlled kb-rehearsal
+ * tooling tree). Mirrors C2's DEPLOY_SHA/BROKER_DIGEST pattern: read the file the O4 shape actually
+ * names, normalize CRLF->LF (git autocrlf on this checkout must not desync the pin), sha256 it, and
+ * compare. Missing/unreadable file fails closed the same as a mismatch.
+ */
+function archiveScriptDigestOk() {
+  let raw;
+  try {
+    raw = fs.readFileSync(ARCHIVE_SCRIPT_PATH, 'utf8');
+  } catch (_) {
+    return false;
+  }
+  const normalized = raw.replace(/\r\n/g, '\n');
+  const digest = crypto.createHash('sha256').update(normalized, 'utf8').digest('hex');
+  return digest === ARCHIVE_SCRIPT_SHA256;
+}
+
+// The classifier signal that guards O4 the same way PROD_RESPOND_APPROVAL_SCRIPT guards O2/C16:
+// prod-archive-run.ps1 named alongside a genuine -Approval token must NEVER be treated as O4.
+// O4's grammar has no -Approval branch at all, so this never actually matches today — it exists so
+// the invariant is explicit rather than incidental if O4 is ever extended.
+const PROD_ARCHIVE_APPROVAL_GUARD = /prod-archive-run\.ps1\b[\s\S]*(?:^|\s)-approval(?:\s|$)/;
 
 // A quoted "<METHOD> /api/..." route template, shared by the two signed-channel helpers below.
 const ROUTE_ARG = '("[a-z]+ /api/[a-z0-9/:_-]{1,120}"|\'[a-z]+ /api/[a-z0-9/:_-]{1,120}\')';
@@ -248,6 +336,7 @@ const C15 = new RegExp(PRE + PS + '-file\\s+' + P('prod-signed-call.ps1')
   + '\\s+-approval\\s+' + SAFE_T_OR_BACKUPS
   + '(?:\\s+-bodyfile\\s+' + SAFE_T_OR_BACKUPS + ')?'
   + '(?:\\s+-actor\\s+' + ACTOR_ARG + ')?'
+  + URL_REHEARSAL_ARG_GROUP
   + '(?:\\s+-dryrun)?$');
 
 // C14 — the human-approval signature itself, WINDOWED class (spec's kb-human-approval namespace,
@@ -267,6 +356,7 @@ const C16 = new RegExp(PRE + PS + '-file\\s+' + P('prod-respond.ps1')
   + '\\s+-decision\\s+(approve|retry|abandon)\\s+-reason\\s+' + REASON
   + '(?:\\s+-actor\\s+' + ACTOR_ARG + ')?'
   + '\\s+-approval\\s+' + SAFE_T_OR_BACKUPS
+  + URL_REHEARSAL_ARG_GROUP
   + '(?:\\s+-dryrun)?$');
 
 // The classifier signal for C16: prod-respond.ps1 named ALONGSIDE a genuine `-Approval` argument
@@ -329,7 +419,7 @@ function isReadVerb(raw) {
 // Scripts in T whose DEFAULTS point at prod. Invoking one is prod-targeting even
 // though the command string names neither the host nor the URL. Split into the
 // two authority classes (spec §4.7): OPEN needs no window; WINDOWED still does.
-const OPEN_SCRIPTS = /(prod-run-workflow\.ps1|prod-respond\.ps1|prod-schedules\.ps1)/;
+const OPEN_SCRIPTS = /(prod-run-workflow\.ps1|prod-respond\.ps1|prod-schedules\.ps1|prod-archive-run\.ps1)/;
 const WINDOWED_SCRIPTS = /(kb-deploy\.ps1|drain-step[12]-v2\.ps1|ops-refresh\.ps1|vm-preflight-prod\.ps1|prod-stop-run\.ps1|prod-canary-launch\.ps1|prod-sign-approval\.ps1|prod-signed-call\.ps1)/;
 // prod-window.ps1 is its own class (G): no window requirement, but only its three exact shapes.
 const WINDOW_MGMT_SCRIPT = /prod-window\.ps1/;
@@ -356,7 +446,7 @@ function isKbReaderRead(n) {
 const VM_TARGET_SCRIPTS = /(kb-deploy\.ps1|drain-step[12]-v2\.ps1|ops-refresh\.ps1|vm-preflight-prod\.ps1|prod-stop-run\.ps1|prod-canary-launch\.ps1)/;
 // HTTP-only scripts: they carry no -VM at all, so their rehearsal signal is a genuine `-URL`
 // pointing at the rehearsal daemon or its Windows-side proxy.
-const URL_TARGET_SCRIPTS = /(prod-run-workflow\.ps1|prod-respond\.ps1|prod-schedules\.ps1|prod-signed-call\.ps1)/;
+const URL_TARGET_SCRIPTS = /(prod-run-workflow\.ps1|prod-respond\.ps1|prod-schedules\.ps1|prod-signed-call\.ps1|prod-archive-run\.ps1)/;
 const VM_LOCALHOST_ARG = /(?:^|\s)-vm\s+["']?root@localhost["']?(?=\s|$)/;
 const URL_REHEARSAL_ARG = /(?:^|\s)-url\s+["']?https?:\/\/(?:127\.0\.0\.1|localhost):(?:4317|4417)["']?(?=\s|$)/;
 
@@ -389,11 +479,17 @@ function isRehearsal(n) {
   return false;
 }
 
-/** Returns a rule id ('A1'..'A6') when the command targets prod, else null. */
+/**
+ * Returns a rule id ('A1'..'A6') when the command targets prod, else null.
+ * A-1: this used to also return null for isRehearsal(n) — meaning a rehearsal-marked command
+ * skipped classification ENTIRELY, never reaching openMatch()/allowlistMatch()'s shape grammar.
+ * A rehearsal command now classifies exactly like its prod counterpart (still A4o/A4w); the
+ * shape check always runs, and isRehearsal() is consulted later, in decide(), only to decide
+ * whether the WINDOW requirement is waived for an already-shape-matched WINDOWED command.
+ */
 function isProdTargeting(n) {
   if (n === '') return null;
   if (isKbReaderRead(n)) return null;
-  if (isRehearsal(n)) return null;
 
   if (n.indexOf(PROD_HOST_IP) !== -1) return 'A1';
   if (/root@(?:100\.89\.73\.118|kb)/.test(n)) return 'A2';
@@ -482,6 +578,25 @@ function standingBlock(text, prodTargeting) {
           || /\bnode(?:\.exe)?\s+-e\b/.test(text)
           || /\bpython3?(?:\.exe)?\s+-c\b/.test(text))) {
     return ['D9', 'direct write to the prod window file — use prod-window.ps1 -Open/-Close'];
+  }
+
+  // A-1's D10: a standing, rehearsal/window-independent backstop. isRehearsal() waiving the window
+  // requirement (decide(), below) is now safe because shape grammar always runs regardless — but
+  // this catches any command naming a prod-mutating script that carries a local shell/PowerShell
+  // metacharacter ANYWHERE outside the one hard-coded, harmless idiom (`& '<pinned path>'`, the
+  // PowerShell call operator used by the C3/C5 `-Command` shapes — a lone `&` there is not a
+  // chaining hazard; `&&`/`||` still trip this) and outside the recognised PRE prefix (cd/$env:
+  // token-read, both hard-coded and already vetted). Local code execution on the machine running
+  // the fleet agent has nothing to do with which host the script eventually reaches.
+  if (URL_TARGET_SCRIPTS.test(text) || WINDOWED_SCRIPTS.test(text)) {
+    const preMatch = text.match(new RegExp(PRE));
+    let rest = preMatch ? text.slice(preMatch[0].length) : text;
+    rest = rest.replace(/&\s+'/g, " '");
+    if (/[`$;&|%(){}<>]/.test(rest)) {
+      return ['D10', 'a shell/PowerShell metacharacter (backtick $ ; & | % ( ) < > { }) appears in '
+        + 'a command naming a prod-mutating script — refused regardless of rehearsal marker or '
+        + 'window state; local code execution has nothing to do with which host the script reaches'];
+    }
   }
 
   return null;
@@ -583,6 +698,10 @@ function openMatch(n) {
   if (O3_LIST.test(n) || O3_DISARM.test(n) || O3_ARM.test(n) || O3_CREATE.test(n)) {
     return { rule: 'O3', actor: null };
   }
+  if (!PROD_ARCHIVE_APPROVAL_GUARD.test(n)) {
+    const arch = n.match(O4);
+    if (arch) return { rule: 'O4', actor: arch[3] || null };
+  }
   return null;
 }
 
@@ -597,7 +716,7 @@ function block(reason, tool, ruleId, command, shouldAudit) {
 // Shared "does this unparsed/unreadable payload smell like prod" check — used both when the
 // payload cannot be parsed as JSON at all and by the outer fail-closed catch for a genuine
 // exception. One source of truth so the two paths cannot drift apart.
-const PROD_SMELLS = /100\.89\.73\.118|kb\.tail82dd4f\.ts\.net|root@|kb-deploy\.ps1|drain-step\d-v2\.ps1|ops-refresh\.ps1|vm-preflight-prod\.ps1|prod-stop-run\.ps1|prod-canary-launch\.ps1|prod-run-workflow\.ps1|prod-schedules\.ps1|prod-respond\.ps1|prod-sign-approval\.ps1|prod-signed-call\.ps1|prod-window\.ps1|outbox-approval-current|kb-ops-instructions|kb-human-approval/i;
+const PROD_SMELLS = /100\.89\.73\.118|kb\.tail82dd4f\.ts\.net|root@|kb-deploy\.ps1|drain-step\d-v2\.ps1|ops-refresh\.ps1|vm-preflight-prod\.ps1|prod-stop-run\.ps1|prod-canary-launch\.ps1|prod-run-workflow\.ps1|prod-schedules\.ps1|prod-respond\.ps1|prod-sign-approval\.ps1|prod-signed-call\.ps1|prod-window\.ps1|prod-archive-run\.ps1|outbox-approval-current|kb-ops-instructions|kb-human-approval/i;
 function looksProdSmelling(text) {
   return PROD_SMELLS.test(String(text == null ? '' : text));
 }
@@ -696,9 +815,16 @@ function decide(raw, oversize) {
       block('this is an open-class prod script, but the command is not one of its reviewed shapes '
         + '(prod-run-workflow -Workflow <safe-id> [-Topic <safe-id>] / prod-respond -Run -Request '
         + '-Decision -Reason [-Actor] / prod-schedules -List|-DisarmAgentCadences|-ArmFromSnapshot|'
-        + '-CreateWorkflowSchedule). Fix the arguments, or add the shape to '
-        + 'scripts/hooks/prod_window_guard.js and its tests first.',
+        + '-CreateWorkflowSchedule / prod-archive-run -Run -Reason [-Actor]). Fix the arguments, or '
+        + 'add the shape to scripts/hooks/prod_window_guard.js and its tests first.',
         tool, prodRule, command, true);
+    }
+    // A-2: O4 (prod-archive-run.ps1) is the one allowlisted script that lives under the
+    // branch-switching main checkout rather than the tooling tree, so shape match alone says
+    // nothing about content. Pin it.
+    if (open.rule === 'O4' && !archiveScriptDigestOk()) {
+      block('prod-archive-run.ps1 content does not match the pinned digest; update '
+        + 'ARCHIVE_SCRIPT_SHA256 in the hook and its tests after review.', tool, 'A2', command, true);
     }
     audit('ALLOW', tool, open.rule, command, open.actor);
     process.exit(0);
@@ -717,7 +843,10 @@ function decide(raw, oversize) {
 
   if (!isProd) process.exit(0);  // non-prod commands (incl. GET-only monitoring) always run
 
-  if (!win.open) {
+  // A-1: isRehearsal() waives ONLY this window requirement, never shape validation — allowlistMatch()
+  // below always runs regardless, on the SAME text, so a rehearsal-marked command still has to be one
+  // of the reviewed shapes end-to-end (its own optional VM/URL/SshShimDir groups included).
+  if (!win.open && !isRehearsal(n)) {
     block('the prod window is CLOSED (' + win.reason + ') and this command targets production ('
       + prodRule + ': ' + PROD_HOST_IP + ' / ' + PROD_URL + ' / a prod-defaulted script). '
       + 'Open one deliberately with: powershell -NoProfile -ExecutionPolicy Bypass -File '

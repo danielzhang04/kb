@@ -156,6 +156,8 @@ def _claim_receipt(schedule_id: str, scheduled_for: str, phase: str = "claimed")
         owner={"type": "agent", "id": "hygiene", "sourcePath": "agents/hygiene.md"},
         mirror_path="HEARTBEAT.md",
         dispatched_at="2026-08-21T12:15:01-04:00",
+        # P6-F1: an agent-owner claim now requires a stored workflowProfile.
+        workflow_profile="cadence",
     )
     receipt["phase"] = phase
     return receipt
@@ -167,6 +169,51 @@ def test_schedule_claim_bytes_are_owned_by_cards_render():
     assert receipt["cardBytesSha256"] == hashlib.sha256(cards.render(card)).hexdigest()
     assert card.meta["execution-controller"] == "dashboard"
     assert card.meta["scheduled_for"] == "2026-08-21T12:15:00-04:00"
+
+
+def test_agent_owner_claim_stamps_meta_profile_from_workflow_profile():
+    """P6-F1: an agent-owner cadence's rendered card carries its schedule's workflowProfile as
+    `meta.profile` -- the exact field `dashboard/server/control/queueBridge.ts`'s
+    `cardToWorkflowRequest` requires (`requireMetaString(card.meta.profile, 'profile')`) before it will
+    synthesize a launchable one-stage workflow for a bare card. Before this, an agent-owner schedule's
+    card never carried `profile` at all and every tick failed there with a 400."""
+    receipt = cards.schedule_occurrence_claim(
+        schedule_id="c" * 64,
+        scheduled_for="2026-09-21T09:00:00-04:00",
+        owner={"type": "agent", "id": "hygiene", "sourcePath": "agents/hygiene.md"},
+        mirror_path="HEARTBEAT.md",
+        dispatched_at="2026-09-21T09:00:01-04:00",
+        workflow_profile="cadence",
+    )
+    assert receipt["card"]["meta"]["profile"] == "cadence"
+
+
+def test_agent_owner_claim_without_workflow_profile_refuses():
+    """The pre-P6-F1 shape (no workflow_profile) must refuse, not silently render a launch-refusing
+    card -- fail-closed at render time, not four hops downstream at the queue bridge."""
+    with pytest.raises(cards.ValidationError, match="workflowProfile"):
+        cards.schedule_occurrence_claim(
+            schedule_id="d" * 64,
+            scheduled_for="2026-09-21T09:00:00-04:00",
+            owner={"type": "agent", "id": "hygiene", "sourcePath": "agents/hygiene.md"},
+            mirror_path="HEARTBEAT.md",
+            dispatched_at="2026-09-21T09:00:01-04:00",
+        )
+
+
+def test_workflow_owner_claim_ignores_workflow_profile():
+    """A workflow-owner cadence's profile comes from the workflow definition file itself
+    (`registeredWorkflowRequest` in queueBridge.ts); the claim never writes `meta.profile`, and no
+    `workflow_profile` is required to render it."""
+    receipt = cards.schedule_occurrence_claim(
+        schedule_id="e" * 64,
+        scheduled_for="2026-09-21T09:00:00-04:00",
+        owner={"type": "workflow", "id": "self-lint-report", "project": "kb-ops"},
+        mirror_path="orgs/kb-ops/HEARTBEAT.md",
+        dispatched_at="2026-09-21T09:00:01-04:00",
+    )
+    assert "profile" not in receipt["card"]["meta"]
+    assert receipt["card"]["meta"]["workflow-def"] == "self-lint-report"
 
 
 def _cli_claim_receipt(schedule_id: str, scheduled_for: str, phase: str = "claimed") -> dict:
@@ -186,6 +233,8 @@ def _cli_claim_receipt(schedule_id: str, scheduled_for: str, phase: str = "claim
         "owner": {"type": "agent", "id": "hygiene", "sourcePath": "agents/hygiene.md"},
         "mirrorPath": "HEARTBEAT.md",
         "dispatchedAt": "2026-08-21T12:15:01-04:00",
+        # P6-F1: an agent-owner claim now requires a stored workflowProfile.
+        "workflowProfile": "cadence",
     }
     result = subprocess.run(
         [sys.executable, str(REPO_ROOT / "scripts" / "cards.py"), "--schedule-occurrence-claim"],
@@ -401,6 +450,73 @@ def test_all_claim_crash_boundaries_replay_once_through_real_socket(
                    if row.get("schedule_id") == request["scheduleId"]
                    and row.get("scheduled_for") == request["scheduledFor"]]
         assert len(matches) == 1
+    finally:
+        process.terminate()
+        process.wait(timeout=10)
+
+
+def test_double_tick_dispatches_the_due_occurrence_exactly_once_over_the_real_socket(tmp_path):
+    """VM tick-source ruling (queue/inbox/2c3d4e5f-708192a3.md): a systemd timer drives
+    `scripts/dispatch.py` every 5 minutes, with a `flock` overlap guard as a belt-and-suspenders on
+    top of systemd's own oneshot serialization. This proves the guarantee the guard backstops: two
+    full `dispatch_stored_schedules` ticks for the SAME due occurrence, against the SAME live
+    schedule-store socket, produce exactly one card write and exactly one ledger row -- the daemon's
+    claim/advance state (not dispatch.py's own ledger dedup alone) is what makes the second tick a
+    no-op, so even an overlap the flock guard failed to catch could not double-dispatch.
+    """
+    if sys.platform != "linux":
+        pytest.skip("schedule Unix socket server requires Linux (scheduleSocketRuntimeCapability)")
+    schedule_id = "a" * 64
+    socket_path = tmp_path / "schedule.sock"
+    process = subprocess.Popen(
+        ["node", str(REPO_ROOT / "dashboard" / "server" / "schedules" / "socketRoutes.ts"),
+         "--fixture-socket", str(socket_path)],
+        cwd=REPO_ROOT / "dashboard", text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    try:
+        for _ in range(100):
+            if socket_path.exists():
+                break
+            if process.poll() is not None:
+                stdout, stderr = process.communicate()
+                raise AssertionError(f"fixture Unix service exited: {stdout}\n{stderr}")
+            time.sleep(0.05)
+
+        class TickClient:
+            """Snapshot is faked (the fixture's own snapshot example is always empty schedules, so
+            nothing would ever be found due); claim/advance ride the REAL socket and REAL server-side
+            claim/advance state machine, exactly as `_LiveScheduleStoreClient` does in production."""
+
+            def snapshot(self):
+                return {"collectionRevision": 7, "schedules": [{
+                    "id": schedule_id, "armed": True, "version": 3,
+                    "cadence": {"source": "*/15 * * * *", "words": "Every 15 minutes"},
+                }]}
+
+            def claim(self, **kwargs):
+                return schedule_store.claim(socket_path, **kwargs)
+
+            def advance(self, *, phase: str, **kwargs):
+                return schedule_store.advance(socket_path, phase=phase, **kwargs)
+
+        client = TickClient()
+        now = dt.datetime.fromisoformat("2026-08-21T12:16:00-04:00")
+
+        first = dispatch.dispatch_stored_schedules(tmp_path, client, "dispatcher-cloud", now=now)
+        assert len(first) == 1 and first[0]["phase"] == "ledger-appended"
+        card_path = tmp_path / "queue" / "inbox" / f"{first[0]['card_id']}.md"
+        first_bytes = card_path.read_bytes()
+
+        # Second tick: same clock, same due occurrence -- the systemd double-fire this guards against.
+        second = dispatch.dispatch_stored_schedules(tmp_path, client, "dispatcher-cloud", now=now)
+        assert len(second) == 1 and second[0]["phase"] == "ledger-appended"
+        assert second[0]["card_id"] == first[0]["card_id"]
+        assert card_path.read_bytes() == first_bytes  # no second write
+
+        rows = ledger.read_day(tmp_path, "dispatch", dt.date.today().isoformat())
+        matches = [row for row in rows if row.get("schedule_id") == schedule_id
+                   and row.get("scheduled_for") == "2026-08-21T12:15:00-04:00"]
+        assert len(matches) == 1  # exactly one dispatch row despite two full ticks
     finally:
         process.terminate()
         process.wait(timeout=10)

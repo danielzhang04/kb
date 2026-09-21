@@ -39,6 +39,8 @@ import { assertAuthModeBoot } from './auth/mode.ts';
 import { installShutdownHandlers } from './shutdown.ts';
 import { startHumanRequestSweeper } from './control/humanRequestSweep.ts';
 import type { HumanRequestSweepResult } from './control/humanRequestSweep.ts';
+import { scheduleTickLogLine, startScheduleTick } from './schedules/tick.ts';
+import type { ScheduleTickOutcome } from './schedules/tick.ts';
 import { createImplementerBatchRegistry, startMergePollTimer } from './learnings/execution.ts';
 import { createLearningRecordRetire } from './reconciliation/realPorts.ts';
 import type { MergedPrStatus, PrMergeReader } from './reconciliation/mergePoll.ts';
@@ -98,6 +100,31 @@ export function resolveHumanRequestSweepIntervalMs(env: NodeJS.ProcessEnv = proc
   if (raw === undefined || raw === '') return DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS;
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? parsed : DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS;
+}
+
+/** Schedule-dispatch tick cadence (review B-1) — the daemon's own replacement for the withdrawn
+ *  `kb-dispatch.timer`. Default 5 minutes, matching the withdrawn systemd timer's `OnCalendar=*:0/5`. */
+export const DEFAULT_SCHEDULE_TICK_MS = 300_000;
+
+/**
+ * The tick is meaningful ONLY under `KB_COORDINATION_PUBLICATION=outbox` (the VM): that publication
+ * mode is exactly what makes a bare `dispatch.py` filesystem write dangerous (see `schedules/tick.ts`'s
+ * header), and it is exactly what `commitPreparedCoordination`'s outbox spool step needs to run at all.
+ * Outside outbox mode (desktop, dev, tests that never set the env var) this always returns `0`
+ * (disabled) regardless of `DASHBOARD_SCHEDULE_TICK_MS` — there is no direct-mode ops remote for a
+ * desktop checkout to push a tick's commit to, and desktop already has no live schedule-dispatch story.
+ * `DASHBOARD_SCHEDULE_TICK_MS=0` explicitly disables it even in outbox mode.
+ */
+export function resolveScheduleTickIntervalMs(
+  env: NodeJS.ProcessEnv = process.env,
+  publication: CoordinationPublication = resolveCoordinationPublication(env),
+): number {
+  if (publication !== 'outbox') return 0;
+  const raw = env.DASHBOARD_SCHEDULE_TICK_MS;
+  if (raw === undefined || raw === '') return DEFAULT_SCHEDULE_TICK_MS;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) return DEFAULT_SCHEDULE_TICK_MS;
+  return parsed;
 }
 
 /** The strings that turn a boolean daemon knob OFF. Anything else — unset included — leaves it ON. */
@@ -511,6 +538,33 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     resolveHumanRequestSweepIntervalMs(),
   );
   app.addHook('onClose', async () => { stopHumanRequestSweeper(); });
+
+  // Schedule-dispatch tick (review B-1) — the daemon's own replacement for the withdrawn
+  // `kb-dispatch.timer` systemd design. Disabled by construction outside outbox mode
+  // (`resolveScheduleTickIntervalMs` returns 0), so this call is a no-op on desktop/dev. Wired here,
+  // after `runScheduleBootMigrations` has already completed in `start()` (this function, `buildApp`,
+  // is called from `start()` only once that hydration is done) and after the human-request sweeper —
+  // matching the "must not start until the daemon has finished startup/hydration" requirement without
+  // needing a second readiness gate of its own. Each tick logs one summary line (and a loud second
+  // line on any failure); every failure direction is fail-closed toward "commit nothing" (see
+  // `schedules/tick.ts`'s header) so there is no unsafe way for this timer to misbehave.
+  const stopScheduleTick = startScheduleTick(
+    {
+      repoRoot: surfaceCtx.repoRoot,
+      publication: surfaceCtx.coordinationPublication,
+      outboxRoot: surfaceCtx.outboxRoot,
+    },
+    resolveScheduleTickIntervalMs(process.env, surfaceCtx.coordinationPublication),
+    (outcome: ScheduleTickOutcome) => {
+      // eslint-disable-next-line no-console
+      console.info(scheduleTickLogLine(outcome));
+      if (outcome.error) {
+        // eslint-disable-next-line no-console
+        console.error(`schedule-tick error: ${outcome.error}`);
+      }
+    },
+  );
+  app.addHook('onClose', async () => { stopScheduleTick(); });
 
   // P6 W6.3 §3.1: the daemon's SELF-advertisement beat — the sender W3 deliberately deferred. Until this
   // was wired the `hostAdvertisements` collection stayed EMPTY on a booted daemon, so every launch site

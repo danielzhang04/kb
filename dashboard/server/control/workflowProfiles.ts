@@ -123,6 +123,21 @@ export const WORKFLOW_EXECUTION_PROFILES: readonly WorkflowExecutionProfile[] = 
     id: 'scanner',
     allowedTools: ['Read', 'Glob', 'Grep', 'Write'],
   },
+  {
+    // P6-F1 (2026-09-17 ruling) — an agent-owner cadence (a HEARTBEAT/schedule row whose `owner` is a
+    // declared agent, not a workflow) had NO execution profile at all: when it fired, nothing bounded the
+    // launched attempt's tools/model/budget. Nine such cadences were disarmed on prod for exactly that
+    // reason (`prod-schedules-before.json`). The fix Daniel ruled on is "every agent-owner cadence must
+    // name an execution profile explicitly" (schedules/service.ts + queueBridge.ts now enforce that), and
+    // `cadence` is the profile they name: identical to `research`'s current tool set (WebSearch/WebFetch
+    // for the agent's own lookups, Read/Glob/Grep to inspect, Write for its one declared report/log
+    // output) — deliberately not a new shape, so a cadence worker gets exactly the bounded write-one-file
+    // capability `research` already proved safe (see the `research` profile's comment above for why
+    // `Write` here does not widen external reach: same throwaway-worktree + `resultIsSafe` scope check
+    // applies unchanged). Do not widen this beyond `research`'s tools without a fresh ruling.
+    id: 'cadence',
+    allowedTools: ['WebSearch', 'WebFetch', 'Read', 'Glob', 'Grep', 'Write'],
+  },
 ];
 
 /**
@@ -145,6 +160,26 @@ export const WORKFLOW_EXECUTION_PROFILES: readonly WorkflowExecutionProfile[] = 
  * it here costs the module none of its zero imports.
  */
 const WRITE_CAPABLE_TOOLS: readonly string[] = ['Bash', 'Write', 'Edit'];
+
+/**
+ * C-1/C-2 (review finding, 2026-09-21 ruling): the full `WORKFLOW_EXECUTION_PROFILES` catalog exists
+ * for WORKFLOW stages, whose scope+profile pairing is chosen and code-reviewed per stage. Before this,
+ * `ScheduleService.create`/`setArmed` (`schedules/service.ts`) only checked "is this id a KNOWN
+ * profile at all" for an agent-owner cadence — so an operator (or a future automated seed importer)
+ * naming `workflowProfile: 'producer'` (unrestricted `Bash`+`Edit`) on an unattended periodic worker
+ * was a LEGAL choice, reproducing almost exactly the unbounded-unattended-worker hazard P6-F1's
+ * `cadence` profile exists to close, just gated behind one unchecked field value instead of a missing
+ * one.
+ *
+ * `cadence` is the only member today. Unattended periodic workers get exactly the bounded
+ * no-`Bash` profile P6-F1 introduced; widening this list needs a fresh ruling, not a code review
+ * judgment call, because the whole point is that nobody downstream of this array gets to choose.
+ * `nightly-review`/`weekly-audit` (the two HEARTBEAT cloud-tier cadences whose prompts genuinely need
+ * `Bash` — `python scripts/preamble.py`, `git push`) are NOT made re-armable by this list; they stay
+ * served by the cloud dispatcher leg outside the dashboard's own schedule store (see
+ * `docs/runbooks/cadence-execution-profile.md`).
+ */
+export const AGENT_CADENCE_PROFILE_ALLOWLIST: readonly string[] = ['cadence'];
 
 export function codexSandboxMode(allowedTools: readonly string[]): 'read-only' | 'workspace-write' {
   return allowedTools.some((tool) => WRITE_CAPABLE_TOOLS.includes(tool))
