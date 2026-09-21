@@ -195,9 +195,11 @@ def test_gen_consumer_revalidates_current_selected_checkpoint_authority_before_h
 
     class _RC1:
         returncode = 1
+        stderr = ""
 
     monkeypatch.setattr(
-        command.subprocess, "run", lambda argv, cwd=None: launched.append(argv) or _RC1(),
+        command.subprocess, "run",
+        lambda argv, cwd=None, **kwargs: launched.append(argv) or _RC1(),
     )
 
     def rejects_before_harness(path: Path, mutate, message: str):
@@ -236,7 +238,9 @@ def test_gen_consumer_revalidates_current_selected_checkpoint_authority_before_h
 
     rejects_before_harness(plan_path, drop_gen_authority, "no captured selected-checkpoint provenance")
 
-    with pytest.raises(command.FigmentTrainError, match="harness stopped"):
+    # The mock harness never creates an out dir/run.json, so a nonzero exit here
+    # is classified as a pre-launch refusal (fcc2ea3f), not a mid-run failure.
+    with pytest.raises(command.FigmentTrainError, match="harness refused"):
         command.run_planned_stage("creator-002", "gen", plan_path)
     assert len(launched) == 1
 
@@ -264,8 +268,9 @@ def test_gen_consumer_revalidates_authority_between_base_and_detail_launches(
 
     class _RC0:
         returncode = 0
+        stderr = ""
 
-    def fake_harness(argv, cwd=None):
+    def fake_harness(argv, cwd=None, **kwargs):
         launched.append(argv)
         if len(launched) == 1:
             if mutation == "selection":

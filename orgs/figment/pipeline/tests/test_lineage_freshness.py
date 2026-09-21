@@ -184,7 +184,7 @@ def test_all_pauses_at_anchor_and_repeat_never_launches_duplicate_work(
     )
     calls = []
 
-    def fake_harness(argv, cwd=None):
+    def fake_harness(argv, cwd=None, **kwargs):
         manifest_path = Path(argv[argv.index("--manifest") + 1])
         run_out = Path(argv[argv.index("--out") + 1])
         manifest = read_json(manifest_path)
@@ -206,7 +206,7 @@ def test_all_pauses_at_anchor_and_repeat_never_launches_duplicate_work(
         model = command._pod_runner_module().gpu_model_label(manifest["gpu"]["type"])
         with ledger.open("a", encoding="utf-8") as handle:
             handle.write(f"{model}\tpod-create {pod_id}\t0.010000\n")
-        return type("Result", (), {"returncode": 0})()
+        return type("Result", (), {"returncode": 0, "stderr": ""})()
 
     monkeypatch.setattr(command.subprocess, "run", fake_harness)
     with pytest.raises(command.FigmentTrainError, match="anchor stage completed"):
