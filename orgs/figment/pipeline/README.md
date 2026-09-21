@@ -474,6 +474,9 @@ guarantee, and the `HF_TOKEN` secret-reference mechanism are documented once, in
 | 09-16 | qwen3-VL caption (4th attempt; 1st-3rd each found a distinct live-only defect, see Open defects) | symlq3jynb83a8 | $0.12 | 32 captions in <2 min, `captions.json` 18KB, dataset assembled + approval lineage written — first live success |
 | 09-16 | smoke train, 50-step checkpoint + final | bwdhqfvt72a0d9 | $0.27 | complete |
 | 09-16 | train, 3000 steps (ceiling $15.73) | — | $0 | REFUSED at plan-time budget preflight ($6.20 already spent today + $15.73 > $10.00 daily limit) — recorded as `refused`, no attempt consumed; waiting on operator's `governance/budget.yaml` raise (>= 22) |
+| 09-17 | train, 3000 steps (ceiling $15.73), after operator raised daily limit to 20 | g82uvbgep3ov9q | $2.90 actual | complete — 12 checkpoints (250…2750 + final, 228 MB each). Run root `live-20260916b` |
+| 09-17 | tester, 12-checkpoint ladder | mqhofpqmdvn12x | $0.43 | gate **2/12 pass**: step 2000 (identity_own 0.895, face_px 689, judge same_person 88) and final/3000 (0.900, 663, 74) — first creator-001 ladder to clear the full gate (prior best 0.78, 1250-step train-first). `--checkpoint-step 2000` chosen (equal identity to final, stronger judge); `chosen_checkpoint_step: 2000` recorded (commit ee6ce232) |
+| 09-17 | gen | — | $0 | REFUSED at plan-time budget preflight — arc ($58.04 + $4.01 > $60) and daily ($16.16 + $4.01 > $20) both tripped on a stale ledger (see Open defects: the coordination-checkout `figment-2026-09-17.tsv` lost its settled train + tester rows to an unrelated ops-branch sync at 19:36); true arc ≈ $47.7 of $60 |
 
 Sources: `orgs/figment/STATE.md` 2026-09-03 23:50 through 2026-09-07 00:40, cross-checked
 against `ledgers/cost/figment-2026-09-0{3,4,6,7}.tsv` where a row is identifiable. See Open
@@ -571,6 +574,17 @@ defects below for where these two sources disagree past 09-04.
   full-framing dataset cells all failed only the plain 600px default floor (identity itself
   was fine); operator ruling on a `full` floor value is open, same as the existing `half:
   300` ruling (2026-09-15).
+- **The ops coordination checkout must not be synced/overwritten while figment pods are
+  live** — the harness settles cost rows into that same working file
+  (`ledgers/cost/figment-<date>.tsv`), and a sync from another session mid-run can clobber a
+  provisional row before it's replaced by the settled one. Live-hit 2026-09-17: a 19:36
+  ops-branch sync (commit `fa6803ad`) overwrote the day's ledger with only the train's
+  provisional $15.73 row; the settled $2.90 row and the tester's row were lost (the tester's
+  re-appeared only when it settled on its own), leaving the file under-reporting true spend
+  by ~$10.3 and causing `gen`'s plan-time budget preflight to refuse on stale numbers. The
+  boss/operator restores the row (this is a shared coordination file a docs worker may not
+  write); no code fix identified yet — this is a process/scheduling gap between the ops sync
+  cadence and any session with figment pods in flight.
 
 ## How to iterate
 

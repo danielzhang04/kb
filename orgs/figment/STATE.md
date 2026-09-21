@@ -66,9 +66,23 @@ _Updated: 2026-09-16_
   committed fix, cap 4), a `refused` state for pre-launch budget/arc refusals (never consumes
   an attempt), and the harness diagnostics dir allow-listed as bookkeeping (`_harness/`,
   `_training.log`, heartbeat).
+- **First creator-001 ladder to clear the full gate** (2026-09-17, run root
+  `creator-001/live-20260916b`). 3000-step train (pod `g82uvbgep3ov9q`, L40S, 2h25m, $2.90
+  actual vs $15.73 ceiling) produced 12 checkpoints (250…2750 + final, 228 MB each), launched
+  after the operator raised `governance/budget.yaml`'s daily limit to 20 on a fresh ledger
+  day. Tester (pod `mqhofpqmdvn12x`, $0.43) gated **2/12 pass**: step 2000 (identity_own
+  0.895, face_px 689, judge same_person 88) and final/3000 (0.900, 663, 74) — prior best was
+  the 1250-step train-first ladder at 0.78. `apply-rulings --checkpoint-step 2000` chosen
+  (equal identity to final, stronger judge score); `accepted-checkpoint.json` written,
+  `training.yaml` carries `chosen_checkpoint_step: 2000` + sha256 (commit `ee6ce232`).
+  Gotcha for any future `governance/budget.yaml` edit: a UTF-8 BOM (from PowerShell
+  `-Encoding utf8`) makes the harness's hand-rolled YAML reader refuse with "could not parse
+  the complete manifest" — write the file BOM-free.
 
-- Spend as of 2026-09-16: today's work ≈ $8.1 of the operator's $20 session approval; arc
-  total ≈ $44.2 of the $60 `ARC_CAP_USD`.
+- Spend as of 2026-09-17: work spend this arc ≈ $11.7 of the operator's $20 session approval;
+  true arc total ≈ $47.7 of the $60 `ARC_CAP_USD` (the $2.90 settled train row and the tester
+  row were briefly lost from `ledgers/cost/figment-2026-09-17.tsv` by an ops-branch sync at
+  19:36 that overwrote the file with only the train's provisional $15.73 row — see "Blocked").
 
 ## Next
 
@@ -80,12 +94,12 @@ _Updated: 2026-09-16_
    recorded argv — stays deferred behind the four preconditions
    `2026-09-12-overall-plan-review.md` names (owned host/environment, spend bound,
    sole-launcher operation, real passkey admission).
-2. Operator raises `governance/budget.yaml`'s daily limit (≥ 22 today) so the ceiled 3000-step
-   train ($15.73, $6.20 already spent today) can launch against `live-20260916b`'s 32-cell
-   accepted dataset — the preflight refused it (recorded as `refused`, no attempt consumed).
-   Once trained: smoke-train precedent (pod `bwdhqfvt72a0d9`, $0.27, 50-step checkpoint +
-   final) already proves the launch path; then tester → gen → detail → video completes the
-   first live end-to-end chain against the 3000-step/DOP profile.
+2. Operator (or a card with ledger-write authority) restores the lost settled-cost rows in
+   `ledgers/cost/figment-2026-09-17.tsv` (the coordination-checkout copy) — the $2.90 settled
+   train row and the tester row were overwritten by an unrelated ops-branch sync at 19:36
+   (commit `fa6803ad`); until that's fixed the ledger under-reports true arc spend and `gen`'s
+   plan-time preflight keeps refusing on stale numbers. Then: `gen` → `detail` → `video`
+   completes the first live end-to-end chain against the accepted step-2000 checkpoint.
 3. Rule the `full`-framing face-px floor (`identity.floor.min_face_px.by_framing` has no
    `full` entry today; 10 `live-20260916` full cells failed only the 600px default floor).
 4. Resolve the three placeholder `gate.yaml` thresholds (`identity_gate.age_delta_max_years`
@@ -94,11 +108,20 @@ _Updated: 2026-09-16_
 
 ## Blocked / open gaps
 
-- **No trained checkpoint yet for creator-001's current dataset.** A 32-cell accepted
-  training set now exists (`live-20260916b`, gate 32/60, captioned via the live qwen3vl pod)
-  and a 50-step smoke train completed clean (pod `bwdhqfvt72a0d9`, $0.27), but the full
-  3000-step train was REFUSED at the plan-time budget preflight (ceiling $15.73 vs $6.20
-  already spent + $10.00 daily limit) — see "Next" item 2. Earlier candidates all superseded:
+- **`gen` REFUSED at the plan-time budget preflight** (2026-09-17): both the arc check
+  ($58.04 + $4.01 > $60) and the daily check ($16.16 + $4.01 > $20) tripped because
+  `ledgers/cost/figment-2026-09-17.tsv` in the ops coordination checkout was overwritten by
+  an unrelated ops-branch sync at 19:36 (commit `fa6803ad` captured only the train's
+  provisional $15.73 row; the settled $2.90 row was lost, the tester's row re-appended only
+  on its own settle). True arc spend ≈ $47.7 of $60, not the $58.04 the stale ledger showed.
+  See "Next" item 2 for the fix; README's Open defects now records the standing risk — ops
+  coordination-checkout syncs must not run while figment pods are live, since the harness
+  settles cost rows into that same working file.
+- **Checkpoint now selected — trained and gated, not blocked.** Superseded 2026-09-17: the
+  32-cell accepted training set (`live-20260916b`, gate 32/60) trained clean at 3000 steps
+  (pod `g82uvbgep3ov9q`, $2.90) and the tester ladder gated 2/12 pass; step 2000 is the
+  accepted checkpoint (`chosen_checkpoint_step: 2000`, commit `ee6ce232`). Earlier candidates
+  all superseded:
   Track-1 2000-step, train-first 1250-step, and two 2026-09-15/16 dataset attempts —
   `live-20260915` imported-ladder tester (5 candidates, gate 0/5, $0.3346); `live-20260915b`
   klein-multiref dataset (30 cells, gate 0/30, identity_own median 0.61 vs floor 0.7907 —
