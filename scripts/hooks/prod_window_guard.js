@@ -591,7 +591,7 @@ function standingBlock(text, prodTargeting) {
   if (URL_TARGET_SCRIPTS.test(text) || WINDOWED_SCRIPTS.test(text)) {
     const preMatch = text.match(new RegExp(PRE));
     let rest = preMatch ? text.slice(preMatch[0].length) : text;
-    rest = rest.replace(/&\s+'/g, " '");
+    rest = rest.replace(/&\s*'/g, " '");
     if (/[`$;&|%(){}<>]/.test(rest)) {
       return ['D10', 'a shell/PowerShell metacharacter (backtick $ ; & | % ( ) < > { }) appears in '
         + 'a command naming a prod-mutating script — refused regardless of rehearsal marker or '

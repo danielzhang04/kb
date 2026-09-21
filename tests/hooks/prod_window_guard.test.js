@@ -310,6 +310,13 @@ const CASES = [
     `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1'"`, 0],
   ['D10 still fires on && chaining after a legitimate -Command "& \'path\'" invocation', 'open', 'Bash',
     `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1'" && echo pwned`, 2],
+  // D10 strip regex must mirror cmdShape()'s own `\s*&\s*'` grammar: the no-space call-operator
+  // idiom ("&'<path>'") is a legitimately shaped C3 invocation and must not be blocked as if it
+  // carried a real `&` chaining metacharacter.
+  ['D10 does not over-fire on the no-space -Command "&\'path\'" call operator idiom', 'open', 'Bash',
+    `${PS} -Command "&'${T}\\drain-v2\\drain-step1-v2.ps1'"`, 0],
+  ['D10 still fires on a semicolon after the no-space -Command "&\'path\'" invocation', 'open', 'Bash',
+    `${PS} -Command "&'${T}\\drain-v2\\drain-step1-v2.ps1'; whoami"`, 2],
 
   // ---- HOOK-BLOCKER-1: isKbReaderRead must match the WHOLE command, not a prefix ------------
   // Reviewer's exact probes: a 40-char kb-reader prefix used to exempt the entire rest of the
