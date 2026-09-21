@@ -1,4 +1,22 @@
-# figment live chain — dataset approved, captions live-proven, train blocked on governance — 2026-09-16 (boss handoff, interim)
+# figment live chain — first passing checkpoint accepted (step 2000); gen blocked on one stale ledger row — 2026-09-21 (boss handoff)
+
+**Topic:** Continuation of the 2026-09-15/16 boss session. The 3000-step train and the 12-checkpoint tester screen ran live on 2026-09-17: **2/12 checkpoints clear the full gate** (first ever for creator-001), step 2000 accepted. `gen → detail → video → deliverable` is planned and `refused` before launch because the 09-17 cost ledger in the ops coordination checkout was overwritten by another session's ops sync (commit fa6803ad captured the train pod's provisional $15.73 row; the settled $2.90 row was lost), so the arc check reads $58.04 instead of ~$47.7. The boss may not write that shared file (classifier), so the operator restores one row. Supersedes `handoffs/2026-09-16-figment-live-chain.md` (removed in this push).
+
+## Update since the 09-16 handoff
+- Branch `claude/figment-e2e` @ **fedfcee7** (not pushed; no PR). `governance/budget.yaml` on the branch reads `daily_usd_limit: 20.00` (operator edit 09-17, uncommitted; must stay BOM-free — a UTF-8 BOM makes the harness refuse with "could not parse the complete manifest").
+- **Train** pod g82uvbgep3ov9q: 3000 steps, 2 h 25 min, **$2.900079** actual, 12 checkpoints (228 MB each) in `live-20260916b/train/runs/out/creator-001-tensor-train/`.
+- **Tester** pod mqhofpqmdvn12x, $0.434284: gate 2/12 — step 2000 (identity_own 0.895, face_px 689, judge same_person 88) and final (0.900, 663, 74); identity_own 0.89–0.92 from step 1250 (2750: 0.84). Ruled by the numbers with `--checkpoint-step 2000`; `grade/tester/accepted-checkpoint.json` written; creator-001 `training.yaml` records `chosen_checkpoint_step: 2000` + sha256 (commit ee6ce232).
+- **Opus evidence review** (2026-09-21): CLAIMS-SUPPORTED — every hash chain (plan → manifest → rulings → lineage → accepted checkpoint → training.yaml) closes; doc-hygiene findings fixed in fedfcee7.
+- Spend: this work ≈ **$11.7** of Daniel's $20; true arc ≈ $47.7 of $60.
+
+## Exact Next Step (replaces the one further down)
+1. Daniel restores the settled train row in `C:/Users/danie/kb-worktrees/dashboard-ops/ledgers/cost/figment-2026-09-17.tsv` (BOM-free, tab-separated, LF): header `model step usd`, then `runpod:l40s | pod-create g82uvbgep3ov9q | 2.900079` and `runpod:l40s | pod-create mqhofpqmdvn12x | 0.434284`. The exact PowerShell one-liner is in the boss session transcript of 2026-09-21 and in `C:/ptmp/fe2e/` notes.
+2. Run `C:/ptmp/fe2e/run-live-resume-b.cmd` (gen, ceiling $4.01). The driver's log is quiet while a pod runs — watch the ledger and `train/runs/out/<run>/_harness/_training.log`.
+3. At each of GATE gen / detail / video: rule by the numbers (keep = gate pass), `apply-rulings`, re-run the resume. Keep the ops coordination checkout un-synced while pods are live.
+
+---
+(09-16 handoff body follows; its "Exact Next Step" and train-blocked statements are superseded by the section above.)
+
 
 **Topic:** One boss session (2026-09-15 17:00 → 2026-09-16, Fable 5.1, 14 subagents, all model-verified by transcript grep) took `claude/figment-e2e` from "pipeline command proven only at tester" to a live, gated dataset stage with real qwen3vl captions and a smoke train, and found/fixed nine live-only defects on the way. The 3000-step train is planned and `refused` by the daily budget guard; it launches the moment `governance/budget.yaml` on the branch reads `daily_usd_limit >= 22` (human-edited; classifier refused the boss). Supersedes `handoffs/2026-09-15-figment-e2e-infra.md` (removed in this push).
 
