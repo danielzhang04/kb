@@ -156,6 +156,8 @@ def _claim_receipt(schedule_id: str, scheduled_for: str, phase: str = "claimed")
         owner={"type": "agent", "id": "hygiene", "sourcePath": "agents/hygiene.md"},
         mirror_path="HEARTBEAT.md",
         dispatched_at="2026-08-21T12:15:01-04:00",
+        # P6-F1: an agent-owner claim now requires a stored workflowProfile.
+        workflow_profile="cadence",
     )
     receipt["phase"] = phase
     return receipt
@@ -167,6 +169,51 @@ def test_schedule_claim_bytes_are_owned_by_cards_render():
     assert receipt["cardBytesSha256"] == hashlib.sha256(cards.render(card)).hexdigest()
     assert card.meta["execution-controller"] == "dashboard"
     assert card.meta["scheduled_for"] == "2026-08-21T12:15:00-04:00"
+
+
+def test_agent_owner_claim_stamps_meta_profile_from_workflow_profile():
+    """P6-F1: an agent-owner cadence's rendered card carries its schedule's workflowProfile as
+    `meta.profile` -- the exact field `dashboard/server/control/queueBridge.ts`'s
+    `cardToWorkflowRequest` requires (`requireMetaString(card.meta.profile, 'profile')`) before it will
+    synthesize a launchable one-stage workflow for a bare card. Before this, an agent-owner schedule's
+    card never carried `profile` at all and every tick failed there with a 400."""
+    receipt = cards.schedule_occurrence_claim(
+        schedule_id="c" * 64,
+        scheduled_for="2026-09-21T09:00:00-04:00",
+        owner={"type": "agent", "id": "hygiene", "sourcePath": "agents/hygiene.md"},
+        mirror_path="HEARTBEAT.md",
+        dispatched_at="2026-09-21T09:00:01-04:00",
+        workflow_profile="cadence",
+    )
+    assert receipt["card"]["meta"]["profile"] == "cadence"
+
+
+def test_agent_owner_claim_without_workflow_profile_refuses():
+    """The pre-P6-F1 shape (no workflow_profile) must refuse, not silently render a launch-refusing
+    card -- fail-closed at render time, not four hops downstream at the queue bridge."""
+    with pytest.raises(cards.ValidationError, match="workflowProfile"):
+        cards.schedule_occurrence_claim(
+            schedule_id="d" * 64,
+            scheduled_for="2026-09-21T09:00:00-04:00",
+            owner={"type": "agent", "id": "hygiene", "sourcePath": "agents/hygiene.md"},
+            mirror_path="HEARTBEAT.md",
+            dispatched_at="2026-09-21T09:00:01-04:00",
+        )
+
+
+def test_workflow_owner_claim_ignores_workflow_profile():
+    """A workflow-owner cadence's profile comes from the workflow definition file itself
+    (`registeredWorkflowRequest` in queueBridge.ts); the claim never writes `meta.profile`, and no
+    `workflow_profile` is required to render it."""
+    receipt = cards.schedule_occurrence_claim(
+        schedule_id="e" * 64,
+        scheduled_for="2026-09-21T09:00:00-04:00",
+        owner={"type": "workflow", "id": "self-lint-report", "project": "kb-ops"},
+        mirror_path="orgs/kb-ops/HEARTBEAT.md",
+        dispatched_at="2026-09-21T09:00:01-04:00",
+    )
+    assert "profile" not in receipt["card"]["meta"]
+    assert receipt["card"]["meta"]["workflow-def"] == "self-lint-report"
 
 
 def _cli_claim_receipt(schedule_id: str, scheduled_for: str, phase: str = "claimed") -> dict:
@@ -186,6 +233,8 @@ def _cli_claim_receipt(schedule_id: str, scheduled_for: str, phase: str = "claim
         "owner": {"type": "agent", "id": "hygiene", "sourcePath": "agents/hygiene.md"},
         "mirrorPath": "HEARTBEAT.md",
         "dispatchedAt": "2026-08-21T12:15:01-04:00",
+        # P6-F1: an agent-owner claim now requires a stored workflowProfile.
+        "workflowProfile": "cadence",
     }
     result = subprocess.run(
         [sys.executable, str(REPO_ROOT / "scripts" / "cards.py"), "--schedule-occurrence-claim"],

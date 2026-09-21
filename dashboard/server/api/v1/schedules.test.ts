@@ -20,6 +20,8 @@ const okCreate = {
   cadence: { kind: 'words', words: 'every day', time: '09:00' },
   expectedCollectionRevision: 7,
   idempotencyKey: 'sched-key-1',
+  // P6-F1: an agent-owner create body must now name a server-owned execution profile.
+  workflowProfile: 'cadence',
 };
 
 describe('GET /api/v1/schedules', () => {

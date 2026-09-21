@@ -28,16 +28,36 @@ function idempotencyKey(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= 200;
 }
 
-/** Closed create-body wall (`schedules/service.ts#createBody`), reproduced so an extra key is `null`. */
+/** A safe, bounded `WorkflowExecutionProfile` id — byte-identical to `workflows/defs.ts`'s
+ *  `SAFE_EXECUTION_PROFILE_ID_RE`, which accepts this exact shape for a stage's `workflowProfile`.
+ *  Kept as one literal copied verbatim (defs.ts has no exported constant to import) rather than a
+ *  looser pattern, so the two surfaces that name a profile id never silently diverge on what a
+ *  well-formed one looks like. */
+const SAFE_WORKFLOW_PROFILE_ID_RE = /^[a-z0-9][a-z0-9:._-]{0,127}$/;
+
+/**
+ * Closed create-body wall (`schedules/service.ts#createBody`), reproduced so an extra key is `null`.
+ *
+ * P6-F1: `workflowProfile` is a THIRD conditional key, present iff `owner.type === 'agent'` — an
+ * agent-owner cadence must name one (it has no workflow definition to fall back to), a workflow-owner
+ * cadence must NOT (its profile comes from the definition itself, and a second one here would be a
+ * value nothing ever reads). Whether the named id is actually a SERVER-OWNED profile is checked one
+ * layer up, in `ScheduleService.create`, which has the profile catalog; this wall only shapes the body.
+ */
 export function createBody(value: unknown): CreateScheduleInput | null {
   const body = record(value);
-  if (!body || !exactKeys(body, ['owner', 'cadence', 'expectedCollectionRevision', 'idempotencyKey'])
-    || !Number.isSafeInteger(body.expectedCollectionRevision) || Number(body.expectedCollectionRevision) < 0
-    || !idempotencyKey(body.idempotencyKey)) return null;
+  if (!body) return null;
   const owner = record(body.owner);
   if (!owner || !exactKeys(owner, ['type', 'id'])
     || (owner.type !== 'agent' && owner.type !== 'workflow')
     || typeof owner.id !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(owner.id)) return null;
+  const baseKeys = ['owner', 'cadence', 'expectedCollectionRevision', 'idempotencyKey'];
+  if (owner.type === 'agent') {
+    if (!exactKeys(body, [...baseKeys, 'workflowProfile'])
+      || typeof body.workflowProfile !== 'string' || !SAFE_WORKFLOW_PROFILE_ID_RE.test(body.workflowProfile)) return null;
+  } else if (!exactKeys(body, baseKeys)) return null;
+  if (!Number.isSafeInteger(body.expectedCollectionRevision) || Number(body.expectedCollectionRevision) < 0
+    || !idempotencyKey(body.idempotencyKey)) return null;
   const cadence = record(body.cadence);
   if (!cadence || typeof cadence.kind !== 'string') return null;
   if (cadence.kind === 'words') {

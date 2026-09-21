@@ -65,6 +65,7 @@ class MemoryScheduleStore implements AtomicScheduleStorePort {
     const schedule: Schedule = {
       id, owner: input.owner, cadence: input.cadence, nextAt: null, lastOutcome: null,
       armed: false, origin: 'operator', mirroredAt: null, mirrorPath: input.mirrorPath, version: 1,
+      workflowProfile: input.workflowProfile,
     };
     this.snapshot = { collectionRevision: this.snapshot.collectionRevision + 1, schedules: [...this.snapshot.schedules, schedule] };
     return { schedule, collectionRevision: this.snapshot.collectionRevision, replayed: false };
@@ -120,7 +121,12 @@ function service(
     selector.type === 'agent' && selector.id === OWNER.id ? OWNER : null
   ),
 ): ScheduleService {
-  return new ScheduleService({ store, resolveOwner, seedAuthorization: async () => protectedMain });
+  return new ScheduleService({
+    store, resolveOwner, seedAuthorization: async () => protectedMain,
+    // P6-F1: a fixed, test-owned profile catalog — isolated from the real `workflowProfileIds()` so
+    // this suite does not silently depend on the shipped catalog's contents.
+    knownWorkflowProfiles: () => new Set(['cadence']),
+  });
 }
 
 const CREATE: CreateScheduleInput = {
@@ -128,6 +134,7 @@ const CREATE: CreateScheduleInput = {
   cadence: { kind: 'words', words: 'daily', time: '09:15' },
   expectedCollectionRevision: 0,
   idempotencyKey: 'operator-key-1',
+  workflowProfile: 'cadence',
 };
 
 describe('ScheduleService', () => {
@@ -248,6 +255,38 @@ describe('ScheduleService', () => {
     await expect(api.delete(created.schedule.id, { ...input, expectedVersion: 2 }))
       .rejects.toMatchObject({ status: 409, code: 'idempotency-conflict' });
     expect(store.order).toEqual(['transaction', 'receipt']);
+  });
+
+  it('P6-F1: create refuses an unknown workflowProfile, and a known one (cadence) lands on the stored row', async () => {
+    const store = new MemoryScheduleStore();
+    const api = service(store);
+    await expect(api.create({ ...CREATE, idempotencyKey: 'p6f1-unknown', workflowProfile: 'not-a-real-profile' }))
+      .rejects.toMatchObject({ status: 400, code: 'schedule-workflow-profile-unknown' });
+    expect(store.snapshot.schedules).toEqual([]);
+
+    const created = await api.create({ ...CREATE, idempotencyKey: 'p6f1-known', workflowProfile: 'cadence' });
+    expect(created.schedule.workflowProfile).toBe('cadence');
+  });
+
+  it('P6-F1: arm refuses a profile-less legacy agent-owner row', async () => {
+    const store = new MemoryScheduleStore();
+    // A pre-ruling ("legacy") row: created before workflowProfile existed, so it carries none. Not a
+    // seed row (so `seed-not-on-protected-main` never intervenes) -- this isolates the new check.
+    store.snapshot = {
+      collectionRevision: 1,
+      schedules: [{
+        id: 'b'.repeat(64), owner: OWNER, cadence: { source: 'daily', words: 'Daily' },
+        nextAt: null, lastOutcome: null, armed: false, origin: 'operator', mirroredAt: null,
+        mirrorPath: 'HEARTBEAT.md', version: 1,
+      }],
+    };
+    const api = service(store, false);
+    await expect(api.setArmed('b'.repeat(64), { expectedVersion: 1, idempotencyKey: 'legacy-arm', armed: true }))
+      .rejects.toMatchObject({ status: 409, code: 'schedule-workflow-profile-required' });
+    expect(store.snapshot.schedules[0].armed).toBe(false);
+    // Disarming a profile-less row is never blocked -- it never launches disarmed either way.
+    await expect(api.setArmed('b'.repeat(64), { expectedVersion: 1, idempotencyKey: 'legacy-disarm', armed: false }))
+      .resolves.toMatchObject({ schedule: { armed: false } });
   });
 
   it('applies row CAS and returns the exact protected-main 409 for an unauthorized seed arm', async () => {

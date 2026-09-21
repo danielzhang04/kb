@@ -491,6 +491,7 @@ describe('server', () => {
         owner: { type: 'agent', id },
         cadence: { kind: 'cron', minute: '0', hour: '9', dayOfMonth: '*', month: '*', dayOfWeek: '*' },
         expectedCollectionRevision, idempotencyKey: `mirror-${id}`,
+        workflowProfile: 'cadence',
       },
     });
     expect((await create('fyt-checker', 0)).json()).toMatchObject({
@@ -525,7 +526,7 @@ describe('server', () => {
     const headers = sessionHeaders();
     const created = await app.inject({ method: 'POST', url: '/api/schedules', headers, payload: {
       owner: { type: 'agent', id: 'hygiene' }, cadence: { kind: 'words', words: 'daily', time: '09:15' },
-      expectedCollectionRevision: 0, idempotencyKey: 'operator-mutation-create',
+      expectedCollectionRevision: 0, idempotencyKey: 'operator-mutation-create', workflowProfile: 'cadence',
     } });
     expect(created.statusCode).toBe(201);
     const row = created.json().schedule as { id: string; version: number };
@@ -550,7 +551,7 @@ describe('server', () => {
     const headers = sessionHeaders();
     const created = await app.inject({ method: 'POST', url: '/api/schedules', headers, payload: {
       owner: { type: 'agent', id: 'hygiene' }, cadence: { kind: 'words', words: 'daily', time: '09:15' },
-      expectedCollectionRevision: 0, idempotencyKey: 'operator-mutation-signed-create',
+      expectedCollectionRevision: 0, idempotencyKey: 'operator-mutation-signed-create', workflowProfile: 'cadence',
     } });
     const row = created.json().schedule as { id: string; version: number };
     const deleted = await app.inject({ method: 'DELETE', url: `/api/schedules/${row.id}`, headers, payload: {
@@ -1110,7 +1111,7 @@ describe('BLOCKER-2: a win32-desktop daemon mints a session on the peer proof an
 
     const created = await app.inject({ method: 'POST', url: '/api/schedules', headers, payload: {
       owner: { type: 'agent', id: 'hygiene' }, cadence: { kind: 'words', words: 'daily', time: '09:15' },
-      expectedCollectionRevision: 0, idempotencyKey: 'desktop-mint-create',
+      expectedCollectionRevision: 0, idempotencyKey: 'desktop-mint-create', workflowProfile: 'cadence',
     } });
     expect(created.statusCode).toBe(201);
 

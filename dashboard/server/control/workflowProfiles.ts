@@ -123,6 +123,21 @@ export const WORKFLOW_EXECUTION_PROFILES: readonly WorkflowExecutionProfile[] = 
     id: 'scanner',
     allowedTools: ['Read', 'Glob', 'Grep', 'Write'],
   },
+  {
+    // P6-F1 (2026-09-17 ruling) — an agent-owner cadence (a HEARTBEAT/schedule row whose `owner` is a
+    // declared agent, not a workflow) had NO execution profile at all: when it fired, nothing bounded the
+    // launched attempt's tools/model/budget. Nine such cadences were disarmed on prod for exactly that
+    // reason (`prod-schedules-before.json`). The fix Daniel ruled on is "every agent-owner cadence must
+    // name an execution profile explicitly" (schedules/service.ts + queueBridge.ts now enforce that), and
+    // `cadence` is the profile they name: identical to `research`'s current tool set (WebSearch/WebFetch
+    // for the agent's own lookups, Read/Glob/Grep to inspect, Write for its one declared report/log
+    // output) — deliberately not a new shape, so a cadence worker gets exactly the bounded write-one-file
+    // capability `research` already proved safe (see the `research` profile's comment above for why
+    // `Write` here does not widen external reach: same throwaway-worktree + `resultIsSafe` scope check
+    // applies unchanged). Do not widen this beyond `research`'s tools without a fresh ruling.
+    id: 'cadence',
+    allowedTools: ['WebSearch', 'WebFetch', 'Read', 'Glob', 'Grep', 'Write'],
+  },
 ];
 
 /**

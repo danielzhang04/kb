@@ -12,6 +12,8 @@ export interface CreateScheduleInput {
   cadence: CadenceInput;
   expectedCollectionRevision: number;
   idempotencyKey: string;
+  /** P6-F1: required for `owner.type === 'agent'`, forbidden for `owner.type === 'workflow'`. */
+  workflowProfile?: string;
 }
 
 /** Trusted create payload assembled only after the server resolves the selector. */
@@ -21,6 +23,8 @@ export interface ResolvedCreateScheduleInput {
   mirrorPath: Schedule['mirrorPath'];
   expectedCollectionRevision: number;
   idempotencyKey: string;
+  /** P6-F1: carried through unvalidated here — `ScheduleService.create` already enforced it. */
+  workflowProfile: string | null;
 }
 
 export interface SetScheduleArmedInput {

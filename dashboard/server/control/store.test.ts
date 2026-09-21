@@ -116,6 +116,7 @@ describe('control-store schedule authority', () => {
       cadence: { kind: 'words', words: 'daily', time: '09:15' },
       expectedCollectionRevision: 0,
       idempotencyKey: 'event-create',
+      workflowProfile: 'cadence',
     });
     const persisted = () => JSON.parse(readFileSync(join(root, 'control', 'control-plane.json'), 'utf8')) as {
       nextEventCursor: number;
@@ -178,7 +179,7 @@ describe('control-store schedule authority', () => {
     });
     const create = {
       owner: { type: 'agent' as const, id: 'hygiene' }, cadence: { kind: 'cron' as const, minute: '15', hour: '3', dayOfMonth: '*', month: '*', dayOfWeek: '0' },
-      expectedCollectionRevision: 0, idempotencyKey: 'operator-create',
+      expectedCollectionRevision: 0, idempotencyKey: 'operator-create', workflowProfile: 'cadence',
     };
     const created = await api.create(create);
     await api.setArmed(created.schedule.id, { expectedVersion: 1, idempotencyKey: 'arm', armed: true });
@@ -211,7 +212,12 @@ describe('control-store schedule authority', () => {
       workflowOwner: { type: 'workflow', id: 'video-run', project: 'faceless-youtube', sourcePath: 'orgs/faceless-youtube/workflows/video-run.md' },
       cardOwner: 'hygiene', declaredAgents: [owner],
     })).toMatchObject({ ok: false, code: 'runnable-owner-conflict' });
-    expect(renderScheduleClaim).toHaveBeenCalledWith(expect.objectContaining({ mirrorPath: 'orgs/kb-ops/HEARTBEAT.md' }));
+    // P6-F1: the tick path threads the schedule's stored `workflowProfile` into the card renderer so
+    // the rendered card can stamp `meta.profile` -- the field `queueBridge.ts#cardToWorkflowRequest`
+    // requires before it will launch a bare (non-`workflow-def`) card.
+    expect(renderScheduleClaim).toHaveBeenCalledWith(expect.objectContaining({
+      mirrorPath: 'orgs/kb-ops/HEARTBEAT.md', workflowProfile: 'cadence',
+    }));
     expect(renderScheduleClaim).toHaveBeenCalledTimes(1);
 
     const launched = createRun(store, 'alice');
@@ -566,6 +572,7 @@ describe('createPythonScheduleClaimRenderer platform-root resolution (hotfix-3)'
     nextAt: '2026-09-16T00:00:00.000Z',
     owner: { type: 'agent' as const, id: 'codex-worker', sourcePath: 'agents/codex-worker.md' as const },
     mirrorPath: 'HEARTBEAT.md' as const,
+    workflowProfile: 'cadence' as const,
   };
 
   it('renders a claim from platformRoot/scripts/cards.py even when repoRoot (the ops checkout shape) has no scripts/ dir at all', async () => {
@@ -5325,6 +5332,7 @@ describe('control-store schedule mirror revision', () => {
         owner: { type: 'agent', id: 'hygiene', sourcePath: 'agents/hygiene.md' },
         cadence: { source: 'weekly:sun', words: 'Weekly on Sun' },
         mirrorPath: 'HEARTBEAT.md', expectedCollectionRevision: 0, idempotencyKey: 'pre-p4',
+        workflowProfile: 'cadence',
       });
     });
     const saved = JSON.parse(readFileSync(path, 'utf8')) as {
@@ -5415,7 +5423,7 @@ describe('control-store schedule mirror revision', () => {
     expect(await revision()).toBe(0);
     const created = await api.create({
       owner: { type: 'agent', id: owner.id }, cadence: { kind: 'words', words: 'daily', time: '07:15' },
-      expectedCollectionRevision: 0, idempotencyKey: 'mirror-create',
+      expectedCollectionRevision: 0, idempotencyKey: 'mirror-create', workflowProfile: 'cadence',
     });
     expect(await revision()).toBe(1);
     const armed = await api.setArmed(created.schedule.id, { expectedVersion: created.schedule.version, idempotencyKey: 'mirror-arm', armed: true });
@@ -5464,14 +5472,14 @@ describe('control-store schedule mirror revision', () => {
     const api = new ScheduleService({ store, resolveOwner: async () => owner, seedAuthorization: async () => true });
     const covered = await api.create({
       owner: { type: 'agent', id: owner.id }, cadence: { kind: 'words', words: 'daily', time: '07:15' },
-      expectedCollectionRevision: 0, idempotencyKey: 'covered',
+      expectedCollectionRevision: 0, idempotencyKey: 'covered', workflowProfile: 'cadence',
     });
     const snapshot = await store.readScheduleMirrorSnapshot();
     const batch = mirrorBatch(snapshot.revision, snapshot.rows);
     // A later mutation advances the store watermark; the open batch never covers it.
     const later = await api.create({
       owner: { type: 'agent', id: owner.id }, cadence: { kind: 'words', words: 'daily', time: '08:15' },
-      expectedCollectionRevision: 1, idempotencyKey: 'later',
+      expectedCollectionRevision: 1, idempotencyKey: 'later', workflowProfile: 'cadence',
     });
     expect((await store.readScheduleMirrorSnapshot()).revision).toBe(2);
 

@@ -3,6 +3,7 @@ import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { OPERATOR_SUBJECT } from '../auth/operator.ts';
 import { verifiedSession } from '../http/middleware.ts';
 import { cronDayLabel, validateScheduleCadence } from '../../src/lib/scheduleWords.ts';
+import { workflowProfileIds } from '../control/environment.ts';
 import type { RunnableRef } from '../control/p2Contracts.ts';
 import type { RunnableSelector } from '../entities/contracts.ts';
 import type {
@@ -40,6 +41,12 @@ export interface ScheduleServiceOptions {
   resolveOwner(selector: RunnableSelector): Promise<RunnableRef | null>;
   seedAuthorization(scheduleId: string): Promise<boolean>;
   mirrorPathForOwner?(owner: RunnableRef): import('../control/p2Contracts.ts').Schedule['mirrorPath'];
+  /**
+   * P6-F1: the server-owned `WorkflowExecutionProfile` id catalog (`control/environment.ts`'s
+   * `workflowProfileIds`), used to validate an agent-owner cadence's declared `workflowProfile` at both
+   * create and arm time. Defaults to the real catalog; tests inject a fixed set.
+   */
+  knownWorkflowProfiles?(): ReadonlySet<string>;
 }
 
 export type ScheduleMutationOperation = 'create' | 'set-armed' | 'delete';
@@ -214,6 +221,18 @@ export class ScheduleService {
       const cadence = normalizeCadenceInput(input.cadence);
       const owner = await this.options.resolveOwner(input.owner);
       if (!owner) throw new ScheduleServiceError(409, 'schedule-owner-unresolvable');
+      // P6-F1: an agent-owner cadence must name a server-owned execution profile (it has no workflow
+      // definition to fall back to when it fires); a workflow-owner cadence must not name one at all
+      // (its profile is the definition's own — a second one here would never be read). The body wall
+      // (`createBody`) already shaped this; this is the one place with the real profile catalog.
+      if (owner.type === 'agent') {
+        const known = (this.options.knownWorkflowProfiles ?? workflowProfileIds)();
+        if (typeof input.workflowProfile !== 'string' || !known.has(input.workflowProfile)) {
+          throw new ScheduleServiceError(400, 'schedule-workflow-profile-unknown');
+        }
+      } else if (input.workflowProfile !== undefined) {
+        throw new ScheduleServiceError(400, 'schedule-workflow-profile-not-allowed');
+      }
       const resolved: ResolvedCreateScheduleInput = {
         owner,
         cadence,
@@ -221,6 +240,7 @@ export class ScheduleService {
           ?? (owner.type === 'workflow' ? `orgs/${owner.project}/HEARTBEAT.md` : 'HEARTBEAT.md'),
         expectedCollectionRevision: input.expectedCollectionRevision,
         idempotencyKey: input.idempotencyKey,
+        workflowProfile: owner.type === 'agent' ? input.workflowProfile as string : null,
       };
       const receipt = await transaction.createSchedule(resolved);
       if (!sameOwner(receipt.schedule.owner, owner)
@@ -246,6 +266,16 @@ export class ScheduleService {
       if (schedule.version !== input.expectedVersion) throw new ScheduleServiceError(409, 'stale-schedule-version');
       if (input.armed && schedule.origin === 'seed' && !(await this.options.seedAuthorization(schedule.id))) {
         throw new ScheduleServiceError(409, 'seed-not-on-protected-main');
+      }
+      // P6-F1: refuse to ARM an agent-owner cadence that carries no execution profile — a pre-ruling
+      // ("legacy") row, or a seed row a future import minted without one. Disarming a profile-less row is
+      // always allowed (it never launches disarmed); only the transition to armed is gated, so this can
+      // never brick an already-armed schedule out from under a live cadence.
+      if (input.armed && schedule.owner.type === 'agent') {
+        const known = (this.options.knownWorkflowProfiles ?? workflowProfileIds)();
+        if (typeof schedule.workflowProfile !== 'string' || !known.has(schedule.workflowProfile)) {
+          throw new ScheduleServiceError(409, 'schedule-workflow-profile-required');
+        }
       }
       const receipt = await transaction.setScheduleArmed(id, input);
       await transaction.writeMutationReceipt(key, fingerprint, receipt);
