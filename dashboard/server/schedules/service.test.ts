@@ -289,6 +289,49 @@ describe('ScheduleService', () => {
       .resolves.toMatchObject({ schedule: { armed: false } });
   });
 
+  it('C-1/C-2: create refuses a KNOWN-but-not-allowlisted profile (producer) on an agent-owner row', async () => {
+    const store = new MemoryScheduleStore();
+    // A wider known-profile catalog than the default test fixture, so `producer` genuinely IS a known
+    // `WorkflowExecutionProfile` id here -- proving the refusal comes from the allowlist, not from
+    // `producer` failing the pre-existing "is this a known id at all" check.
+    const wideCatalog = new ScheduleService({
+      store,
+      resolveOwner: async (selector) => (selector.type === 'agent' && selector.id === OWNER.id ? OWNER : null),
+      seedAuthorization: async () => false,
+      knownWorkflowProfiles: () => new Set(['cadence', 'producer']),
+    });
+    await expect(wideCatalog.create({ ...CREATE, idempotencyKey: 'c1c2-producer', workflowProfile: 'producer' }))
+      .rejects.toMatchObject({ status: 400, code: 'schedule-workflow-profile-not-allowed' });
+    expect(store.snapshot.schedules).toEqual([]);
+    // The allowlisted profile is still accepted through the same wider catalog.
+    const created = await wideCatalog.create({ ...CREATE, idempotencyKey: 'c1c2-cadence', workflowProfile: 'cadence' });
+    expect(created.schedule.workflowProfile).toBe('cadence');
+  });
+
+  it('C-1/C-2: arm refuses a stored row whose workflowProfile is known but not allowlisted', async () => {
+    const store = new MemoryScheduleStore();
+    store.snapshot = {
+      collectionRevision: 1,
+      schedules: [{
+        id: 'c'.repeat(64), owner: OWNER, cadence: { source: 'daily', words: 'Daily' },
+        nextAt: null, lastOutcome: null, armed: false, origin: 'operator', mirroredAt: null,
+        mirrorPath: 'HEARTBEAT.md', version: 1, workflowProfile: 'producer',
+      }],
+    };
+    const wideCatalog = new ScheduleService({
+      store,
+      resolveOwner: async (selector) => (selector.type === 'agent' && selector.id === OWNER.id ? OWNER : null),
+      seedAuthorization: async () => false,
+      knownWorkflowProfiles: () => new Set(['cadence', 'producer']),
+    });
+    await expect(wideCatalog.setArmed('c'.repeat(64), { expectedVersion: 1, idempotencyKey: 'c1c2-arm', armed: true }))
+      .rejects.toMatchObject({ status: 409, code: 'schedule-workflow-profile-not-allowed' });
+    expect(store.snapshot.schedules[0].armed).toBe(false);
+    // Disarming stays unblocked regardless of the stored profile.
+    await expect(wideCatalog.setArmed('c'.repeat(64), { expectedVersion: 1, idempotencyKey: 'c1c2-disarm', armed: false }))
+      .resolves.toMatchObject({ schedule: { armed: false } });
+  });
+
   it('applies row CAS and returns the exact protected-main 409 for an unauthorized seed arm', async () => {
     const store = new MemoryScheduleStore();
     store.snapshot = {

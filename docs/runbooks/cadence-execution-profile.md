@@ -96,3 +96,58 @@ schedule-workflow-profile-required` until one of:
 Until one of those lands, re-arming the nine snapshot rows needs a human step beyond
 `-ArmFromSnapshot` alone. This is the fail-closed behavior the ruling asked for (no agent-owner
 cadence launches unbounded), not a defect in this change.
+
+## Amendment 2026-09-21 (review findings C-1/C-2): the allowlist, and which of the nine fit it
+
+Finding C-2: being a **known** profile was not enough for an agent-owner (unattended, periodic)
+cadence — `producer` (`['Bash','Read','Write','Edit','Glob','Grep']`, unrestricted shell + file edit)
+is a known profile, and nothing stopped an operator or a future automated seed importer from naming
+it on an agent-owner row, reproducing almost exactly the unbounded-unattended-worker hazard this whole
+ruling exists to close.
+
+Fix: `dashboard/server/control/workflowProfiles.ts#AGENT_CADENCE_PROFILE_ALLOWLIST = ['cadence']`.
+`ScheduleService.create` and `ScheduleService.setArmed` (`dashboard/server/schedules/service.ts`) both
+now check the declared/stored `workflowProfile` against this allowlist, IN ADDITION TO the pre-existing
+"is it a known profile at all" check — a known-but-not-allowlisted profile is refused with
+`schedule-workflow-profile-not-allowed` (`400` on create, `409` on arm). `commitScheduleSeedImport`
+(`dashboard/server/control/store.ts`) needed no change: it already unconditionally assigns
+`workflowProfile: 'cadence'` (or `null` for a workflow owner) server-side — `PreparedScheduleSeed`
+(`dashboard/server/schedules/seedImport.ts`) carries no `workflowProfile` field at all, so there is no
+input for a seed to "name another profile" through in the first place. Widening the allowlist beyond
+`{cadence}` needs a fresh ruling, not a code change alone.
+
+Finding C-1: `cadence`'s tool set (`WebSearch`, `WebFetch`, `Read`, `Glob`, `Grep`, `Write` — no
+`Bash`) genuinely cannot run `nightly-review`/`weekly-audit`'s prompts, which say verbatim "Run:
+python scripts/preamble.py" and "Commit ... to ops and push." **Those two cadences are NOT made
+re-armable by this allowlist and are not intended to be** — they stay served by the cloud dispatcher
+leg (the `tier: cloud, agent: dispatcher-cloud` HEARTBEAT.md cadences), outside the dashboard's own
+schedule-store arm/disarm surface, and were already `armed: false` in the dashboard store before this
+amendment (`prod-schedules-before.json` rows `ceef96b6…` and `81e283bf…`). A future ruling that wants
+to re-arm them through the dashboard store would need either a new bounded profile carrying a
+narrowly-scoped `Bash` or a rewrite of those two prompts to work within `cadence`'s tool set — this
+amendment does neither.
+
+### Which of the nine disarmed rows fit `cadence` as-is
+
+The nine rows in `C:\Users\danie\kb-rehearsal\tooling\rehearsal\p8\prod-schedules-before.json` that
+were `armed: true` in that "before" snapshot (and were disarmed by the original P6-F1 ruling for
+carrying no profile at all — distinct from the two dispatcher-cloud rows above, which were already
+`armed: false` before this snapshot) belong to seven agents. Read from each agent's own declaration
+(`agents/<id>.md`, `origin/ops`) rather than root `HEARTBEAT.md` (which today only declares the
+dispatcher-cloud and desktop-tier cadences, not these seven agents' — their cadence prompts live in
+their own agent files, referenced by `EXPECTED_SEED_OWNER_BY_CADENCE` in
+`dashboard/server/schedules/seedImport.ts`):
+
+| Owner (rows) | Cadence prompt shape | Fits `cadence`? |
+|---|---|---|
+| `hygiene` (×3: root `HEARTBEAT.md` weekly:sun + `15 3 * * 0`, `orgs/kb-ops/HEARTBEAT.md` daily) | "declared tool-free worker" reads evidence, produces a report + at most 5 proposal records, "publish[es] in coordination mode straight to ops: no PR"; never deletes/edits/merges/pushes | **Yes** |
+| `context-lifecycle` (daily `15 1 * * *`) | same shape, "declared tool-free worker," never edits a proposal target or changes hooks/settings | **Yes** |
+| `model-audit` (weekly, `45 2 * * 1`) | same shape, "declared tool-free worker," never edits governance/routing/agent declarations | **Yes** |
+| `system-sweeper` (every 15 min) | reads a snapshot and "run[s] runSweeper over read-only ports," emits reconciliation intents for a server-owned publisher to apply (no PR, no direct mutation); "[n]ever mutate cards, Inbox state, schedules, HEARTBEAT files, git, or ledgers" | **Likely yes** — no prompt line names a script invocation the way the dispatcher-cloud cadences do, but this is a judgment call, not a traced fact; confirm the emitted-intent write is a plain `Write` before re-arming |
+| `grader` (daily `15 2 * * *`) | reads pinned rows "via `agent_evals.py#run_suite(...)`" | **No, as written** — invoking a named `.py` entry point the way `nightly-review`/`weekly-audit` invoke `scripts/preamble.py` needs `Bash`; the report/records output alone would fit `cadence` |
+| `lessons-miner` (daily `45 1 * * *`) | reads evidence "by running `session_miner.py` + `agent_maintainer.py#run_fire(...)`" | **No, as written** — same reason as `grader` |
+| `learnings-implementer` (daily `30 3 * * *`) | "[a]pply the smallest tested batch on one work branch and open exactly ONE... PR... through the durablePrWrites publisher" | **No** — needs `Bash` (tests, git branch) and `Edit`, and a PR-open capability no default profile grants |
+
+Re-arming any of these still needs the human backfill step described above (the seed-import path does
+not retroactively touch already-persisted prod rows); this table is scoping information for whoever
+does that, not an instruction to re-arm them.
