@@ -318,6 +318,29 @@ def test_pins_document_has_no_pickle_or_subpack_anywhere():
     assert '.pt"' not in blob and ".pth" not in blob
 
 
+def test_all_mediapipe_facemask_workflows_encode_regions_as_option_key_string():
+    """`regions` is an io.DynamicCombo.Input (ComfyUI v0.34.0
+    nodes_mediapipe.py:442-495, _io.py:1254-1270 + 1879-1910): in API/prompt
+    format the live value must be the option-key STRING ("all"/"custom"),
+    never the nested {"regions": "all"} dict r23 originally (and wrongly)
+    documented -- that nesting is what made attempt 3 (pod y3mz2hqqbnf4ci,
+    2026-09-21) fail with `MediaPipeFaceMask.execute() missing 1 required
+    positional argument: 'regions'`, because `_expand_schema_for_dynamic`
+    never finds a matching option key and drops the input entirely."""
+    workflows_dir = PIPELINE / "train" / "workflows"
+    found_any = False
+    for wf_path in sorted(workflows_dir.glob("*.json")):
+        workflow = json.loads(wf_path.read_text(encoding="utf-8"))
+        for node_id, node in workflow.items():
+            if node.get("class_type") != "MediaPipeFaceMask":
+                continue
+            found_any = True
+            regions = node["inputs"]["regions"]
+            assert isinstance(regions, str), (wf_path.name, node_id, regions)
+            assert regions in ("all", "custom"), (wf_path.name, node_id, regions)
+    assert found_any, "expected at least one MediaPipeFaceMask node in the workflow templates"
+
+
 # ---------------------------------------------------------------------------
 # Task D2: the generation workflow, the gen stage, and the detail-only mode
 # ---------------------------------------------------------------------------
@@ -334,7 +357,7 @@ def test_gen_workflow_matches_module_09_and_has_a_pickle_free_detailer():
     assert g["30"]["class_type"] == "LoadMediaPipeFaceLandmarker"
     assert g["35"]["class_type"] == "MediaPipeFaceLandmarker"
     assert g["36"]["class_type"] == "MediaPipeFaceMask"
-    assert g["36"]["inputs"]["regions"] == {"regions": "all"}
+    assert g["36"]["inputs"]["regions"] == "all"
     assert g["32"]["class_type"] == "MaskToSEGS"
     assert set(g["32"]["inputs"]) == {
         "mask", "combined", "crop_factor", "bbox_fill", "drop_size", "contour_fill",

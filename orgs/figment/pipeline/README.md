@@ -586,6 +586,11 @@ defects below for where these two sources disagree past 09-04.
   boss/operator restores the row (this is a shared coordination file a docs worker may not
   write); no code fix identified yet — this is a process/scheduling gap between the ops sync
   cadence and any session with figment pods in flight.
+- **Fixed 2026-09-21**: `MediaPipeFaceMask`'s `regions` DynamicCombo was encoded as a nested
+  `{"regions": "all"}` dict in every workflow template, which live-failed gen attempt 3
+  (pod `y3mz2hqqbnf4ci`) with `execute() missing 1 required positional argument: 'regions'`;
+  the API form is the bare option-key string `"all"`/`"custom"`. See
+  `research/r23-mediapipe-node-spike.md` (live-refuted section) for the ComfyUI source cite.
 
 ## How to iterate
 
