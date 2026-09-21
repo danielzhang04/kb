@@ -2095,3 +2095,304 @@ def test_retry_failed_unreadable_prior_attempt_dir_counts_as_real(
         match=r"already been retried 2 time\(s\) \(limit 2\)",
     ):
         command.run_planned_stage("creator-002", "dataset", plan_path, retry_failed=True)
+
+
+# ---------------------------------------------------------------------------------
+# `pipeline --replan-downstream <stage> --reason <...>` (P6/2026-09-21): supersedes an
+# existing downstream/<stage> plan that copied a since-fixed template defect, ONLY when
+# every run/attempt it ever recorded is a verified-teardown zero-output failure or was
+# never launched -- fixtures are built directly on disk (no real harness, no real
+# build_plan) so each test exercises the eligibility gate and the crash-safe record-
+# then-rename bookkeeping in isolation.
+# ---------------------------------------------------------------------------------
+
+
+class _StopAfterReplan(Exception):
+    """Raised by the `build_plan` spy the moment `command_pipeline` reaches the point
+    of planning `downstream/<stage>` fresh -- everything this test suite needs to
+    assert (supersession record, rename, refusal) has already happened by then, and
+    driving the walk any further would require a real harness/persona/templates."""
+
+
+def _spy_build_plan(command, monkeypatch):
+    calls: list[tuple[str, Path]] = []
+
+    def fake_build_plan(creator_id, stage, out_path, **kwargs):
+        calls.append((stage, Path(out_path)))
+        raise _StopAfterReplan()
+
+    monkeypatch.setattr(command, "build_plan", fake_build_plan)
+    return calls
+
+
+def _write_replan_out_dir(
+    path: Path, *, termination_verified: bool = True, jobs=None, artifacts=None,
+    error: str = "fixture JOB-class failure (verified teardown, zero output)",
+    pod_id: str = "pod-dead", with_recovery: bool = True,
+) -> None:
+    """A planned run's own out dir in the live shape `--replan-downstream` (via
+    `_out_dir_retry_eligibility_reason(..., skip_error_class_check=True)`) accepts by
+    default: verified pod teardown, zero job/artifact output, and a `recovery-*.json`
+    journal proving the pod is confirmed gone. Callers flip `termination_verified`/
+    `jobs`/`artifacts` to build the refused shapes instead."""
+    path.mkdir(parents=True, exist_ok=True)
+    receipt = {
+        "schema": "figment/runpod-run@1", "dry_run": False, "pod_id": pod_id,
+        "termination_verified": termination_verified,
+        "placement_attempts": [
+            {"pod_id": pod_id, "termination_verified": termination_verified, "estimated_actual_usd": 0.01},
+        ],
+        "jobs": jobs if jobs is not None else [],
+        "artifacts": artifacts if artifacts is not None else [],
+        "error": error,
+    }
+    (path / "run.json").write_text(json.dumps(receipt), encoding="utf-8")
+    if with_recovery and termination_verified:
+        journal = {
+            "schema": "figment/pod-recovery@1", "pod_id": pod_id, "pod_name": pod_id,
+            "state": "terminated", "absence_verified": True,
+        }
+        (path / f"recovery-{pod_id}.json").write_text(json.dumps(journal), encoding="utf-8")
+
+
+def _build_replan_gen_fixture(
+    command, tmp_path, *, creator_id: str = "creator-002", run_status: str = "failed",
+    write_out_dir: bool = True, **out_dir_kwargs,
+):
+    """Primary root + an already-planned `downstream/gen` (one run, key
+    `runs/foo-tensor-gen.yaml`, out `runs/out/foo`) -- built directly on disk, never
+    through `build_plan`/a real harness. `run_status` is the recorded `state["runs"]`
+    status for that key; `write_out_dir` off leaves the out dir absent entirely (a run
+    that was planned but never even attempted)."""
+    primary_root = tmp_path / "primary"
+    (primary_root / "grade" / "tester").mkdir(parents=True)
+    (primary_root / "grade" / "tester" / "accepted-checkpoint.json").write_text(
+        "{}", encoding="utf-8",
+    )
+    primary_plan_path = primary_root / "plan.json"
+    primary_plan_path.write_text(
+        json.dumps({"schema": "figment/train-plan@1", "creator": creator_id, "stages": {}}),
+        encoding="utf-8",
+    )
+
+    gen_root = primary_root / "downstream" / "gen"
+    gen_plan_path = gen_root / "plan.json"
+    gen_plan_path.parent.mkdir(parents=True, exist_ok=True)
+    gen_plan_path.write_text(
+        json.dumps({
+            "schema": "figment/train-plan@1", "creator": creator_id,
+            "stages": {"gen": {"runs": [
+                {"manifest": "runs/foo-tensor-gen.yaml", "out": "runs/out/foo"},
+            ]}},
+        }),
+        encoding="utf-8",
+    )
+
+    out_dir = gen_root / "runs" / "out" / "foo"
+    if write_out_dir:
+        _write_replan_out_dir(out_dir, **out_dir_kwargs)
+
+    (gen_root / "stage.json").write_text(
+        json.dumps({
+            "schema": "figment/train-stage@1", "creator": creator_id,
+            "plan_sha256": command._sha256(gen_plan_path),
+            "status": "stopped:gen",
+            "runs": {"runs/foo-tensor-gen.yaml": {"status": run_status}},
+            "completed_stages": [],
+        }),
+        encoding="utf-8",
+    )
+    return primary_root, primary_plan_path, gen_root, gen_plan_path, out_dir
+
+
+def test_replan_downstream_supersedes_records_and_replans_fresh(command, tmp_path, monkeypatch):
+    primary_root, primary_plan_path, gen_root, gen_plan_path, out_dir = _build_replan_gen_fixture(
+        command, tmp_path,
+    )
+    prior_plan_sha256 = command._sha256(gen_plan_path)
+    calls = _spy_build_plan(command, monkeypatch)
+
+    with pytest.raises(_StopAfterReplan):
+        command.command_pipeline(
+            "creator-002", plan_path=primary_plan_path, from_stage="gen",
+            replan_downstream="gen", replan_downstream_reason="gen template fix 39f56260",
+        )
+
+    assert calls == [("gen", gen_root)]
+    target = gen_root.with_name("gen.superseded-1")
+    assert target.is_dir()
+    assert not gen_root.exists()
+
+    state = load_json(primary_root / "stage.json")
+    supersessions = state["downstream_supersessions"]
+    assert len(supersessions) == 1
+    record = supersessions[0]
+    assert record["stage"] == "gen"
+    assert record["superseded_dir"] == str(target)
+    assert record["reason"] == "gen template fix 39f56260"
+    assert record["prior_plan_sha256"] == prior_plan_sha256
+    assert isinstance(record["git_head"], str) and record["git_head"]
+    assert isinstance(record["at_utc"], str) and record["at_utc"]
+
+
+def test_replan_downstream_refuses_on_complete_run(command, tmp_path, monkeypatch):
+    primary_root, primary_plan_path, gen_root, gen_plan_path, out_dir = _build_replan_gen_fixture(
+        command, tmp_path, run_status="complete",
+        jobs=[{"job": 1, "output_name": "foo", "seed": 1, "files": [{"path": "foo.png", "bytes": 123}]}],
+    )
+    calls = _spy_build_plan(command, monkeypatch)
+
+    with pytest.raises(command.FigmentTrainError, match="already completed with recorded output"):
+        command.command_pipeline(
+            "creator-002", plan_path=primary_plan_path, from_stage="gen",
+            replan_downstream="gen", replan_downstream_reason="gen template fix",
+        )
+
+    assert not calls
+    assert gen_root.is_dir() and (gen_root / "plan.json").is_file()
+    assert not (primary_root / "stage.json").exists()
+
+
+def test_replan_downstream_refuses_when_outputs_exist(command, tmp_path, monkeypatch):
+    primary_root, primary_plan_path, gen_root, gen_plan_path, out_dir = _build_replan_gen_fixture(
+        command, tmp_path, run_status="failed",
+        jobs=[{"job": 1, "output_name": "foo", "seed": 1, "files": [{"path": "foo.png", "bytes": 50}]}],
+    )
+    calls = _spy_build_plan(command, monkeypatch)
+
+    with pytest.raises(command.FigmentTrainError, match="not safely supersedable"):
+        command.command_pipeline(
+            "creator-002", plan_path=primary_plan_path, from_stage="gen",
+            replan_downstream="gen", replan_downstream_reason="gen template fix",
+        )
+
+    assert not calls
+    assert gen_root.is_dir()
+    assert not (primary_root / "stage.json").exists()
+
+
+def test_replan_downstream_refuses_when_teardown_unverified(command, tmp_path, monkeypatch):
+    primary_root, primary_plan_path, gen_root, gen_plan_path, out_dir = _build_replan_gen_fixture(
+        command, tmp_path, run_status="failed", termination_verified=False,
+    )
+    calls = _spy_build_plan(command, monkeypatch)
+
+    with pytest.raises(command.FigmentTrainError, match="not safely supersedable"):
+        command.command_pipeline(
+            "creator-002", plan_path=primary_plan_path, from_stage="gen",
+            replan_downstream="gen", replan_downstream_reason="gen template fix",
+        )
+
+    assert not calls
+    assert gen_root.is_dir()
+
+
+def test_replan_downstream_refuses_when_graded(command, tmp_path, monkeypatch):
+    primary_root, primary_plan_path, gen_root, gen_plan_path, out_dir = _build_replan_gen_fixture(
+        command, tmp_path,
+    )
+    grade_dir = gen_root / "grade" / "gen"
+    grade_dir.mkdir(parents=True)
+    (grade_dir / "gate.json").write_text("{}", encoding="utf-8")
+    calls = _spy_build_plan(command, monkeypatch)
+
+    with pytest.raises(command.FigmentTrainError, match="already been graded"):
+        command.command_pipeline(
+            "creator-002", plan_path=primary_plan_path, from_stage="gen",
+            replan_downstream="gen", replan_downstream_reason="gen template fix",
+        )
+
+    assert not calls
+    assert gen_root.is_dir()
+
+
+def test_replan_downstream_refuses_past_max_supersessions(command, tmp_path, monkeypatch):
+    primary_root, primary_plan_path, gen_root, gen_plan_path, out_dir = _build_replan_gen_fixture(
+        command, tmp_path,
+    )
+    for n in (1, 2, 3, 4):
+        gen_root.with_name(f"gen.superseded-{n}").mkdir(parents=True)
+    calls = _spy_build_plan(command, monkeypatch)
+
+    with pytest.raises(command.FigmentTrainError, match=r"already been superseded 4 time\(s\)"):
+        command.command_pipeline(
+            "creator-002", plan_path=primary_plan_path, from_stage="gen",
+            replan_downstream="gen", replan_downstream_reason="gen template fix",
+        )
+
+    assert not calls
+    assert gen_root.is_dir() and (gen_root / "plan.json").is_file()
+    assert not (primary_root / "stage.json").exists()
+
+
+def test_replan_downstream_dry_run_touches_nothing(command, tmp_path, monkeypatch):
+    primary_root, primary_plan_path, gen_root, gen_plan_path, out_dir = _build_replan_gen_fixture(
+        command, tmp_path,
+    )
+    calls = _spy_build_plan(command, monkeypatch)
+    watched = [
+        primary_plan_path, gen_plan_path, gen_root / "stage.json", out_dir / "run.json",
+    ]
+    before = {path: path.stat().st_mtime_ns for path in watched}
+
+    result = command.command_pipeline(
+        "creator-002", plan_path=primary_plan_path, from_stage="gen",
+        replan_downstream="gen", replan_downstream_reason="gen template fix",
+        dry_run=True,
+    )
+
+    assert result["status"] == "dry-run:replan-downstream gen"
+    assert not calls
+    assert gen_root.is_dir()
+    assert not (primary_root / "stage.json").exists()
+    after = {path: path.stat().st_mtime_ns for path in watched}
+    assert before == after
+
+
+def test_replan_downstream_crash_recovery_finishes_rename_on_next_call(
+    command, tmp_path, monkeypatch,
+):
+    primary_root, primary_plan_path, gen_root, gen_plan_path, out_dir = _build_replan_gen_fixture(
+        command, tmp_path,
+    )
+    prior_plan_sha256 = command._sha256(gen_plan_path)
+    target = gen_root.with_name("gen.superseded-1")
+
+    # Simulate a crash between the record write and the rename: the record already
+    # names `target`, but `gen_root` still holds the exact plan bytes it names.
+    primary_state = {
+        "schema": "figment/train-stage@1", "creator": "creator-002",
+        "plan_sha256": command._sha256(primary_plan_path),
+        "status": "ready", "runs": {}, "completed_stages": [],
+        "downstream_supersessions": [{
+            "stage": "gen", "superseded_dir": str(target),
+            "reason": "prior interrupted reason", "git_head": "deadbeef",
+            "prior_plan_sha256": prior_plan_sha256, "at_utc": "2026-09-20T00:00:00+00:00",
+        }],
+    }
+    (primary_root / "stage.json").write_text(json.dumps(primary_state), encoding="utf-8")
+
+    calls = _spy_build_plan(command, monkeypatch)
+
+    with pytest.raises(_StopAfterReplan):
+        command.command_pipeline(
+            "creator-002", plan_path=primary_plan_path, from_stage="gen",
+            replan_downstream="gen", replan_downstream_reason="new call's reason",
+        )
+
+    assert calls == [("gen", gen_root)]
+    assert target.is_dir()
+    assert not gen_root.exists()
+
+    state = load_json(primary_root / "stage.json")
+    assert len(state["downstream_supersessions"]) == 1
+    assert state["downstream_supersessions"][0]["reason"] == "prior interrupted reason"
+
+
+def test_replan_downstream_rejects_empty_reason_via_argparse(command):
+    parser = command.build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args([
+            "pipeline", "--creator", "creator-002", "--plan", "plan.json",
+            "--replan-downstream", "gen", "--reason", "",
+        ])

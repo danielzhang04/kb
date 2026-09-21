@@ -6955,6 +6955,143 @@ def _dry_run_retry_preview(
     return None
 
 
+DOWNSTREAM_REPLAN_STAGES = ("gen", "detail", "video")
+MAX_DOWNSTREAM_SUPERSESSIONS = 4
+
+
+def _first_free_downstream_supersession_path(
+    downstream_root: Path, *, limit: int = MAX_DOWNSTREAM_SUPERSESSIONS,
+) -> Path:
+    """`--replan-downstream`'s rename target for the plan being superseded -- refuses
+    past `limit` (4) rather than accumulating an unbounded run of dead downstream
+    plans beside the live one `pipeline` is about to plan fresh."""
+    for n in range(1, limit + 1):
+        candidate = downstream_root.with_name(f"{downstream_root.name}.superseded-{n}")
+        if not candidate.exists():
+            return candidate
+    raise FigmentTrainError(
+        f"downstream root {downstream_root} has already been superseded {limit} "
+        "time(s); create a reviewed fresh primary plan instead of superseding further"
+    )
+
+
+def _downstream_replan_refusal_reason(
+    creator_id: str, downstream_root: Path, stage: str,
+) -> str | None:
+    """Eligibility gate for `pipeline --replan-downstream <stage>`: `None` only when
+    the existing `downstream/<stage>` plan is not graded, has recorded NO run with any
+    output, and every run/attempt out dir it ever named is either a verified-teardown,
+    zero-output failure (`_out_dir_retry_eligibility_reason(..., skip_error_class_
+    check=True)` -- the JOB-class error string itself never matters here) or was never
+    launched at all (`_run_never_launched`). Else the human-readable refusal reason --
+    RUNBOOK forbids hand-editing a plan, so this is the one function standing between a
+    stuck template defect and superseding a plan that still has something at stake."""
+    plan_path = downstream_root / "plan.json"
+    if not plan_path.is_file():
+        return f"no existing plan at {plan_path} to supersede"
+    if (downstream_root / "grade" / stage / "gate.json").is_file():
+        return f"downstream/{stage} has already been graded; a graded stage is never superseded"
+    plan, root = _load_plan(creator_id, plan_path)
+    if root != downstream_root.resolve():
+        return "downstream plan root changed while loading"
+    runs = ((plan.get("stages") or {}).get(stage) or {}).get("runs") or []
+    state_path = downstream_root / "stage.json"
+    state = _stage_state(state_path, creator_id, plan_path) if state_path.is_file() else {"runs": {}}
+
+    def _dir_reason(out_dir: Path) -> str | None:
+        if _run_never_launched(out_dir):
+            return None
+        return _out_dir_retry_eligibility_reason(out_dir, skip_error_class_check=True)
+
+    for run in runs:
+        key = run.get("manifest")
+        record = (state.get("runs") or {}).get(key) or {}
+        current_out = downstream_root / run["out"]
+        if record.get("status") == "complete":
+            return f"downstream/{stage} run {key!r} already completed with recorded output"
+        reason = _dir_reason(current_out)
+        if reason is not None:
+            return (
+                f"downstream/{stage} run {key!r} at {current_out} is not safely "
+                f"supersedable: {reason}"
+            )
+        for attempt in record.get("attempts") or []:
+            renamed = attempt.get("out_renamed")
+            if not renamed:
+                continue
+            attempt_dir = Path(renamed)
+            reason = _dir_reason(attempt_dir)
+            if reason is not None:
+                return (
+                    f"downstream/{stage} run {key!r} prior attempt at {attempt_dir} is "
+                    f"not safely supersedable: {reason}"
+                )
+    return None
+
+
+def _replan_downstream_stage(
+    creator_id: str, primary_root: Path, primary_plan_path: Path,
+    downstream_root: Path, stage: str, reason: str,
+) -> None:
+    """`pipeline --replan-downstream <stage> --reason <...>` (2026-09-21): the one
+    sanctioned alternative to hand-editing a plan (RUNBOOK) when a downstream gen/
+    detail/video plan copied a since-fixed template defect and every run it ever
+    attempted is dead (verified teardown, zero output) or never launched --
+    `_pipeline_downstream_root`'s "reuse whatever plan is already there" rule would
+    otherwise pin that defect in place forever. Refuses (naming the reason) on any run
+    with recorded output, a graded stage, or an unverified teardown --
+    `_downstream_replan_refusal_reason` is the one function that decides.
+
+    Crash-safe like `run_planned_stage`'s own retry bookkeeping (MEDIUM-2/LOW-1): the
+    supersession record lands in the PRIMARY root's stage.json `downstream_
+    supersessions` list BEFORE the rename that makes it real. A crash between those
+    two writes leaves a record naming a `superseded_dir` that does not yet exist while
+    `downstream_root` still holds the exact plan bytes its own `prior_plan_sha256`
+    names -- the next call recognizes that shape and finishes the rename instead of
+    re-checking eligibility or writing a second record."""
+    state_path = primary_root / "stage.json"
+    primary_state = _stage_state(state_path, creator_id, primary_plan_path)
+    supersessions = list(primary_state.get("downstream_supersessions") or [])
+    plan_path = downstream_root / "plan.json"
+
+    for entry in reversed(supersessions):
+        if entry.get("stage") != stage:
+            continue
+        target = Path(entry["superseded_dir"])
+        if plan_path.is_file() and not target.exists():
+            try:
+                current_sha = _sha256(plan_path)
+            except FigmentTrainError:
+                current_sha = None
+            if current_sha == entry.get("prior_plan_sha256"):
+                downstream_root.rename(target)
+        break
+
+    if not plan_path.is_file():
+        # Either nothing to supersede, or the block above just finished a
+        # crash-interrupted rename -- either way there is no live plan left here to
+        # supersede again in this call; the normal walk below plans it fresh.
+        return
+
+    refusal = _downstream_replan_refusal_reason(creator_id, downstream_root, stage)
+    if refusal is not None:
+        raise FigmentTrainError(f"--replan-downstream {stage} refuses: {refusal}")
+
+    target = _first_free_downstream_supersession_path(downstream_root)
+    record = {
+        "stage": stage,
+        "superseded_dir": str(target),
+        "reason": reason,
+        "git_head": _git_head_sha(),
+        "prior_plan_sha256": _sha256(plan_path),
+        "at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    supersessions.append(record)
+    primary_state["downstream_supersessions"] = supersessions
+    _write_stage_state(state_path, primary_state)
+    downstream_root.rename(target)
+
+
 def command_pipeline(
     creator_id: str,
     *,
@@ -6973,6 +7110,8 @@ def command_pipeline(
     import_training_config: Path | None = None,
     retry_failed: bool = False,
     retry_after_fix_reason: str | None = None,
+    replan_downstream: str | None = None,
+    replan_downstream_reason: str | None = None,
 ) -> dict[str, Any]:
     """One resumable driver across anchor -> dataset -> smoke -> train -> tester
     -> gen -> detail. Dispatches to the EXISTING `run_planned_stage`, `build_grade`,
@@ -7015,6 +7154,16 @@ def command_pipeline(
     primary plan's only stage instead of the usual `--stage all` -- anchor/dataset/
     smoke/train are skipped outright, never planned or run, because the loop below
     already only walks stages present in `primary_plan["stages"]`.
+
+    `replan_downstream`/`replan_downstream_reason` (`--replan-downstream <stage>
+    --reason <...>`, 2026-09-21): the one sanctioned alternative to hand-editing a
+    plan (RUNBOOK) when an existing `downstream/<stage>` plan copied a since-fixed
+    template defect and every run it ever attempted is dead or never launched --
+    `_replan_downstream_stage` decides eligibility and, when clear, supersedes the
+    existing directory (recorded on the PRIMARY root's stage.json first, crash-safe)
+    before the walk below plans that stage fresh from current templates. `dry_run`
+    with this set previews the action (`dry-run:replan-downstream <stage>`) and
+    touches nothing, exactly like every other dry-run branch below.
     """
     if (plan_path is None) == (out is None):
         raise FigmentTrainError("pipeline requires exactly one of --plan or --out")
@@ -7022,6 +7171,14 @@ def command_pipeline(
         raise FigmentTrainError(f"pipeline --from-stage must be one of {PIPELINE_FROM_STAGES}")
     if import_checkpoints is not None and plan_path is not None:
         raise FigmentTrainError("--import-checkpoints is only meaningful with --out (a fresh plan)")
+    if replan_downstream is not None and replan_downstream not in DOWNSTREAM_REPLAN_STAGES:
+        raise FigmentTrainError(
+            f"--replan-downstream must be one of {DOWNSTREAM_REPLAN_STAGES}"
+        )
+    if replan_downstream is not None and not (
+        isinstance(replan_downstream_reason, str) and replan_downstream_reason.strip()
+    ):
+        raise FigmentTrainError("--replan-downstream requires a non-empty --reason")
 
     if plan_path is not None:
         primary_plan, primary_root = _load_plan(creator_id, plan_path)
@@ -7049,6 +7206,21 @@ def command_pipeline(
     gen_root = _pipeline_downstream_root(primary_root, "gen")
     detail_root = _pipeline_downstream_root(primary_root, "detail")
     video_root = _pipeline_downstream_root(primary_root, "video")
+
+    if replan_downstream is not None:
+        if dry_run:
+            return {
+                "status": f"dry-run:replan-downstream {replan_downstream}",
+                "message": (
+                    f"would supersede downstream/{replan_downstream} and replan it "
+                    f"fresh from current templates ({replan_downstream_reason})"
+                ),
+            }
+        _replan_downstream_stage(
+            creator_id, primary_root, primary_plan_path,
+            {"gen": gen_root, "detail": detail_root, "video": video_root}[replan_downstream],
+            replan_downstream, replan_downstream_reason,
+        )
 
     def deliverable_path() -> str | None:
         """Everything ruled so far, written once and re-read afterwards (idempotent on
@@ -7385,6 +7557,19 @@ def build_parser() -> argparse.ArgumentParser:
             "RUNBOOK.md Resume/recovery."
         ),
     )
+    pipeline.add_argument(
+        "--replan-downstream", choices=DOWNSTREAM_REPLAN_STAGES, default=None,
+        help="supersede the existing downstream/<stage> plan and replan it fresh from "
+             "current templates -- allowed ONLY when that plan recorded no run with "
+             "output, is not graded, and every run/attempt it named is a verified "
+             "teardown with zero output or never launched. Requires --reason. See "
+             "RUNBOOK.md Resume/recovery.",
+    )
+    pipeline.add_argument(
+        "--reason", type=_non_empty_reason_arg, default=None,
+        help="required with --replan-downstream: a non-empty operator statement of "
+             "why the superseded plan is being replaced (e.g. the template fix commit)",
+    )
 
     run = commands.add_parser("run", help="run one planned stage without retries")
     run.add_argument("--creator", required=True)
@@ -7539,6 +7724,8 @@ def main(argv: list[str] | None = None) -> int:
                 import_training_config=args.import_training_config,
                 retry_failed=args.retry_failed,
                 retry_after_fix_reason=args.retry_after_fix,
+                replan_downstream=args.replan_downstream,
+                replan_downstream_reason=args.reason,
             )
             print(f"pipeline: {result['status']}")
         elif args.command == "run":

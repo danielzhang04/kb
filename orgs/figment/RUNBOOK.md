@@ -349,6 +349,27 @@ admitted it); without the flag, behavior is byte-for-byte unchanged.
 
 **Transient DNS outages no longer kill a live run (2026-09-21).** This host drops local DNS for ~10-30 s at a time, and three runs died because one polling GET's `ConnectionError`/`NameResolutionError` was treated as fatal and the pod was torn down mid-run. The polling GETs made while a pod is alive — the readiness pod-status poll, the ComfyUI history poll, and the post-create placement pod-status poll — now retry through such an outage for up to `TRANSIENT_NETWORK_TOLERANCE_SECONDS` (180 s) per outage with 2/4/8/15 s backoff, logging a `transient network failure ... retrying in Ns` WARNING each time; the window resets after any successful poll. Nothing else changed: the readiness/job deadlines, `max_minutes` and the watchdog are re-checked before every retry and are never extended, and when the window (or the deadline) closes the same error propagates to the same exit path, so termination is still attempted and VERIFIED exactly as before. Create, terminate, termination-verification, ledger, upload and download calls are deliberately NOT retried this way — uploads/downloads keep their own integrity rules and teardown keeps its own 5-attempt loop. Operationally: a run log with these WARNINGs and no teardown is the fix working; a run that still dies on a name-resolution error means the outage outlasted 180 s, and that failure remains `--retry-failed`-eligible exactly as described above.
 
+## Resume/recovery: `--replan-downstream <stage> --reason "<...>"` for a dead downstream plan
+
+`pipeline` always reuses whatever `downstream/gen`/`downstream/detail`/`downstream/video`
+plan it finds (`_pipeline_downstream_root`) rather than planning a fresh one, so a template
+fix (e.g. a manifest field a prior template got wrong) can never reach a downstream plan that
+already exists on disk — and "never hand-edit `plan.json`" above still applies, so hand-fixing
+it in place is not the way out. `pipeline --replan-downstream {gen,detail,video} --reason
+"<what changed>"` (2026-09-21) is the one sanctioned alternative: it supersedes that plan and
+plans the named stage fresh from current templates, but ONLY when the existing plan has no run
+with recorded output, is not graded, and every run/attempt it ever named is either a verified-
+teardown zero-output failure (the same shape `--retry-failed` requires, `error`-class match
+skipped) or was never launched at all — a completed run, a graded stage, or an unverified
+teardown refuses, naming the reason. On success it appends `{stage, superseded_dir, reason,
+git_head, prior_plan_sha256, at_utc}` to the PRIMARY run root's own `stage.json` (a
+`downstream_supersessions` list) BEFORE renaming the directory to `downstream/<stage>.
+superseded-<N>` (first free `N`, refusing past 4) — crash-safe the same way a `--retry-failed`
+relaunch is: if interrupted between the record and the rename, the next call (same flags)
+finishes the rename rather than re-checking eligibility or writing a second record. `--dry-run`
+with the flag only previews (`dry-run:replan-downstream <stage>`) and touches nothing; without
+the flag, behavior is unchanged.
+
 ## A budget/arc-cap refusal before launch
 
 A harness preflight refusal (daily budget, arc cap, or any other check the harness runs
