@@ -21,10 +21,18 @@
  * never delete a now-tracked file, only report loudly.
  *
  * SCOPE GUARD: `dispatch.py` (via `dispatch_stored_schedules` + `release_dependents`) is only ever
- * supposed to write under `queue/` and `ledgers/dispatch/`. This module re-derives the actual changed
- * path set from `git status` after every subprocess run and REFUSES (reverting everything back to a
- * clean checkout) if any other path changed — a defensive check against a `dispatch.py` bug or a
- * concurrent out-of-band write, not an expected case in normal operation.
+ * supposed to write under `queue/` and `ledgers/dispatch/`. This module takes a `git status` snapshot
+ * BEFORE ever invoking `dispatch.py` (the "baseline") and another one AFTER (the "after" snapshot),
+ * and re-derives the changed path set as `after − baseline` (re-review B-1b: a single post-run status
+ * read cannot distinguish "dispatch.py wrote this" from "some other writer already had the checkout
+ * dirty before this tick started," so a pre-existing foreign file used to get swept into the very
+ * revert/commit path meant to police dispatch.py's own writes). If the baseline is non-empty, the tick
+ * refuses to run dispatch.py AT ALL — the checkout was already dirty from something else — and reports
+ * that as a `skipped` outcome rather than as a refusal, since nothing this tick did caused it and
+ * nothing of this tick's needs cleaning up. Only when the baseline is empty does the tick run
+ * `dispatch.py`, and only the resulting `after − baseline` set (every entry, since baseline is empty on
+ * that path) is subject to the existing REFUSE-and-revert-everything logic for any path outside
+ * `queue/**`/`ledgers/dispatch/**`.
  *
  * Runs only when `KB_COORDINATION_PUBLICATION === 'outbox'` (the VM); disabled on desktop/dev by
  * construction (see `resolveScheduleTickIntervalMs` in `server/index.ts`, which is where this module's
@@ -38,8 +46,9 @@ import { commitPreparedCoordination, defaultGitRunner, type GitRunner } from '..
 import type { CoordinationPublication } from '../write/outbox.ts';
 import { defaultPlatformRoot, resolvePython } from '../runtime/python.ts';
 
-/** One raw `git status --porcelain=v1 -z` entry: its two-letter status code and its path. */
-interface StatusEntry {
+/** One raw `git status --porcelain=v1 -z` entry: its two-letter status code and its path. Exported
+ *  only so {@link diffTickStatus} can be exercised directly from tests. */
+export interface StatusEntry {
   code: string;
   path: string;
 }
@@ -88,6 +97,20 @@ function parsePorcelainZ(raw: string): StatusEntry[] {
   return entries;
 }
 
+/** The changed set for one tick is always `after − baseline`, keyed by path AND status code (a path
+ *  whose status code changed between the two snapshots is treated as "changed", not "already known
+ *  about"). Re-review B-1b: on the only path that reaches this today, `baseline` is guaranteed empty
+ *  (a non-empty baseline makes {@link runScheduleTick} skip the tick before ever calling
+ *  `runDispatch`), so every `after` entry is this tick's own — but the diff is still computed this way,
+ *  not just `return after`, so a future relaxation of the skip-when-dirty rule can never regress into
+ *  sweeping a path that was already dirty for some other reason into this tick's revert/commit path. A
+ *  path present in BOTH snapshots (same code, same path) is excluded and therefore never reverted,
+ *  deleted, or committed by this tick. */
+export function diffTickStatus(baseline: readonly StatusEntry[], after: readonly StatusEntry[]): StatusEntry[] {
+  const baselineKeys = new Set(baseline.map((entry) => `${entry.code}\u0000${entry.path}`));
+  return after.filter((entry) => !baselineKeys.has(`${entry.code}\u0000${entry.path}`));
+}
+
 /** Revert every entry in `entries` back to a clean checkout: `git checkout --` for a tracked
  *  (non-`?`-status) path, delete for an untracked one. Best-effort per path — one failure must not
  *  stop the rest from being cleaned, and there is nothing safer left to do if a delete itself fails. */
@@ -133,6 +156,13 @@ export interface ScheduleTickOutcome {
   /** True when a path outside `queue/**`/`ledgers/dispatch/**` was found and the whole tick's writes
    *  were reverted rather than committed. */
   refused: boolean;
+  /** Set (to `'checkout-dirty-before-tick'`) when the BASELINE snapshot — taken before `dispatch.py`
+   *  was ever invoked — was already non-empty: some other writer had the ops checkout dirty before
+   *  this tick started. `dispatch.py` is never run in that case; `paths` holds the baseline's dirty
+   *  paths for operator visibility, and nothing is reverted, deleted, or committed. `null` on every
+   *  other outcome (including `refused`, which is a distinct condition: dispatch.py DID run and wrote
+   *  something unexpected). */
+  skipped: 'checkout-dirty-before-tick' | null;
   error: string | null;
 }
 
@@ -159,7 +189,9 @@ const defaultRunDispatch: NonNullable<ScheduleTickDeps['runDispatch']> = async (
 const DISPATCHED_COUNT = /^dispatched (\d+) card/m;
 
 /**
- * One schedule tick, in full: run `dispatch.py`, re-derive what it wrote from `git status`, refuse
+ * One schedule tick, in full: snapshot the checkout BEFORE touching anything; refuse to run
+ * `dispatch.py` at all if that baseline is already dirty (some other writer's uncommitted change —
+ * re-review B-1b); otherwise run `dispatch.py`, re-derive what it wrote as `after − baseline`, refuse
  * (and revert everything) if anything outside `queue/**`/`ledgers/dispatch/**` changed, and otherwise
  * commit exactly that path set through the same governed writer `publishBridgeWakeCard` uses. Never
  * throws — every failure mode is folded into the returned outcome's `error` field so a caller (the
@@ -170,6 +202,24 @@ export async function runScheduleTick(deps: ScheduleTickDeps): Promise<ScheduleT
   const runDispatch = deps.runDispatch ?? defaultRunDispatch;
   const publication = deps.publication ?? 'direct';
   return withOpsTransaction(async (): Promise<ScheduleTickOutcome> => {
+    let baseline: StatusEntry[];
+    try {
+      const raw = await runGit(deps.repoRoot, ['status', '--porcelain=v1', '-z', '--untracked-files=all']);
+      baseline = parsePorcelainZ(raw);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const msg = `schedule tick could not read checkout status (baseline, before dispatch.py): ${detail}`;
+      return { due: 0, dispatched: 0, paths: [], committed: null, refused: false, skipped: null, error: msg };
+    }
+
+    // Re-review B-1b: a pre-existing dirty checkout is an operator-visible alarm, not this tick's
+    // problem to clean up. dispatch.py is never invoked in this branch — nothing is reverted, deleted,
+    // or committed, and every baseline path is left exactly as found.
+    if (baseline.length > 0) {
+      const paths = baseline.map((entry) => entry.path);
+      return { due: 0, dispatched: 0, paths, committed: null, refused: false, skipped: 'checkout-dirty-before-tick', error: null };
+    }
+
     const dispatchResult = await runDispatch(deps.repoRoot);
     const countMatch = DISPATCHED_COUNT.exec(dispatchResult.stdout);
     const dispatched = countMatch ? Number(countMatch[1]) : 0;
@@ -177,18 +227,24 @@ export async function runScheduleTick(deps: ScheduleTickDeps): Promise<ScheduleT
       ? `dispatch.py exited ${dispatchResult.exitCode}: ${(dispatchResult.stderr.trim() || dispatchResult.stdout.trim()).slice(0, 500)}`
       : null;
 
-    let entries: StatusEntry[];
+    let afterSnapshot: StatusEntry[];
     try {
       const raw = await runGit(deps.repoRoot, ['status', '--porcelain=v1', '-z', '--untracked-files=all']);
-      entries = parsePorcelainZ(raw);
+      afterSnapshot = parsePorcelainZ(raw);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      const msg = `schedule tick could not read checkout status: ${detail}`;
-      return { due: dispatched, dispatched, paths: [], committed: null, refused: false, error: dispatchError ? `${dispatchError}; ${msg}` : msg };
+      const msg = `schedule tick could not read checkout status (after dispatch.py): ${detail}`;
+      return { due: dispatched, dispatched, paths: [], committed: null, refused: false, skipped: null, error: dispatchError ? `${dispatchError}; ${msg}` : msg };
     }
 
+    // The changed set is always `after − baseline` (see diffTickStatus's own header) — never the raw
+    // after-snapshot — so a path already dirty for some other reason (which cannot happen on this path
+    // today, since a non-empty baseline already returned above, but is asserted defensively) can never
+    // be swept into this tick's revert/commit logic.
+    const entries = diffTickStatus(baseline, afterSnapshot);
+
     if (entries.length === 0) {
-      return { due: dispatched, dispatched, paths: [], committed: null, refused: false, error: dispatchError };
+      return { due: dispatched, dispatched, paths: [], committed: null, refused: false, skipped: null, error: dispatchError };
     }
 
     const foreign = entries.filter((entry) => !isExpectedTickPath(entry.path));
@@ -196,7 +252,7 @@ export async function runScheduleTick(deps: ScheduleTickDeps): Promise<ScheduleT
       await revertTickPaths(deps.repoRoot, runGit, entries);
       const msg = `schedule tick refused: unexpected path(s) changed outside queue/**, ledgers/dispatch/**` +
         ` (reverted): ${foreign.map((entry) => entry.path).join(', ')}`;
-      return { due: dispatched, dispatched, paths: [], committed: null, refused: true, error: dispatchError ? `${dispatchError}; ${msg}` : msg };
+      return { due: dispatched, dispatched, paths: [], committed: null, refused: true, skipped: null, error: dispatchError ? `${dispatchError}; ${msg}` : msg };
     }
 
     const paths = entries.map((entry) => entry.path);
@@ -206,7 +262,7 @@ export async function runScheduleTick(deps: ScheduleTickDeps): Promise<ScheduleT
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       const msg = `schedule tick could not read HEAD before committing; left uncommitted for the next tick: ${detail}`;
-      return { due: dispatched, dispatched, paths: [], committed: null, refused: false, error: dispatchError ? `${dispatchError}; ${msg}` : msg };
+      return { due: dispatched, dispatched, paths: [], committed: null, refused: false, skipped: null, error: dispatchError ? `${dispatchError}; ${msg}` : msg };
     }
 
     try {
@@ -219,7 +275,7 @@ export async function runScheduleTick(deps: ScheduleTickDeps): Promise<ScheduleT
         outboxRoot: deps.outboxRoot,
       });
       const committed = publication === 'outbox' ? head : (await runGit(deps.repoRoot, ['rev-parse', 'HEAD'])).trim();
-      return { due: dispatched, dispatched, paths, committed, refused: false, error: dispatchError };
+      return { due: dispatched, dispatched, paths, committed, refused: false, skipped: null, error: dispatchError };
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       // Re-read HEAD to decide which side of the commit boundary the failure landed on — the SAME
@@ -235,10 +291,10 @@ export async function runScheduleTick(deps: ScheduleTickDeps): Promise<ScheduleT
         try { await runGit(deps.repoRoot, ['reset', 'HEAD', '--']); } catch { /* best effort */ }
         await revertTickPaths(deps.repoRoot, runGit, entries);
         const msg = `schedule tick commit failed and was reverted (nothing left uncommitted): ${detail}`;
-        return { due: dispatched, dispatched, paths: [], committed: null, refused: false, error: dispatchError ? `${dispatchError}; ${msg}` : msg };
+        return { due: dispatched, dispatched, paths: [], committed: null, refused: false, skipped: null, error: dispatchError ? `${dispatchError}; ${msg}` : msg };
       }
       const msg = `schedule tick COMMITTED but its publication failed; the commit was left in place: ${detail}`;
-      return { due: dispatched, dispatched, paths, committed: afterHead, refused: false, error: dispatchError ? `${dispatchError}; ${msg}` : msg };
+      return { due: dispatched, dispatched, paths, committed: afterHead, refused: false, skipped: null, error: dispatchError ? `${dispatchError}; ${msg}` : msg };
     }
   });
 }
@@ -246,8 +302,17 @@ export async function runScheduleTick(deps: ScheduleTickDeps): Promise<ScheduleT
 /** One journal line per tick, in the format the runbook documents:
  *  `schedule-tick: due=<n> dispatched=<n> paths=<n> committed=<sha|none>`. Errors are a second line
  *  (or `null` when the tick was clean) so a `journalctl | grep schedule-tick` operator sees the summary
- *  line even on a tick that also logged a failure. */
+ *  line even on a tick that also logged a failure.
+ *
+ *  A `skipped` outcome (re-review B-1b: the checkout was already dirty before this tick ever ran
+ *  `dispatch.py`) logs a DIFFERENT line shape instead — `schedule-tick: skipped
+ *  checkout-dirty-before-tick paths=<n> first=<path>` — every tick it recurs, since this is an
+ *  operator-visible alarm (some other writer left the ops checkout dirty) that needs to stay loud
+ *  until a human cleans it up, not a routine no-op. */
 export function scheduleTickLogLine(outcome: ScheduleTickOutcome): string {
+  if (outcome.skipped) {
+    return `schedule-tick: skipped ${outcome.skipped} paths=${outcome.paths.length} first=${outcome.paths[0] ?? 'none'}`;
+  }
   return `schedule-tick: due=${outcome.due} dispatched=${outcome.dispatched} paths=${outcome.paths.length}`
     + ` committed=${outcome.committed ?? 'none'}`;
 }
@@ -279,7 +344,7 @@ export function startScheduleTick(
       onTick?.(outcome);
     } catch (error) {
       onTick?.({
-        due: 0, dispatched: 0, paths: [], committed: null, refused: false,
+        due: 0, dispatched: 0, paths: [], committed: null, refused: false, skipped: null,
         error: `schedule tick threw: ${error instanceof Error ? error.message : String(error)}`,
       });
     } finally {

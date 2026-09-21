@@ -34,8 +34,17 @@ human-request sweeper and merge-poll timers.
 
 ## What one tick does
 
-1. Inside `withOpsTransaction` (the daemon's single-writer ops-checkout lock — no other coordination
-   write in this process can interleave), spawn `scripts/dispatch.py` as a subprocess:
+1. Take a BASELINE snapshot via `git status --porcelain=v1 -z --untracked-files=all` **before**
+   touching anything — including before `dispatch.py` is ever invoked (2026-09-21 amendment, re-review
+   finding B-1b). If the baseline is non-empty — the ops checkout already has a tracked or untracked
+   change sitting in it, from some OTHER writer, at the moment this tick fired — the whole tick is
+   **skipped**: `dispatch.py` is never run, nothing is reverted, deleted, or committed, and every
+   baseline path is left exactly as found. This is logged every tick it recurs (see Observability
+   below) because it is an operator-visible alarm, not a routine no-op: the checkout needs a human to
+   look at whatever left it dirty.
+2. Only when the baseline is clean: inside `withOpsTransaction` (the daemon's single-writer
+   ops-checkout lock — no other coordination write in this process can interleave), spawn
+   `scripts/dispatch.py` as a subprocess:
    ```
    python3 -B /opt/kb-releases/current/scripts/dispatch.py --tier cloud --agent dispatcher-cloud
    ```
@@ -46,18 +55,34 @@ human-request sweeper and merge-poll timers.
    same release-root resolution every other python shell-out in this codebase uses
    (`createPythonScheduleClaimRenderer`, `runPythonSync`). This reuses `dispatch.py`'s existing
    cron/claim logic unchanged — it is **not** reimplemented in TypeScript.
-2. Re-derive exactly what changed via `git status --porcelain=v1 -z --untracked-files=all`. If
-   **anything** outside `queue/**` or `ledgers/dispatch/**` changed, the whole tick is refused: every
-   changed path (tracked and untracked) is reverted (`git checkout --` / delete), nothing is
-   committed, and the refusal is logged. This is a defensive check against a `dispatch.py` bug or an
-   out-of-band write — `dispatch_stored_schedules` and `release_dependents` are only ever supposed to
-   touch those two prefixes.
-3. Otherwise, commit exactly that path set through `commitPreparedCoordination` — the SAME governed
+3. Take an AFTER snapshot the same way, and re-derive exactly what changed as `after − baseline`
+   (never the raw after-snapshot alone — a single post-run status read cannot tell "dispatch.py wrote
+   this" apart from "this was already dirty," which is exactly the bug B-1b fixed). Since the baseline
+   is guaranteed empty on this path (a dirty baseline already short-circuited the tick in step 1), every
+   changed path is this tick's own. If **anything** outside `queue/**` or `ledgers/dispatch/**` changed,
+   the whole tick is refused: every changed path (tracked and untracked) is reverted (`git checkout --`
+   / delete), nothing is committed, and the refusal is logged. This is a defensive check against a
+   `dispatch.py` bug or an out-of-band write racing in between the two snapshots — `dispatch_stored_schedules`
+   and `release_dependents` are only ever supposed to touch those two prefixes.
+4. Otherwise, commit exactly that path set through `commitPreparedCoordination` — the SAME governed
    writer `publishBridgeWakeCard` uses for the wake-me card fix, with the SAME publication-mode
    handling and the SAME asymmetric failure discipline: a failure **before** the commit lands cleans
    up (revert everything, log, let the next tick retry); a failure **after** the commit lands (e.g. the
    outbox spool step) never deletes a now-tracked path — it only logs loudly with the commit sha, since
    deleting would re-stage exactly the dirty-checkout freeze this whole design exists to prevent.
+
+### Clearing a `skipped: checkout-dirty-before-tick` alarm
+
+This means something other than this tick left the ops checkout dirty — most likely a bare
+`cards.save`/`ledger.append` write from a different in-process path, or an interrupted prior
+transaction. The tick will keep skipping (and keep logging) every interval until a human resolves it:
+
+1. `journalctl -u kb-dashboard | grep schedule-tick` to see the `first=<path>` and, if truncated,
+   `git -C /var/lib/kb/ops status --porcelain=v1` for the full list.
+2. Decide whether the dirty path(s) are a legitimate uncommitted write in flight (wait, or commit them
+   through the normal governed-write path) or genuine debris (clean up by hand, matching the same
+   dirty-checkout guard the drain's own reconciliation step already documents for this failure shape).
+3. Once the checkout is clean, the next tick proceeds normally — no restart or manual re-arm needed.
 
 ## Exactly-once / overlap handling
 
@@ -96,6 +121,17 @@ entry it returns was both due and processed in the same call, so there is no sep
 report). `paths` is the number of relpaths committed this tick (`0` on a no-op or a refused tick).
 `committed` is the coordination commit sha, or `none`. Any failure additionally logs a second line
 (`schedule-tick error: ...`) with the detail.
+
+A tick that skipped because the baseline was already dirty (see "Clearing a
+`skipped: checkout-dirty-before-tick` alarm" above) logs a **different** line shape instead of the
+summary line above — every tick it recurs, since it is a standing alarm, not a one-off:
+
+```
+schedule-tick: skipped checkout-dirty-before-tick paths=<n> first=<path>
+```
+
+`paths` is the number of dirty baseline paths found; `first` is the first one (for a quick look without
+a separate `git status`).
 
 ## Disable
 
