@@ -283,6 +283,9 @@ describe('fdPinnedPaths', () => {
       'drive-author': 'workspace-write',
       producer: 'workspace-write',
       scanner: 'workspace-write',
+      // P6-F1: `cadence` is `research`'s tool set (which already includes `Write`), so it derives the
+      // same workspace-write sandbox for the same reason.
+      cadence: 'workspace-write',
     };
     for (const profile of WORKFLOW_EXECUTION_PROFILES) {
       const grantsWrite = profile.allowedTools.some((tool) => ['Bash', 'Write', 'Edit'].includes(tool));

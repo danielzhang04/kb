@@ -409,6 +409,9 @@ export interface ControlStoreOptions {
     nextAt: string;
     owner: RunnableRef;
     mirrorPath: Schedule['mirrorPath'];
+    /** P6-F1: the schedule's stored `workflowProfile` (null for a workflow-owner row). Threaded through
+     *  so the rendered card can carry it as `meta.profile` and the launched attempt is capped by it. */
+    workflowProfile: string | null;
   }) => Promise<{ card: Record<string, unknown>; cardBytesSha256: string }>;
   /** @internal Vitest-only seam proving retention-boundary validation independently of load(). */
   beforeIterationBoundaryValidationForTest?: (

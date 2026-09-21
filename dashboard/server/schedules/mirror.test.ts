@@ -105,6 +105,7 @@ async function seededStore(label: string, cadences: Array<{ name: string; source
         mirrorPath: 'HEARTBEAT.md',
         expectedCollectionRevision: index,
         idempotencyKey: `seed-${index}`,
+        workflowProfile: 'cadence',
       });
     }
   });
@@ -421,6 +422,7 @@ describe('merge against the real control store', () => {
         owner: { type: 'agent', id: 'hygiene', sourcePath: 'agents/hygiene.md' },
         cadence: { source: 'daily', words: 'Daily' },
         mirrorPath: 'HEARTBEAT.md', expectedCollectionRevision: 1, idempotencyKey: 'later',
+        workflowProfile: 'cadence',
       });
     });
     await mergeScheduleMirrorBatch({ store, merge: proof(batch) }, { batchId: batch.id, mergedAt: '2026-08-23T10:00:00.000Z' });
@@ -454,7 +456,7 @@ describe('ScheduleService is untouched by the mirror', () => {
     const api = new ScheduleService({ store, resolveOwner: async () => owner, seedAuthorization: async () => true });
     const created = await api.create({
       owner: { type: 'agent', id: owner.id }, cadence: { kind: 'words', words: 'daily', time: '07:15' },
-      expectedCollectionRevision: 0, idempotencyKey: 'service',
+      expectedCollectionRevision: 0, idempotencyKey: 'service', workflowProfile: 'cadence',
     });
     expect((await store.readScheduleMirrorSnapshot()).revision).toBe(1);
     const snapshot = await store.readScheduleMirrorSnapshot();

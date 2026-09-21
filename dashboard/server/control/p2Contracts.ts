@@ -167,4 +167,15 @@ export interface Schedule {
   mirroredAt: string | null;
   mirrorPath: 'HEARTBEAT.md' | `orgs/${string}/HEARTBEAT.md`;
   version: number;
+  /**
+   * P6-F1 (2026-09-17 ruling): the `workflowProfile` id (same field/id-space a workflow stage names,
+   * `workflows/defs.ts`'s `stage.workflowProfile`) an AGENT-owner cadence's launched attempt uses for its
+   * tool cap. Required and validated (must name a server-owned `WorkflowExecutionProfile`, `cadence` or
+   * otherwise) for `owner.type === 'agent'` at both create and arm time — `schedules/service.ts` and
+   * `services/scheduleService.ts` refuse a missing/unknown one rather than launching an unbounded worker.
+   * A `workflow`-owner schedule leaves this `null`: its profile comes from the workflow definition itself
+   * (`workflowProfileId` on the stage/def), so a second one here would be redundant and is never read.
+   * Additive/optional so a pre-P6-F1 document round-trips unchanged [same idiom as `lastMirrorRevision`].
+   */
+  workflowProfile?: string | null;
 }

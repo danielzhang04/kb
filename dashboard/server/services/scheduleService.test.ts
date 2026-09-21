@@ -28,7 +28,14 @@ function port(over: Partial<ScheduleServicePort> = {}): ScheduleServicePort {
 }
 
 const VALID_ID = 'a'.repeat(64);
-const goodCreate = { owner: { type: 'agent', id: 'worker' }, cadence: { kind: 'words', words: 'every day', time: '09:00' }, expectedCollectionRevision: 3, idempotencyKey: 'k1' };
+const goodCreate = {
+  owner: { type: 'agent', id: 'worker' },
+  cadence: { kind: 'words', words: 'every day', time: '09:00' },
+  expectedCollectionRevision: 3,
+  idempotencyKey: 'k1',
+  // P6-F1: an agent-owner create body must now name a server-owned execution profile.
+  workflowProfile: 'cadence',
+};
 
 describe('scheduleService', () => {
   it('lists with the schedules ETag and body', async () => {
@@ -59,6 +66,23 @@ describe('scheduleService', () => {
     expect(extra).toEqual({ status: 400, body: { error: 'invalid-schedule-create-body' } });
     const badOwner = await createSchedule(port({ create }), { ...goodCreate, owner: { type: 'nope', id: 'x' } });
     expect(badOwner.status).toBe(400);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('P6-F1: refuses 400 for an agent-owner body missing workflowProfile', async () => {
+    const create = vi.fn();
+    const { workflowProfile: _drop, ...withoutProfile } = goodCreate;
+    const out = await createSchedule(port({ create }), withoutProfile);
+    expect(out).toEqual({ status: 400, body: { error: 'invalid-schedule-create-body' } });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('P6-F1: refuses 400 for a workflow-owner body that names a workflowProfile (unaffected schedules)', async () => {
+    const create = vi.fn();
+    const out = await createSchedule(port({ create }), {
+      ...goodCreate, owner: { type: 'workflow', id: 'self-lint-report' }, workflowProfile: 'cadence',
+    });
+    expect(out).toEqual({ status: 400, body: { error: 'invalid-schedule-create-body' } });
     expect(create).not.toHaveBeenCalled();
   });
 
