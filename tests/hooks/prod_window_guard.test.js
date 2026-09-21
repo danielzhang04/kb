@@ -26,6 +26,11 @@ const path = require('node:path');
 const HOOK = path.join(__dirname, '..', '..', 'scripts', 'hooks', 'prod_window_guard.js');
 const WINDOW_FILE = 'C:\\Users\\danie\\kb-rehearsal\\tooling\\PROD-WINDOW.json';
 const AUDIT = path.join(os.tmpdir(), 'prod-window-guard-test-audit-' + process.pid + '.log');
+// A-2: the hook pins prod-archive-run.ps1's content by default from KBDIR (the main, branch-
+// switching checkout, not this worktree) — but tests must be deterministic regardless of what
+// happens to be checked out there, so every test run points KB_ARCHIVE_SCRIPT_PATH at THIS
+// worktree's own copy, which the O4 tests below always exercise against.
+const ARCHIVE_SCRIPT_PATH = path.join(__dirname, '..', '..', 'scripts', 'prod', 'prod-archive-run.ps1');
 
 const T = 'C:\\Users\\danie\\kb-rehearsal\\tooling';
 const KB = 'C:\\Users\\danie\\kb';
@@ -75,7 +80,7 @@ function runHook(tool, toolInput) {
   const res = spawnSync(process.execPath, [HOOK], {
     input: payload,
     encoding: 'utf8',
-    env: Object.assign({}, process.env, { KB_PROD_WINDOW_AUDIT: AUDIT }),
+    env: Object.assign({}, process.env, { KB_PROD_WINDOW_AUDIT: AUDIT, KB_ARCHIVE_SCRIPT_PATH: ARCHIVE_SCRIPT_PATH }),
   });
   return { code: res.status, stderr: res.stderr || '' };
 }
@@ -103,6 +108,11 @@ const CASES = [
   ['C1 -Step approver-signers still blocked when window closed', 'closed', 'Bash', `${PS} -File "${T}\\vm-preflight-prod.ps1" -Step approver-signers -SignersFile ${T}\\rehearsal\\p2\\approver\\allowed_signers`, 2],
   ['C1 preflight + stray -Force blocked', 'open', 'Bash', `${PS} -File "${T}\\vm-preflight-prod.ps1" -Force`, 2],
   ['C1 preflight + stray -VM blocked', 'open', 'Bash', `${PS} -File "${T}\\vm-preflight-prod.ps1" -VM root@100.89.73.118`, 2],
+  // A-1 fix: vm-preflight-prod.ps1's own header documents -VM root@localhost as its rehearsal
+  // override; it is now grammar (this shape), and the window requirement is waived by
+  // isRehearsal() below — window CLOSED, still allowed.
+  ['C1 preflight, -vm root@localhost, window closed (A-1 fix: grammar-checked rehearsal, not a bypass)', 'closed', 'Bash', `${PS} -File "${T}\\vm-preflight-prod.ps1" -VM root@localhost`, 0],
+  ['C1 preflight, -vm root@localhost -SshShimDir, window closed', 'closed', 'Bash', `${PS} -File "${T}\\vm-preflight-prod.ps1" -Step reader -VM root@localhost -SshShimDir C:\\shims`, 0],
 
   ['C2 deploy, exact', 'open', 'Bash', `${PS} -File "${T}\\kb-deploy.ps1" -SigningKey C:\\keys\\release.pem -Sha ${SHA} -BrokerDigest ${DIGEST}`, 0],
   ['C2 deploy, KB_PROD_WINDOW prefix', 'open', 'PowerShell', `${ENVPRE}${PS} -File "${T}\\kb-deploy.ps1" -SigningKey "C:\\keys\\release key.pem" -Sha ${SHA} -BrokerDigest ${DIGEST}`, 0],
@@ -182,8 +192,13 @@ const CASES = [
   ['Invoke-RestMethod GET while closed', 'closed', 'PowerShell', 'Invoke-RestMethod -Method Get -Uri https://kb.tail82dd4f.ts.net/api/schedules', 0],
   ['Invoke-RestMethod with no -Method while closed', 'closed', 'PowerShell', 'Invoke-RestMethod -Uri https://kb.tail82dd4f.ts.net/api/health', 0],
   ['rehearsal deploy (-VM root@localhost) while closed', 'closed', 'Bash', `${PS} -File "${T}\\kb-deploy.ps1" -SigningKey C:\\tmp\\throwaway -Sha ${SHA} -BrokerDigest ${DIGEST} -VM root@localhost -URL http://localhost:4317 -SshShimDir C:\\shims`, 0],
-  ['rehearsal drain step1 (-VM root@localhost) while closed', 'closed', 'Bash', `${PS} -File "${T}\\drain-v2\\drain-step1-v2.ps1" -VM root@localhost -URL http://localhost:4317`, 0],
-  ['rehearsal drain step1 while OPEN', 'open', 'Bash', `${PS} -File "${T}\\drain-v2\\drain-step1-v2.ps1" -VM root@localhost -URL http://localhost:4317`, 0],
+  // A-1: this used to be invoked via -File (which C3's own shape never recognised at all — only
+  // the -Command "& '<path>'" form is a reviewed shape), passing purely via the old
+  // isRehearsal()-bypasses-everything bug. Rewritten to the actual reviewed -Command form, now
+  // with its own optional -VM/-URL/-SshShimDir grammar (A-1 fix) instead of a classifier bypass.
+  ['rehearsal drain step1 (-VM root@localhost) while closed', 'closed', 'Bash', `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1' -VM root@localhost -URL http://localhost:4317"`, 0],
+  ['rehearsal drain step1 while OPEN', 'open', 'Bash', `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1' -VM root@localhost -URL http://localhost:4317"`, 0],
+  ['rehearsal drain step1, -File form is not a reviewed shape at all (A-1: no bypass to fall back on)', 'closed', 'Bash', `${PS} -File "${T}\\drain-v2\\drain-step1-v2.ps1" -VM root@localhost -URL http://localhost:4317`, 2],
   ['ordinary git command while open', 'open', 'Bash', 'git status --short', 0],
   ['ordinary test run while open', 'open', 'Bash', 'node --test tests/hooks/prod_window_guard.test.js', 0],
 
@@ -227,6 +242,14 @@ const CASES = [
   ['O4 reason with a semicolon blocked', 'closed', 'Bash', `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "a; rm -rf /"`, 2],
   ['O4 unknown extra parameter blocked', 'closed', 'Bash', `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok" -Force`, 2],
   ['O4 rehearsal URL always allowed, window closed', 'closed', 'Bash', `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok" -URL http://127.0.0.1:4417`, 0],
+  // A-1 review probes, reproduced exactly: probe1 (rehearsal -URL present) used to bypass O4's
+  // REASON grammar entirely via isRehearsal() and ALLOW a local `$(Get-Date)` execution; probe2
+  // (same payload, no rehearsal marker) was already correctly blocked, confirming the grammar
+  // itself was fine and the rehearsal branch was what leaked. Both must BLOCK now.
+  ['reviewer probe1: O4 rehearsal URL + $() in -Reason must BLOCK (A-1 fix)', 'closed', 'Bash',
+    'powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Users\\danie\\kb\\scripts\\prod\\prod-archive-run.ps1 -Run x -Reason "ok $(Get-Date)" -URL http://127.0.0.1:4417', 2],
+  ['reviewer probe2: O4 without rehearsal URL + $() in -Reason blocked (control, unchanged)', 'closed', 'Bash',
+    'powershell -NoProfile -ExecutionPolicy Bypass -File C:\\Users\\danie\\kb\\scripts\\prod\\prod-archive-run.ps1 -Run x -Reason "ok $(Get-Date)"', 2],
   ['O4 any -Approval token blocked (never O4, mirrors the C16 guard)', 'closed', 'Bash', `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok" -Approval ${T}\\approval.json`, 2],
   ['O4 traversal in the script path blocked', 'closed', 'Bash', `${PS} -File "${KB}\\scripts\\prod\\..\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok"`, 2],
   ['O4 still subject to standing blocks (D)', 'closed', 'Bash', `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok" && rm -rf /`, 2],
@@ -242,6 +265,10 @@ const CASES = [
   ['O2 unsafe decision value blocked', 'closed', 'Bash', `${PS} -File "${T}\\prod-respond.ps1" -Run run-1 -Request req-1 -Decision publish -Reason "ok"`, 2],
   ['O2 missing -Reason blocked', 'closed', 'Bash', `${PS} -File "${T}\\prod-respond.ps1" -Run run-1 -Request req-1 -Decision approve`, 2],
   ['O2 still subject to standing blocks (D)', 'closed', 'Bash', `${PS} -File "${T}\\prod-respond.ps1" -Run r -Request q -Decision approve -Reason "x" && rm -rf /`, 2],
+  // A-1 fix: O2's own -URL rehearsal marker is now grammar (was previously only reachable via the
+  // isRehearsal() bypass, which skipped O2's REASON grammar entirely — see probe1/probe2 below).
+  ['O2 rehearsal URL well-formed, window closed (A-1 fix)', 'closed', 'Bash', `${PS} -File "${T}\\prod-respond.ps1" -Run run-1 -Request req-1 -Decision approve -Reason "ok" -URL http://127.0.0.1:4417`, 0],
+  ['A-1: O2 rehearsal URL present but -Reason carries $() — grammar still blocks it', 'closed', 'Bash', `${PS} -File "${T}\\prod-respond.ps1" -Run run-1 -Request req-1 -Decision approve -Reason "ok $(Get-Date)" -URL http://127.0.0.1:4417`, 2],
 
   // ---- C16: prod-respond.ps1 CARRYING -Approval is WINDOWED (T11). Plain O2 above is unaffected. ---
   ['C16 -Approval blocked when window closed', 'closed', 'Bash',
@@ -268,6 +295,21 @@ const CASES = [
   // silently fall through to the open-class O2 allowlist.
   ['C16 malformed -Approval shape does not fall through to open-class O2, window open', 'open', 'Bash',
     `${PS} -File "${T}\\prod-respond.ps1" -Run run-1 -Request req-1 -Decision approve -Reason "ok" -Approval "$(whoami)"`, 2],
+
+  // ---- A-1's D10: standing block, rehearsal/window-independent, for a local shell/PowerShell
+  // metacharacter in a command naming a prod-mutating script. Reviewer's ask: `$(`, backtick, `|`
+  // in a rehearsal-marked command must still BLOCK (grammar already catches these too — D10 is the
+  // redundant backstop that fires first, regardless of shape or window state).
+  ['D10: rehearsal-marked kb-deploy with $() in -SigningKey still blocked', 'open', 'Bash',
+    `${PS} -File "${T}\\kb-deploy.ps1" -SigningKey "$(whoami)" -Sha ${SHA} -BrokerDigest ${DIGEST} -VM root@localhost -URL http://localhost:4317`, 2],
+  ['D10: rehearsal-marked prod-respond with a backtick in -Reason still blocked', 'closed', 'Bash',
+    `${PS} -File "${T}\\prod-respond.ps1" -Run run-1 -Request req-1 -Decision approve -Reason "a \`id\`" -URL http://127.0.0.1:4417`, 2],
+  ['D10: rehearsal-marked prod-schedules command piped to another program still blocked', 'closed', 'Bash',
+    `${PS} -File "${T}\\prod-schedules.ps1" -List -URL http://127.0.0.1:4417 | more`, 2],
+  ['D10 does not over-fire on the legitimate -Command "& \'path\'" call operator (no chaining)', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1'"`, 0],
+  ['D10 still fires on && chaining after a legitimate -Command "& \'path\'" invocation', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1'" && echo pwned`, 2],
 
   // ---- HOOK-BLOCKER-1: isKbReaderRead must match the WHOLE command, not a prefix ------------
   // Reviewer's exact probes: a 40-char kb-reader prefix used to exempt the entire rest of the
@@ -405,7 +447,11 @@ const CASES = [
   ['C15 prod-signed-call -Approval traversal blocked', 'open', 'Bash', `${PS} -File "${T}\\prod-signed-call.ps1" -Route "DELETE /api/schedules/:id" -Approval ${T}\\..\\..\\secrets\\approval.json`, 2],
   ['C15 prod-signed-call -Approval outside T/kb-backups blocked', 'open', 'Bash', `${PS} -File "${T}\\prod-signed-call.ps1" -Route "DELETE /api/schedules/:id" -Approval C:\\tmp\\approval.json`, 2],
   ['C15 inline -Body is refused on prod (use -BodyFile)', 'open', 'Bash', `${PS} -File "${T}\\prod-signed-call.ps1" -Route "POST /api/control/budget/override" -Approval ${T}\\approval.json -Body "{\\"windowDay\\":\\"2026-09-16\\"}"`, 2],
-  ['C15 rehearsal URL always allowed, window closed', 'closed', 'Bash', `${PS} -File "${T}\\prod-signed-call.ps1" -Route "DELETE /api/schedules/:id" -Approval ${T}\\rehearsal\\p11\\approval.json -Body "{}" -URL http://127.0.0.1:4417`, 0],
+  // A-1: this used to carry an inline -Body (which the script's own header AND this shape both
+  // refuse — see "C15 inline -Body is refused on prod" above) and only passed via the old
+  // isRehearsal()-bypasses-everything bug. Rewritten to -BodyFile, the one shape the grammar (and
+  // the script) actually accepts, with -URL now in the grammar (A-1 fix) instead of a bypass.
+  ['C15 rehearsal URL always allowed, window closed', 'closed', 'Bash', `${PS} -File "${T}\\prod-signed-call.ps1" -Route "DELETE /api/schedules/:id" -Approval ${T}\\rehearsal\\p11\\approval.json -BodyFile ${T}\\rehearsal\\p11\\body.json -URL http://127.0.0.1:4417`, 0],
 
   // ---- deploy/drain/preflight/canary/stop remain WINDOWED, unchanged by T7 ------------------
   ['windowed: kb-deploy still blocked when window closed', 'closed', 'Bash', `${PS} -File "${T}\\kb-deploy.ps1" -SigningKey k -Sha ${SHA} -BrokerDigest ${DIGEST}`, 2],
@@ -448,6 +494,55 @@ for (const [name, window, tool, command, expected] of CASES) {
     else assert.strictEqual(stderr.trim(), '', 'an allow must be silent');
   });
 }
+
+/* ------------------------------------- A-2: O4 content pin (prod-archive-run.ps1) ------------- */
+
+test('A-2: O4 allowed when the pinned script content matches (KB_ARCHIVE_SCRIPT_PATH default, this worktree)', () => {
+  setWindow('closed');
+  const res = runHook('Bash', {
+    command: `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok"`,
+  });
+  assert.strictEqual(res.code, 0);
+});
+
+test('A-2: O4 blocked when the pinned script differs by one byte', () => {
+  setWindow('closed');
+  const real = fs.readFileSync(ARCHIVE_SCRIPT_PATH, 'utf8');
+  const tampered = real + ' ';
+  const tmp = path.join(os.tmpdir(), 'prod-archive-run-tampered-' + process.pid + '.ps1');
+  fs.writeFileSync(tmp, tampered, 'utf8');
+  try {
+    const payload = JSON.stringify({
+      tool_name: 'Bash',
+      tool_input: { command: `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok"` },
+    });
+    const res = spawnSync(process.execPath, [HOOK], {
+      input: payload,
+      encoding: 'utf8',
+      env: Object.assign({}, process.env, { KB_PROD_WINDOW_AUDIT: AUDIT, KB_ARCHIVE_SCRIPT_PATH: tmp }),
+    });
+    assert.strictEqual(res.status, 2);
+    assert.match(res.stderr, /pinned digest/);
+  } finally {
+    fs.rmSync(tmp, { force: true });
+  }
+});
+
+test('A-2: O4 blocked when the pinned script path is missing/unreadable', () => {
+  setWindow('closed');
+  const missing = path.join(os.tmpdir(), 'prod-archive-run-missing-' + process.pid + '.ps1');
+  const payload = JSON.stringify({
+    tool_name: 'Bash',
+    tool_input: { command: `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok"` },
+  });
+  const res = spawnSync(process.execPath, [HOOK], {
+    input: payload,
+    encoding: 'utf8',
+    env: Object.assign({}, process.env, { KB_PROD_WINDOW_AUDIT: AUDIT, KB_ARCHIVE_SCRIPT_PATH: missing }),
+  });
+  assert.strictEqual(res.status, 2);
+  assert.match(res.stderr, /pinned digest/);
+});
 
 test('Agent dispatch carrying --dangerously-skip-permissions is blocked even while closed', () => {
   setWindow('closed');
