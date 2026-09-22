@@ -1676,9 +1676,14 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const body = record(req.body);
     const idempotencyKey = string(body.idempotencyKey);
     const reason = body.reason == null ? null : string(body.reason);
-    if (!idempotencyKey || idempotencyKey.length > 512 || (body.reason != null && typeof body.reason !== 'string')) {
-      return reply.code(400).send({ error: 'invalid-archive', detail: 'idempotencyKey is required and reason must be text' });
+    if (!idempotencyKey || idempotencyKey.length > 512 || (body.reason != null && typeof body.reason !== 'string')
+      || (body.force != null && typeof body.force !== 'boolean')) {
+      return reply.code(400).send({ error: 'invalid-archive', detail: 'idempotencyKey is required, reason must be text, and force (if present) must be a boolean' });
     }
+    // B-2: without this, archiving force-resolved every open human request as an unannounced side
+    // effect. `force: true` is the caller's explicit opt-in to that (pre-fix-identical) behavior — see
+    // store.ts#archiveRun's refusal when any request is open and this is absent/false.
+    const force = body.force === true;
     const runScope = readScope(req);
     // Keyed by the RUN's owner, like every other lifecycle control here — see the stop route.
     const owned = ctx.controlStore.getRun(sub, runRef, runScope);
@@ -1686,6 +1691,9 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     return ctx.runControlTransactions.run(owned.value.ownerSubject, runRef, async () => {
       const detail = ctx.controlStore.getRun(sub, runRef, runScope);
       if (!detail.ok) return sendResult(reply, detail);
+      const openHumanRequestRefs = detail.value.humanRequests
+        .filter((request) => request.state === 'open')
+        .map((request) => request.requestRef);
       if (runLifecycleKind(detail.value.run.lifecycle) !== 'archived') {
         try {
           await auditFn(ctx)(ctx.repoRoot, {
@@ -1699,15 +1707,28 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
               runOwnerSubject: detail.value.ownerSubject,
               runVersion: detail.value.run.version,
               runState: runLifecycleKind(detail.value.run.lifecycle),
-              openHumanRequestCount: detail.value.humanRequests.filter((request) => request.state === 'open').length,
+              openHumanRequestCount: openHumanRequestRefs.length,
               reason,
+              force,
             },
           }, { runGit: ctx.opsGit, now: ctx.now });
+          // B-2: a SEPARATE, explicitly-named audit row whenever this archive is actually about to force
+          // through one or more open asks — distinct from the row above (written for every archive,
+          // forced or not) so "did this archive silence a real open ask" is its own auditable fact,
+          // never buried in a generic count. Written BEFORE the mutation, same fail-closed discipline as
+          // the row above: no run is ever force-archived off the record.
+          if (force && openHumanRequestRefs.length > 0) {
+            await auditFn(ctx)(ctx.repoRoot, {
+              action: 'run-archive-forced-open-requests', owner: sub, target: runRef, riskTier: 'T3',
+              result: `authorized:${idempotencyKey}`,
+              detail: { runRef, runOwnerSubject: detail.value.ownerSubject, openHumanRequestRefs, reason },
+            }, { runGit: ctx.opsGit, now: ctx.now });
+          }
         } catch {
           return reply.code(500).send({ error: 'run-archive-audit-required' });
         }
       }
-      const archived = ctx.controlStore.archiveRun(sub, runRef, { idempotencyKey, reason }, runScope);
+      const archived = ctx.controlStore.archiveRun(sub, runRef, { idempotencyKey, reason, force }, runScope);
       if (!archived.ok) return sendResult(reply, archived);
       if (!archived.replayed) {
         ctx.controlStore.appendEvent(sub, runRef, {

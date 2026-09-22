@@ -4837,7 +4837,7 @@ describe('run archival', () => {
     const { run, requestRef } = parkedRunWithOpenRequest(store);
 
     const archived = store.archiveRun('alice', run.runRef, {
-      idempotencyKey: `archive:${run.runRef}:1`, reason: 'obsolete thin-slice validation run',
+      idempotencyKey: `archive:${run.runRef}:1`, reason: 'obsolete thin-slice validation run', force: true,
     });
     if (!archived.ok) throw new Error(archived.detail);
     expect(archived.value.run.lifecycle.kind).toBe('archived');
@@ -4858,7 +4858,7 @@ describe('run archival', () => {
   it('replays an identical archive and refuses a reused key with a different reason', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
     const { run } = parkedRunWithOpenRequest(store);
-    const input = { idempotencyKey: 'archive-key-1', reason: 'stale validation run' };
+    const input = { idempotencyKey: 'archive-key-1', reason: 'stale validation run', force: true };
 
     const first = store.archiveRun('alice', run.runRef, input);
     if (!first.ok) throw new Error(first.detail);
@@ -4895,7 +4895,7 @@ describe('run archival', () => {
     expect(store.transitionRun('alice', run.runRef, run.version, 'archived'))
       .toMatchObject({ ok: false, reason: 'invalid' });
 
-    const archived = store.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-absorbing' });
+    const archived = store.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-absorbing', force: true });
     if (!archived.ok) throw new Error(archived.detail);
     for (const state of ['running', 'waiting-human', 'failed', 'stopped'] as const) {
       expect(store.transitionRun('alice', run.runRef, archived.value.run.version, state))
@@ -4908,7 +4908,7 @@ describe('run archival', () => {
     roots.push(root);
     const store = createFileControlPlaneStore(root, deterministicOptions());
     const { run } = parkedRunWithOpenRequest(store);
-    const archived = store.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-persisted', reason: 'dead' });
+    const archived = store.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-persisted', reason: 'dead', force: true });
     if (!archived.ok) throw new Error(archived.detail);
     expect(Object.keys(archived.value.run)).not.toContain('archiveOperationKey');
     expect(Object.keys(archived.value.run)).not.toContain('archiveOperationFingerprint');
@@ -4918,8 +4918,43 @@ describe('run archival', () => {
     if (!detail.ok) throw new Error(detail.detail);
     expect(detail.value.run.lifecycle.kind).toBe('archived');
     // The idempotency record survived the restart too, so a retried request still replays.
-    expect(reopened.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-persisted', reason: 'dead' }))
+    expect(reopened.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-persisted', reason: 'dead', force: true }))
       .toMatchObject({ ok: true, replayed: true });
+  });
+
+  it('B-2: refuses an open-request run unless force is true, and force is part of the idempotency fingerprint', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const { run, requestRef } = parkedRunWithOpenRequest(store);
+
+    const refused = store.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-b2-1', reason: 'try without force' });
+    expect(refused).toMatchObject({ ok: false, reason: 'conflict' });
+    expect(refused.ok ? '' : refused.detail).toContain('run-archive-open-requests');
+    expect(refused.ok ? '' : refused.detail).toContain(requestRef);
+    // Never forced: the run is untouched, the request is still open.
+    const untouched = store.getRun('alice', run.runRef);
+    if (!untouched.ok) throw new Error(untouched.detail);
+    expect(untouched.value.run.lifecycle.kind).toBe('waiting-human');
+    expect(untouched.value.humanRequests.find((item) => item.requestRef === requestRef)?.state).toBe('open');
+
+    // The identical idempotencyKey WITHOUT force is a pure replay of the refusal (fail-fast, not a retry
+    // loophole) -- but this store returns a fresh `fail()` on every call rather than persisting refusals,
+    // so calling it again just refuses again, identically.
+    expect(store.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-b2-1', reason: 'try without force' }))
+      .toMatchObject({ ok: false, reason: 'conflict' });
+
+    // The SAME idempotencyKey with force:true flipped is NOT a replay of the refused attempt (force is
+    // part of the fingerprint) -- it is authorized and archives normally.
+    const forced = store.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-b2-1', reason: 'try without force', force: true });
+    if (!forced.ok) throw new Error(forced.detail);
+    expect(forced.value.run.lifecycle.kind).toBe('archived');
+    expect(forced.value.resolvedRequests.map((item) => item.requestRef)).toEqual([requestRef]);
+  });
+
+  it('B-2: archives a run with no open requests without needing force', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const settled = settleRetryPredecessor(store);
+    expect(store.archiveRun('alice', settled.run.runRef, { idempotencyKey: 'archive-b2-clean' }))
+      .toMatchObject({ ok: true, value: { run: { lifecycle: { kind: 'archived', deployPause: null } } } });
   });
 });
 
@@ -5352,7 +5387,7 @@ describe('read scope', () => {
     if (!ask.ok) throw new Error(ask.detail);
 
     const archived = store.archiveRun('operator', engineRun.runRef, {
-      idempotencyKey: 'operator-archives', reason: 'obsolete validation run',
+      idempotencyKey: 'operator-archives', reason: 'obsolete validation run', force: true,
     }, 'all-subjects');
     if (!archived.ok) throw new Error(archived.detail);
     // Existing archive semantics, unchanged: terminal `archived` run, every answerable ask resolved in
@@ -5371,9 +5406,10 @@ describe('read scope', () => {
     });
     expect(store.listRuns('operator', 'all-subjects').map((run) => run.ownerSubject)).toEqual(['dashboard-engine']);
 
-    // A replay on the same key is still a replay, and a second, different archive still conflicts.
+    // A replay on the same key (including the same force flag) is still a replay, and a second,
+    // different archive still conflicts.
     expect(store.archiveRun('operator', engineRun.runRef, {
-      idempotencyKey: 'operator-archives', reason: 'obsolete validation run',
+      idempotencyKey: 'operator-archives', reason: 'obsolete validation run', force: true,
     }, 'all-subjects')).toMatchObject({ ok: true, replayed: true });
     expect(store.archiveRun('operator', engineRun.runRef, {
       idempotencyKey: 'operator-archives-again', reason: 'again',

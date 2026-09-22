@@ -17,20 +17,21 @@
 #   waiting-human                                - ONLY when it carries zero OPEN human requests
 #     as of THIS script's own read (Step A).
 #
-# CORRECTED 2026-09-21 (review finding B-2 - the previous comment here was WRONG): the daemon's
-# archiveRun (dashboard/server/control/store.ts) does NOT refuse a waiting-human run that still has
-# open human requests. It FORCE-RESOLVES every open, non-iteration-gate-pinned request on that run
-# as a side effect of archiving (decision: 'responded', this script's -Reason text standing in as
-# the response) - there is no server-side refusal to fall back on. So if a human request opens
-# between Step A's read and the Step C POST, a stale "zero open requests" read is NOT caught
-# server-side; it is silently auto-resolved, closing out a live approval/intervention gate with no
-# real decision made.
+# FIXED 2026-09-22 (review finding B-2): as of this date the daemon's archiveRun
+# (dashboard/server/control/store.ts) REFUSES (409 run-archive-open-requests, listing the open
+# requestRefs) to archive any run that still has an open human request, unless the request body
+# carries `force: true` - which this script deliberately never sends. So the residual race this
+# comment used to describe (a request opening between Step A's read and the Step C POST, silently
+# force-resolved with no real decision made) is now closed SERVER-SIDE, not just narrowed
+# client-side: if that race is ever hit, Step C's POST now gets a 409 and this script aborts with
+# the daemon's own refusal body printed, rather than silently closing a live gate.
 #
-# Because there is no server-side backstop, this script re-reads the run immediately before the
-# POST (Step B.1) and refuses if any request opened in the gap, narrowing the race to whatever
-# elapses between that re-read and the POST itself rather than the whole Step A-to-C window.
-# Closing the residual gap for real needs a server-side refusal in archiveRun; that is a filed
-# follow-up (review finding B-2), not something a client-side pre-check can fully close.
+# This script's own pre-check (Step A/B) and pre-POST re-read (Step B.1) are KEPT anyway - they are
+# still real value on their own: a fast, plain-language local refusal is cheaper than a round trip
+# to find out the daemon will refuse too, and they still narrow the window in which a human
+# discovers the race (this script fails immediately; a bare POST would only fail with a raw 409
+# body). Before this date, this comment said the opposite - that the daemon force-resolved with no
+# server-side backstop at all; that was accurate then and is not anymore.
 # 'archived' itself has an EMPTY transitions set (nothing re-archives an archived run), and every
 # other kind (planned/recovering/running/stopping/paused-for-deploy) has no 'archived' transition
 # at all, so this script refuses those too.
@@ -78,7 +79,7 @@ if ($ARCHIVABLE_UNCONDITIONAL -contains $state) {
 }
 
 if ($state -eq 'waiting-human') {
-  Step 'B.1' 're-reading immediately before the POST (the daemon force-resolves, it does not refuse, so this narrows that race client-side)'
+  Step 'B.1' 're-reading immediately before the POST (a fast local check ahead of the daemon''s own refusal)'
   $reReadRaw = Invoke-Curl $CurlHeader @('-s', '--max-time', '30', "$URL/api/control/runs/$Run")
   if ($LASTEXITCODE -ne 0) { Fail "could not reach $URL for the pre-POST re-read - is the tailnet up?" }
   try { $reRead = $reReadRaw | ConvertFrom-Json } catch { Fail "pre-POST re-read was not JSON: $reReadRaw" }
@@ -86,7 +87,7 @@ if ($state -eq 'waiting-human') {
   if (-not $reRead.run) { Fail "run $Run not found on the pre-POST re-read: $reReadRaw" }
   $reOpenRequests = @($reRead.humanRequests | Where-Object { $_.state -eq 'open' })
   if ($reOpenRequests.Count -ne 0) {
-    Fail "run $Run picked up $($reOpenRequests.Count) new open human request(s) between the read and the archive POST - resolve or abandon them (prod-respond.ps1) before archiving. The daemon does NOT refuse this server-side on archive; it force-resolves open requests, so this script refuses instead."
+    Fail "run $Run picked up $($reOpenRequests.Count) new open human request(s) between the read and the archive POST - resolve or abandon them (prod-respond.ps1) before archiving. The daemon would also now refuse this server-side (409 run-archive-open-requests); this script fails first, in plain language."
   }
 }
 

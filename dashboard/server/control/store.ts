@@ -5851,9 +5851,17 @@ function makeStore(
      * Dismiss a dead run: move it to the terminal `archived` state and resolve its open requests in the
      * SAME commit, so a parked run can never survive as a haunting ask in the operator's inbox.
      *
+     * B-2 (review finding, fixed): a run with any OPEN human request is refused (`conflict`,
+     * `run-archive-open-requests`, listing the open refs) unless `input.force` is `true` — an open
+     * request means the run is genuinely waiting on a human decision, and archiving used to force-resolve
+     * every one of those asks as an unannounced side effect of dismissal. `force: true` restores the
+     * pre-fix behavior exactly (force-resolve every force-eligible open request; a review-gate request
+     * stays open regardless, as it always did — see `pinnedRequestRefs`).
+     *
      * Idempotent on `idempotencyKey` exactly like every other governed write here — a replay with the
-     * same key and the same reason returns the archived run; a reused key with different content is an
-     * `idempotency-conflict`, and a second, different archive of an already-archived run is a `conflict`.
+     * same key, reason, AND force flag returns the archived run; a reused key with different content
+     * (including a flipped force flag) is an `idempotency-conflict`, and a second, different archive of
+     * an already-archived run is a `conflict`.
      */
     archiveRun(subject, runRef, input, scope = 'own-subject') {
       const document = load();
@@ -5864,7 +5872,10 @@ function makeStore(
       const owner = run.subject;
       if (!validNonEmpty(input.idempotencyKey, MAX_SHORT_TEXT)) return fail('invalid', 'idempotencyKey is required');
       const reason = input.reason == null ? null : cleanText(input.reason, MAX_LONG_TEXT);
-      const fingerprint = sha256(`${runRef}\0${reason ?? ''}`);
+      const force = input.force === true;
+      // `force` is part of the fingerprint: a replayed idempotencyKey that flips force is exactly the
+      // "reused with different content" shape every other idempotent write here already refuses.
+      const fingerprint = sha256(`${runRef}\0${reason ?? ''}\0${force ? '1' : '0'}`);
       const resolvedRequests = (): HumanRequest[] => document.humanRequests
         .filter((item) => item.subject === owner && item.runRef === runRef
           && item.response?.idempotencyKey === archiveResponseKey(input.idempotencyKey, item.requestRef))
@@ -5875,12 +5886,30 @@ function makeStore(
       if (run.archiveOperationKey) {
         if (run.archiveOperationKey !== input.idempotencyKey) return fail('conflict', 'run is already archived');
         if (run.archiveOperationFingerprint !== fingerprint) {
-          return fail('idempotency-conflict', 'archive idempotencyKey was reused with a different reason');
+          return fail('idempotency-conflict', 'archive idempotencyKey was reused with different content');
         }
         return ok({ run: internalRun(run), resolvedRequests: resolvedRequests(), pinnedRequestRefs: pinned() }, true);
       }
       if (!canTransitionRun(run.lifecycle, 'archived')) {
         return fail('invalid', 'only a finished, stopped, interrupted, or waiting-human run can be archived');
+      }
+      // B-2 (review finding): an open human request means the run is genuinely waiting on a human
+      // decision. Archiving it anyway force-resolved every one of those asks as a SIDE EFFECT of
+      // dismissal — a decision that was never actually made got recorded as `responded` regardless.
+      // Refuse instead, listing the open refs, unless the caller explicitly opts in with `force: true`
+      // (in which case behavior is unchanged from before this fix: force-resolve every force-eligible
+      // open request below). Snapshotted BEFORE any mutation, and deliberately including a review-gate
+      // request the loop below can never touch (`isIterationGateRequest`) — that ask is STILL open and
+      // this archive would otherwise make it permanently unreachable (the archived run leaves every
+      // default projection) without ever having been a conscious choice.
+      const openBeforeArchive = document.humanRequests
+        .filter((item) => item.subject === owner && item.runRef === runRef && item.state === 'open')
+        .map((item) => item.requestRef);
+      if (openBeforeArchive.length > 0 && !force) {
+        return fail(
+          'conflict',
+          `run-archive-open-requests: run ${runRef} has ${openBeforeArchive.length} open human request(s): ${openBeforeArchive.join(', ')}`,
+        );
       }
       const archivedAt = stamp();
       for (const request of document.humanRequests) {

@@ -80,7 +80,12 @@ const BROKER_DIGEST = '4586d91930a1b4f00f350a2b5324a9347073b10d67c9cf0edfd47abe4
 // fleet runs never set it, so the real KBDIR path below is always what actually executes.
 const ARCHIVE_SCRIPT_REAL_PATH = 'C:\\Users\\danie\\kb\\scripts\\prod\\prod-archive-run.ps1';
 const ARCHIVE_SCRIPT_PATH = process.env.KB_ARCHIVE_SCRIPT_PATH || ARCHIVE_SCRIPT_REAL_PATH;
-const ARCHIVE_SCRIPT_SHA256 = 'bb3c056a3ce476cac59f3a70991d893d75d7c87721b01ca82442b041f3a6b958';
+// B-2 (review finding, 2026-09-22): prod-archive-run.ps1's header/Step-B.1 comments were updated to
+// say the daemon now REFUSES an archive with open human requests instead of silently force-resolving
+// them (dashboard/server/control/store.ts#archiveRun). No behavior in this script changed — same
+// argv shape, same client-side pre-check/re-read, no -Force plumbed through — so this is a
+// content-pin bump only.
+const ARCHIVE_SCRIPT_SHA256 = '93c5b36e5002e6fd8cbc85aca85e42055b686c288cd08c11afead1a415809588';
 
 const MAX_STDIN = 1024 * 1024;
 
