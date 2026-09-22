@@ -1,0 +1,36 @@
+# est_ rates (per 1M tokens, comparison-only, NOT a real subscription bill): claude opus 15/75 sonnet 3/15 haiku 0.8/4 fable 15/75(assumed) cache-read 10% cache-create 125% | codex input 1.25 output 10.00 cached-input 50% | max_ctx_tokens = Claude-only per-turn peak (input+cache_read); codex_cumulative_total = Codex-only total_token_usage.total_tokens max-per-file -- the two are NOT the same signal, hence separate columns (fix round 1, C4)
+runtime	model	session	kind	project	input_tokens	cache_creation_tokens	cache_read_tokens	output_tokens	turns	max_ctx_tokens	codex_cumulative_total	est_usd
+claude	fable	1232374c-bf5d-40ad-ae37-3da59ad52af1	top	C--Users-danie-kb	696	1902432	22225470	31144	37	666583		71.355
+claude	fable	6c75debe-8173-4c3e-9813-403d0d5af4cf	top	C--Users-danie-nyu	424	572448	34176706	185389	210	256755		75.909
+claude	fable	b412e7f4-6f7b-48f0-a60a-6007f91b6254	top	C--Users-danie-kb	2354	1069800	37817292	166281	111	399718		89.2911
+claude	opus	1232374c-bf5d-40ad-ae37-3da59ad52af1	subagent	C--Users-danie-kb	166	327935	6714379	34102	83	120413		18.7805
+claude	sonnet	1232374c-bf5d-40ad-ae37-3da59ad52af1	subagent	C--Users-danie-kb	32	178773	1042613	7182	16	84721		1.091
+claude	sonnet	1232374c-bf5d-40ad-ae37-3da59ad52af1	subagent	C--Users-danie-kb	80	125047	2828270	9586	40	86516		1.4614
+claude	sonnet	6c75debe-8173-4c3e-9813-403d0d5af4cf	subagent	C--Users-danie-nyu	354	447601	21348558	23766	177	182215		8.4406
+claude	sonnet	6c75debe-8173-4c3e-9813-403d0d5af4cf	subagent	C--Users-danie-nyu	298	320025	17917756	37977	149	175903		7.146
+claude	sonnet	6c75debe-8173-4c3e-9813-403d0d5af4cf	subagent	C--Users-danie-nyu	12	66929	246184	321	6	54497		0.3297
+claude	sonnet	6c75debe-8173-4c3e-9813-403d0d5af4cf	subagent	C--Users-danie-nyu	10	55227	199011	251	5	53927		0.2706
+claude	sonnet	6c75debe-8173-4c3e-9813-403d0d5af4cf	subagent	C--Users-danie-nyu	212	250777	10726427	44220	106	139954		4.8223
+claude	sonnet	6c75debe-8173-4c3e-9813-403d0d5af4cf	subagent	C--Users-danie-nyu	12	81562	226312	683	6	54411		0.384
+claude	sonnet	6c75debe-8173-4c3e-9813-403d0d5af4cf	subagent	C--Users-danie-nyu	238	542713	13053959	24421	119	155660		6.3184
+claude	sonnet	6c75debe-8173-4c3e-9813-403d0d5af4cf	subagent	C--Users-danie-nyu	370	650504	23381552	24723	185	182226		9.8258
+claude	sonnet	6c75debe-8173-4c3e-9813-403d0d5af4cf	subagent	C--Users-danie-nyu	12	84280	228508	221	6	56409		0.388
+claude	sonnet	6c75debe-8173-4c3e-9813-403d0d5af4cf	subagent	C--Users-danie-nyu	10	64482	201704	321	5	56022		0.3072
+claude	sonnet	6c75debe-8173-4c3e-9813-403d0d5af4cf	subagent	C--Users-danie-nyu	300	326068	18533089	36973	150	173149		7.3382
+claude	sonnet	6c75debe-8173-4c3e-9813-403d0d5af4cf	subagent	C--Users-danie-nyu	12	85472	229218	308	6	57137		0.3939
+claude	sonnet	6c75debe-8173-4c3e-9813-403d0d5af4cf	subagent	C--Users-danie-nyu	192	237012	9564828	33888	96	140330		4.2671
+claude	sonnet	6c75debe-8173-4c3e-9813-403d0d5af4cf	subagent	C--Users-danie-nyu	264	357094	16608299	35216	132	179378		6.8506
+claude	sonnet	6c75debe-8173-4c3e-9813-403d0d5af4cf	subagent	C--Users-danie-nyu	342	585749	29665945	21671	171	273047		11.4224
+claude	sonnet	6c75debe-8173-4c3e-9813-403d0d5af4cf	subagent	C--Users-danie-nyu	12	85388	228481	220	6	56318		0.3921
+claude	sonnet	6c75debe-8173-4c3e-9813-403d0d5af4cf	subagent	C--Users-danie-nyu	258	374634	15171980	29948	129	175939		6.4065
+claude	sonnet	6c75debe-8173-4c3e-9813-403d0d5af4cf	subagent	C--Users-danie-nyu	10	59109	201027	219	5	55839		0.2853
+claude	sonnet	6c75debe-8173-4c3e-9813-403d0d5af4cf	subagent	C--Users-danie-nyu	12	82450	227745	4526	6	55722		0.4454
+claude	sonnet	6c75debe-8173-4c3e-9813-403d0d5af4cf	subagent	C--Users-danie-nyu	288	304225	17058894	97435	144	170715		7.7209
+claude	sonnet	6c75debe-8173-4c3e-9813-403d0d5af4cf	subagent	C--Users-danie-nyu	12	57625	255392	377	6	55289		0.2984
+claude	sonnet	b412e7f4-6f7b-48f0-a60a-6007f91b6254	subagent	C--Users-danie-kb	412	969913	35248132	81479	206	262465		15.435
+claude	sonnet	b412e7f4-6f7b-48f0-a60a-6007f91b6254	subagent	C--Users-danie-kb	1046	853051	146495983	139855	523	404398		49.2487
+claude	sonnet	b412e7f4-6f7b-48f0-a60a-6007f91b6254	subagent	C--Users-danie-kb	712	1448532	85435493	132269	356	356216		33.0488
+claude	sonnet	b412e7f4-6f7b-48f0-a60a-6007f91b6254	subagent	C--Users-danie-kb	322	549994	30320278	84704	161	266480		12.4301
+claude	sonnet	b412e7f4-6f7b-48f0-a60a-6007f91b6254	subagent	C--Users-danie-kb	200	484681	15803824	70705	100	246156		7.6199
+claude	sonnet	b412e7f4-6f7b-48f0-a60a-6007f91b6254	subagent	C--Users-danie-kb	298	1118375	30235406	134914	149	276060		15.2891
+_totals	-	-	-	-	9972	14719907	643618715	1495295	3607	666583	0	475.013
