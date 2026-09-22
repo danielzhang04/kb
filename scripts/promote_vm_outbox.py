@@ -1,3 +1,26 @@
+"""Promote VM outbox bundles from a trusted desktop, and reconcile the VM back onto the result.
+
+Operator note -- resuming an interrupted drain:
+
+Promotion (push to origin/ops) and reconciliation (return-bundle + VM-side apply) are two
+separate legs joined by receipts. A receipt for every chain item means promotion finished;
+it does NOT mean reconciliation finished -- `upload_and_apply_reconciliation` can still fail
+on the VM (`deploy/apply_ops_reconciliation.py`, e.g. "reconciled ref contains a
+non-coordination path" when origin/ops carried an unrelated commit in the reconciled range)
+after every receipt is already durably on disk. Because receipts are the only signal `main()`
+checks before deciding there is "nothing to promote", a spool that is fully receipted but never
+reconciled must NOT be treated as done: `main()` auto-detects exactly this state (every chain
+item receipted, `ready/` still non-empty) and resumes straight into
+`create_return_bundle` + `upload_and_apply_reconciliation` instead of re-promoting or silently
+exiting 0. See `docs/runbooks/outbox-drain-resume.md` for the operator-facing version of this.
+
+This leg is safe to re-run: nothing here ever deletes or mutates `spool/receipts` (only the
+VM-side `apply_ops_reconciliation.py`, on a *successful* apply, moves ready/receipt entries
+into its own `promoted/` archive -- see its module comment). A failed resume leaves the local
+snapshot's receipts exactly as fetched, so the next invocation observes the identical
+all-receipted, unreconciled state and resumes again.
+"""
+
 from __future__ import annotations
 
 import argparse
