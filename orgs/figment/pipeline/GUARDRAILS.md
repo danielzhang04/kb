@@ -33,7 +33,9 @@ restart.
 
 6. **Rented compute is terminated on every exit path** — success, failure, or error —
    and termination is VERIFIED via API, not assumed. A forgotten pod silently drains the
-   balance.
+   balance. This now explicitly includes a hung upload: every ComfyUI upload POST runs
+   under a hard wall-clock `join(timeout)` so a stalled body send fails closed as a
+   transient error instead of blocking the run (and the ceiling) indefinitely.
 
 7. **The pickle-load ban (`pod/runpod_run.py` `models[]`) is narrower than "no pickle
    loads on the pod" reads.** It covers only `manifest["models"]` downloads

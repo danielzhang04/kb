@@ -2792,6 +2792,90 @@ def test_non_2xx_upload_and_download_close_the_response(tmp_path):
     assert download_response.closed is True
 
 
+def test_upload_part_post_is_bounded_by_a_hard_wall_clock_join_when_the_handler_hangs():
+    """A live upload once blocked ~3h53m on a single chunk POST despite a computed
+    ~76s `timeout` (orgs/figment/runs/creator-001/live-20260916b/downstream/gen/
+    gen-harness-stderr.log, pod u86413a8wjzsni, 2026-09-21): `requests`' `timeout`
+    bounds connect + each read, not a stalled body send. The POST must run under a
+    hard wall-clock join so a handler that never returns still fails fast, and the
+    session must be closed to unblock the leaked worker thread."""
+    closed = threading.Event()
+
+    class HangingSession:
+        headers = {}
+
+        def post(self, _url, **_kwargs):
+            time.sleep(30)  # far longer than timeout_seconds below; never returns in time
+            raise AssertionError("should have been abandoned before returning")
+
+        def close(self):
+            closed.set()
+
+    timeout_seconds = 1.0
+    started = time.monotonic()
+    with pytest.raises(rr.TransientProxyError, match="hard deadline"):
+        rr.ComfyClient("https://proxy", HangingSession()).upload_part(
+            b"data", "part-0000", "persona-a", False, timeout_seconds,
+        )
+    elapsed = time.monotonic() - started
+
+    assert elapsed < timeout_seconds + 5.0
+    assert closed.is_set()
+
+
+def test_upload_file_post_is_bounded_by_a_hard_wall_clock_join_when_the_handler_hangs(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(rr, "REQUEST_TIMEOUT", 0.5)
+    local = tmp_path / "frame.png"
+    local.write_bytes(b"pixels")
+    closed = threading.Event()
+
+    class HangingSession:
+        headers = {}
+
+        def post(self, _url, **_kwargs):
+            time.sleep(10)  # far longer than the (patched) REQUEST_TIMEOUT
+            raise AssertionError("should have been abandoned before returning")
+
+        def close(self):
+            closed.set()
+
+    started = time.monotonic()
+    with pytest.raises(rr.TransientProxyError, match="hard deadline"):
+        rr.ComfyClient("https://proxy", HangingSession()).upload_file(
+            local, "persona-a", overwrite=False,
+        )
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 5.5
+    assert closed.is_set()
+
+
+def test_watchdog_fires_and_terminates_while_upload_is_blocked(tmp_path, monkeypatch):
+    """The wall-clock ceiling must hold regardless of what the main thread is doing:
+    the Watchdog is a separate daemon thread started right after pod acquisition, so
+    it must still terminate the pod even while the main thread is stuck inside a slow
+    (but eventually-returning, at the Comfy-client level) upload call."""
+    configured, manifest_path = p1i_training_manifest(tmp_path)
+
+    class SlowUploadComfy(FakeComfy):
+        def upload_file(self, local_path, subfolder, _overwrite):
+            time.sleep(0.5)  # real sleep: exceeds the tiny max_minutes ceiling below
+            return {"name": local_path.name, "subfolder": subfolder, "type": "input"}
+
+    api = FakeAPI()
+    with pytest.raises(rr.RunCancelled, match="maximum runtime"):
+        rr.run_harness(
+            configured, manifest_path, tmp_path / "out",
+            max_usd=1, max_minutes=0.002, dry_run=False, api=api,
+            logger=logger_and_stream()[0], comfy_factory=SlowUploadComfy,
+            sleep=lambda _seconds: None, ledger_dir=tmp_path / "ledger",
+            allow_empty_ledger=True,
+        )
+
+    assert api.deletes >= 1 and api.alive is False
+
+
 def test_zero_byte_upload_is_refused_except_for_the_ready_marker(tmp_path):
     configured, manifest_path = p1i_training_manifest(tmp_path)
     (tmp_path / "dataset" / "001.png").write_bytes(b"")

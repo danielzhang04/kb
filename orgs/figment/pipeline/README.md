@@ -549,6 +549,16 @@ defects below for where these two sources disagree past 09-04.
   (`RETRY_ELIGIBLE_ERROR_SUBSTRINGS`, P4 2026-09-16) — a real transport/placement blip whose
   `run.json["error"]` doesn't happen to contain one of those exact substrings still refuses
   and needs a reviewed widening, not another live retry to discover the gap.
+- ~~**A stalled ComfyUI upload POST could block for hours despite a computed per-part
+  timeout**~~ — RESOLVED 2026-09-22: a live `gen` run (`orgs/figment/runs/creator-001/
+  live-20260916b`, pod `u86413a8wjzsni`, 2026-09-21) blocked ~3h53m on one chunk POST
+  (computed timeout ~76s) because `requests`' `timeout` bounds connect + each read but not a
+  stalled body send, and the 185-minute run ceiling never independently unstuck it; `upload_file`/
+  `upload_part` (`pod/runpod_run.py`) now run every ComfyUI upload POST on a worker thread with a
+  hard `join(timeout)` and close the session on expiry, converting a hang into a normal
+  `TransientProxyError` the existing 3-attempt retry already handles — the `Watchdog` itself was
+  re-verified independent of the main thread (`test_watchdog_fires_and_terminates_while_upload_is_blocked`)
+  and needed no change.
 - ~~**qwen3vl caption pod: first live attempt failed at upload preflight on a zero-byte
   sentinel**~~ — RESOLVED 2026-09-16 (`_images.ready`, live run `creator-001/live-20260916b`):
   sentinel now carries real JSON content; the caption start-script template is now also

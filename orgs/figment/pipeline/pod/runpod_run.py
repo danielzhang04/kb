@@ -2914,6 +2914,52 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
     return "\n".join(lines) + "\n"
 
 
+def _post_with_hard_deadline(
+        session: Any, url: str, *, files: Any, data: Any, timeout: float,
+        logger: logging.Logger, label: str) -> Any:
+    """Run `session.post(...)` under a hard wall-clock bound.
+
+    `requests`' own `timeout` argument bounds connect and each individual read, but
+    NOT a stalled body send -- a live upload once blocked ~3h53m on a single 16 MiB
+    chunk POST despite a computed ~76s timeout (orgs/figment/runs/creator-001/
+    live-20260916b/downstream/gen/gen-harness-stderr.log, pod u86413a8wjzsni,
+    2026-09-21), and the 185-minute run ceiling had no independent way to unstick it.
+    Running the POST on a worker thread and giving the *whole call* a hard
+    `join(timeout)` bounds it regardless of where the stall is. On expiry the session
+    is closed to unblock the worker thread's socket call (best-effort -- the thread is
+    daemon and is otherwise abandoned, never left holding a live socket past process
+    exit), and the stall is reported as a TransientProxyError so the existing
+    3-attempt loop in `retry_transient_proxy` retries it exactly like any other
+    transient failure.
+    """
+    outcome: dict[str, Any] = {}
+
+    def _worker() -> None:
+        try:
+            outcome["response"] = session.post(url, files=files, data=data, timeout=timeout)
+        except BaseException as exc:  # noqa: BLE001 - surfaced to the caller below
+            outcome["error"] = exc
+
+    worker = threading.Thread(target=_worker, name=f"{label}-post", daemon=True)
+    worker.start()
+    worker.join(timeout)
+    if worker.is_alive():
+        logger.error(
+            "%s POST exceeded its %.0fs hard deadline; closing the session to "
+            "unblock it", label, timeout,
+        )
+        close = getattr(session, "close", None)
+        if callable(close):
+            close()
+        raise TransientProxyError(f"{label} POST exceeded its {timeout:.0f}s hard deadline")
+    if "error" in outcome:
+        exc = outcome["error"]
+        raise TransientProxyError(
+            f"{label} POST transport failed: {type(exc).__name__}"
+        ) from exc
+    return outcome["response"]
+
+
 class ComfyClient:
     def __init__(self, base_url: str, session: Any = None,
                  logger: logging.Logger | None = None,
@@ -3001,16 +3047,19 @@ class ComfyClient:
         try:
             with local_path.open("rb") as handle:
                 try:
-                    response = self.session.post(
-                        self.base_url + "/upload/image",
+                    response = _post_with_hard_deadline(
+                        self.session, self.base_url + "/upload/image",
                         files={"image": (local_path.name, handle)},
                         data={
                             "subfolder": subfolder,
                             "type": "input",
                             "overwrite": "true" if overwrite else "false",
                         },
-                        timeout=REQUEST_TIMEOUT,
+                        timeout=REQUEST_TIMEOUT, logger=self.logger,
+                        label=f"upload {local_path.name}",
                     )
+                except TransientProxyError:
+                    raise
                 except Exception as exc:
                     raise TransientProxyError(
                         "ComfyUI POST /upload/image transport failed: "
@@ -3066,16 +3115,18 @@ class ComfyClient:
         REQUEST_TIMEOUT used for a whole small file."""
         expected = {"name": remote_name, "subfolder": subfolder, "type": "input"}
         try:
-            response = self.session.post(
-                self.base_url + "/upload/image",
+            response = _post_with_hard_deadline(
+                self.session, self.base_url + "/upload/image",
                 files={"image": (remote_name, io.BytesIO(data))},
                 data={
                     "subfolder": subfolder,
                     "type": "input",
                     "overwrite": "true" if overwrite else "false",
                 },
-                timeout=timeout,
+                timeout=timeout, logger=self.logger, label=f"upload {remote_name}",
             )
+        except TransientProxyError:
+            raise
         except Exception as exc:
             raise TransientProxyError(
                 "ComfyUI POST /upload/image transport failed: "
