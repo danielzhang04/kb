@@ -40,6 +40,12 @@ restart.
    whole pod lifetime and the ceiling itself is suspend-proof (dual monotonic/wall-clock
    check), and the pod carries its own independent dead-man switch that self-terminates
    `max_minutes + 10` minutes past the ceiling even if the host never comes back.
+   RunPod DOES inject a pod-scoped `RUNPOD_API_KEY` and preinstalls `runpodctl` by
+   default (docs.runpod.io/pods/references/environment-variables; runpodctl overview),
+   so the dead-man switch's normal path is `runpodctl remove pod` -> `runpodctl stop
+   pod` -> the newer `runpodctl pod delete`/`pod stop` spelling, actually stopping GPU
+   billing; a bare `shutdown -h now` is only the last-resort fallback if `runpodctl` or
+   the key is somehow absent, and that presence is logged (never the key's value).
 
 7. **The pickle-load ban (`pod/runpod_run.py` `models[]`) is narrower than "no pickle
    loads on the pod" reads.** It covers only `manifest["models"]` downloads

@@ -564,7 +564,9 @@ defects below for where these two sources disagree past 09-04.
   alone also turned out not to unblock an in-flight send (`PoolManager.clear()` only closes idle
   connections) — the deadline now captures and directly `shutdown()`s the stuck socket. The pod
   also carries its own independent dead-man switch as a backstop for a host that never comes
-  back at all. See GUARDRAILS.md #6.
+  back at all — RunPod injects a pod-scoped `RUNPOD_API_KEY` and preinstalls `runpodctl` by
+  default, so it tries `runpodctl remove`/`stop pod` (and the newer `pod delete`/`pod stop`
+  spelling) before ever falling back to a bare `shutdown -h now`. See GUARDRAILS.md #6.
 - ~~**qwen3vl caption pod: first live attempt failed at upload preflight on a zero-byte
   sentinel**~~ — RESOLVED 2026-09-16 (`_images.ready`, live run `creator-001/live-20260916b`):
   sentinel now carries real JSON content; the caption start-script template is now also

@@ -971,6 +971,14 @@ def bootstrap_dependency_failure_reason(exc: BootstrapFailed) -> str | None:
 
 SUSPEND_SKEW_WARN_SECONDS = 60.0
 DEFAULT_SLICE_SECONDS = 15.0
+# LOW-2: a forward NTP step (the wall clock jumping ahead on its own, no suspend
+# involved) must not fire the wait early just because the wall side alone looks
+# "over" -- only the monotonic side is trusted to be exact, so this grace is
+# added to the wall-clock remaining time only, never to monotonic.
+WALL_CLOCK_GRACE_SECONDS = 120.0
+# Re-logging the same ongoing skew on every 15s slice floods the log for a long
+# wait; only log again once the skew has moved by at least this much.
+SKEW_LOG_CHANGE_THRESHOLD_SECONDS = 60.0
 
 
 def _sliced_deadline_wait(
@@ -999,17 +1007,32 @@ def _sliced_deadline_wait(
     stop the wait early (e.g. `threading.Event.wait`, or a wrapper around
     `Thread.join`). Returns True if `poll` ever returned True, False once a deadline
     is reached.
+
+    The wall-clock side carries a `WALL_CLOCK_GRACE_SECONDS` grace (LOW-2): an
+    ordinary forward NTP step, with no suspend involved, must not fire the wait
+    early just because the wall clock alone looks past its deadline -- monotonic
+    is the one trusted to be exact and gets no grace. A suspend-sized jump (minutes
+    to hours) still fires immediately, since it dwarfs the grace. The skew warning
+    is logged once per wait and again only if the skew moves by at least
+    `SKEW_LOG_CHANGE_THRESHOLD_SECONDS`, so a long-running wait under a real,
+    sustained skew does not spam a warning on every slice.
     """
     monotonic_deadline = monotonic() + total_seconds
     wall_deadline = wall_clock() + total_seconds
+    last_logged_skew: float | None = None
     while True:
         remaining_monotonic = monotonic_deadline - monotonic()
-        remaining_wall = wall_deadline - wall_clock()
-        if logger is not None and abs(remaining_monotonic - remaining_wall) > SUSPEND_SKEW_WARN_SECONDS:
-            logger.warning(
-                "host suspend suspected: monotonic vs wall skew %.0fs",
-                abs(remaining_monotonic - remaining_wall),
-            )
+        remaining_wall_raw = wall_deadline - wall_clock()
+        skew = abs(remaining_monotonic - remaining_wall_raw)
+        if logger is not None and skew > SUSPEND_SKEW_WARN_SECONDS:
+            if (last_logged_skew is None
+                    or abs(skew - last_logged_skew) >= SKEW_LOG_CHANGE_THRESHOLD_SECONDS):
+                logger.warning(
+                    "host suspend suspected: monotonic vs wall skew %.0fs",
+                    skew,
+                )
+                last_logged_skew = skew
+        remaining_wall = remaining_wall_raw + WALL_CLOCK_GRACE_SECONDS
         remaining = min(remaining_monotonic, remaining_wall)
         if remaining <= 0:
             return False
@@ -1033,6 +1056,13 @@ class KeepAwake:
     thread-scoped and does not survive the asserting thread exiting, hence a
     long-lived thread rather than a one-shot call). No-op on non-Windows platforms.
     `disarm()` is safe to call multiple times and on a never-armed instance.
+
+    LOW-3: because the flag is thread-scoped, the CLEARING call
+    (`SetThreadExecutionState(ES_CONTINUOUS)`) must also come from the same
+    asserting thread -- calling it from `disarm()`'s caller thread would be a
+    silent no-op against the real Windows API. `disarm()` therefore only signals
+    the stop event and joins; the asserting thread itself clears the flag right
+    before it exits. Either call returning 0 (failure) is logged as a warning.
     """
 
     def __init__(self, logger: logging.Logger, *,
@@ -1065,8 +1095,21 @@ class KeepAwake:
 
         def _run() -> None:
             while True:
-                setter(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
+                result = setter(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
+                if result == 0:
+                    self.logger.warning(
+                        "SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED) "
+                        "returned 0 (failed); host sleep may not be suppressed"
+                    )
                 if self._stop.wait(self._reassert_seconds):
+                    # LOW-3: clear from THIS thread -- the same one that asserted
+                    # the flag -- since SetThreadExecutionState is thread-scoped.
+                    clear_result = setter(ES_CONTINUOUS)
+                    if clear_result == 0:
+                        self.logger.warning(
+                            "SetThreadExecutionState(ES_CONTINUOUS) clear returned 0 "
+                            "(failed)"
+                        )
                     return
 
         self._thread = threading.Thread(target=_run, name="pod-keep-awake", daemon=True)
@@ -1081,8 +1124,6 @@ class KeepAwake:
         self._stop.set()
         self._thread.join(timeout=5.0)
         self._thread = None
-        if self._set_execution_state is not None:
-            self._set_execution_state(ES_CONTINUOUS)
         self.logger.info("keep-awake disarmed")
 
 
@@ -2881,18 +2922,21 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
     # to the host (or the host process is killed outright) -- nothing would ever
     # again ask this pod to stop billing. This backgrounded, detached loop sleeps
     # `max_minutes + 10` minutes past the harness's own ceiling, then self-terminates
-    # regardless of whether the host is still listening. RunPod injects
-    # `RUNPOD_POD_ID` into every pod, but NOT a pod-scoped API credential by default
-    # (GUARDRAILS #5: never bake a real API key into the manifest, so this bootstrap
-    # never sets one either) -- `RUNPOD_API_KEY` is only present if the operator
-    # configured it themselves via RunPod's own pod-env-var mechanism, outside this
-    # manifest. When it is, `runpodctl remove pod` actually stops GPU billing.
-    # Otherwise the honest fallback is `shutdown -h now`: it reliably stops the
-    # ComfyUI process (and everything else) inside the container, which is the most
-    # this bootstrap can do without a credential it deliberately does not carry, but
-    # for most RunPod pod types is NOT guaranteed to stop the platform from billing
-    # the still-allocated GPU the way an explicit `remove pod` call is -- see
-    # RUNBOOK.md's budget-rules note.
+    # regardless of whether the host is still listening. RunPod DOES inject both
+    # `RUNPOD_POD_ID` and a pod-scoped `RUNPOD_API_KEY` into every pod by default, and
+    # preinstalls `runpodctl` (docs.runpod.io/pods/references/environment-variables;
+    # runpodctl overview) -- this bootstrap still never bakes a real key into the
+    # manifest itself (GUARDRAILS #5); it only ever reads the one RunPod already put
+    # in the pod's own environment, via a literal `$RUNPOD_API_KEY` shell reference.
+    # The chain below tries progressively cruder ways to actually stop GPU billing --
+    # `remove pod` (terminates and stops billing), then `stop pod` (stops the pod,
+    # which also ends GPU billing, without deleting it), then the newer `runpodctl
+    # pod delete`/`runpodctl pod stop` subcommand spelling some CLI versions use
+    # instead of the legacy `remove pod`/`stop pod` form -- before falling back to a
+    # bare `shutdown -h now`. That fallback reliably stops the ComfyUI process (and
+    # everything else) inside the container, but for most RunPod pod types is NOT
+    # guaranteed to stop the platform from billing the still-allocated GPU the way an
+    # explicit `runpodctl` call is -- see RUNBOOK.md's budget-rules note.
     dead_man_seconds = int(round((max_minutes + 10) * 60))
     dead_man_body = (
         'printf "DEADMAN firing after %ss (max_minutes+10 margin)\\n" '
@@ -2904,16 +2948,51 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
         'if runpodctl remove pod "$RUNPOD_POD_ID" >>"$BOOTSTRAP_LOG" 2>&1; then '
         'printf "DEADMAN runpodctl remove succeeded\\n" >>"$BOOTSTRAP_LOG" 2>&1; '
         'exit 0; fi; '
-        'printf "DEADMAN runpodctl remove failed; falling back to shutdown -h now\\n" '
-        '>>"$BOOTSTRAP_LOG" 2>&1; '
+        'printf "DEADMAN runpodctl remove failed; trying runpodctl stop pod %s\\n" '
+        '"$RUNPOD_POD_ID" >>"$BOOTSTRAP_LOG" 2>&1; '
+        'if runpodctl stop pod "$RUNPOD_POD_ID" >>"$BOOTSTRAP_LOG" 2>&1; then '
+        'printf "DEADMAN runpodctl stop succeeded (GPU billing ended)\\n" '
+        '>>"$BOOTSTRAP_LOG" 2>&1; exit 0; fi; '
+        'printf "DEADMAN runpodctl stop failed; trying newer-CLI runpodctl pod delete '
+        '%s\\n" "$RUNPOD_POD_ID" >>"$BOOTSTRAP_LOG" 2>&1; '
+        'if runpodctl pod delete "$RUNPOD_POD_ID" >>"$BOOTSTRAP_LOG" 2>&1; then '
+        'printf "DEADMAN runpodctl pod delete succeeded\\n" >>"$BOOTSTRAP_LOG" 2>&1; '
+        'exit 0; fi; '
+        'printf "DEADMAN runpodctl pod delete failed; trying runpodctl pod stop '
+        '%s\\n" "$RUNPOD_POD_ID" >>"$BOOTSTRAP_LOG" 2>&1; '
+        'if runpodctl pod stop "$RUNPOD_POD_ID" >>"$BOOTSTRAP_LOG" 2>&1; then '
+        'printf "DEADMAN runpodctl pod stop succeeded (GPU billing ended)\\n" '
+        '>>"$BOOTSTRAP_LOG" 2>&1; exit 0; fi; '
+        'printf "DEADMAN all runpodctl attempts failed; falling back to shutdown -h '
+        'now\\n" >>"$BOOTSTRAP_LOG" 2>&1; '
         'else printf "DEADMAN no pod-scoped runpodctl credential available '
-        '(RUNPOD_API_KEY unset); falling back to shutdown -h now\\n" '
-        '>>"$BOOTSTRAP_LOG" 2>&1; fi; '
+        '(runpodctl absent or RUNPOD_API_KEY unset); falling back to shutdown -h '
+        'now\\n" >>"$BOOTSTRAP_LOG" 2>&1; fi; '
         'shutdown -h now >>"$BOOTSTRAP_LOG" 2>&1 || true'
     )
+    volume_root = str(manifest.get("volume_mount_path", "/workspace"))
+    deadman_epoch_file = shlex.quote(volume_root.rstrip("/") + "/.deadman_epoch")
     lines.extend([
         f"DEAD_MAN_SECONDS={dead_man_seconds}",
-        f'( sleep "$DEAD_MAN_SECONDS"; {dead_man_body} ) & disown',
+        'if command -v runpodctl >/dev/null 2>&1; then RUNPODCTL_PRESENCE=present; '
+        'else RUNPODCTL_PRESENCE=absent; fi',
+        'if [ -n "${RUNPOD_API_KEY:-}" ]; then API_KEY_PRESENCE=present; '
+        'else API_KEY_PRESENCE=absent; fi',
+        'log_line "dead-man: runpodctl=$RUNPODCTL_PRESENCE api_key=$API_KEY_PRESENCE"',
+        # MEDIUM-2: a container restart (e.g. the bootstrap re-runs after a crash)
+        # must not hand the dead-man switch a fresh `max_minutes + 10` budget --
+        # that would let it keep re-arming forever and never actually fire. Persist
+        # the FIRST start's epoch (write-once: only when the file is still absent)
+        # and sleep only the time remaining against it, so a restart picks up where
+        # the original countdown left off instead of restarting it.
+        f"DEADMAN_EPOCH_FILE={deadman_epoch_file}",
+        'if [ ! -f "$DEADMAN_EPOCH_FILE" ]; then date +%s > "$DEADMAN_EPOCH_FILE"; fi',
+        'DEADMAN_EPOCH="$(cat "$DEADMAN_EPOCH_FILE")"',
+        'DEADMAN_ELAPSED=$(( $(date +%s) - DEADMAN_EPOCH ))',
+        'DEADMAN_REMAINING=$((DEAD_MAN_SECONDS - DEADMAN_ELAPSED))',
+        'if [ "$DEADMAN_REMAINING" -lt 0 ]; then DEADMAN_REMAINING=0; fi',
+        'log_line "dead-man: epoch=$DEADMAN_EPOCH elapsed=${DEADMAN_ELAPSED}s remaining=${DEADMAN_REMAINING}s"',
+        f'( sleep "$DEADMAN_REMAINING"; {dead_man_body} ) & disown',
     ])
     lines.extend([
         "run_required() { label=\"$1\"; shift; \"$@\" >>\"$BOOTSTRAP_LOG\" 2>&1; rc=$?; log_line \"STEP $label rc=$rc\"; if [ \"$rc\" -ne 0 ]; then fatal \"$label failed with rc=$rc\" \"$rc\"; fi; }",
@@ -3136,47 +3215,86 @@ class _SocketCapture:
             pass
 
 
+if requests is not None:
+    class _CapturingHTTPAdapter(requests.adapters.HTTPAdapter):
+        """`HTTPAdapter` that hooks the exact pool `send()` resolves for THIS
+        request, not a guessed lookup. `PoolManager.connection_from_url(url)`
+        (the previous approach) returns a *different* `HTTPConnectionPool`
+        object than the one `HTTPAdapter.send()` actually uses internally
+        (via `get_connection_with_tls_context`) -- confirmed live: `pool.py`
+        showed `same pool: False`, and its adapter-selection loop picks the
+        `"https://"` adapter first even for an `http://` URL, so the wrong
+        adapter's pool was inspected too. Overriding
+        `get_connection_with_tls_context` -- the method `send()` itself calls
+        to obtain the pool -- guarantees identity with the pool actually used,
+        for both schemes and both adapters."""
+
+        def __init__(self, *args: Any, capture: "_SocketCapture", **kwargs: Any) -> None:
+            self._capture = capture
+            super().__init__(*args, **kwargs)
+
+        def get_connection_with_tls_context(self, request, verify, proxies=None, cert=None):
+            pool = super().get_connection_with_tls_context(
+                request, verify, proxies=proxies, cert=cert,
+            )
+            capture = self._capture
+            original_new_conn = pool._new_conn
+
+            def _new_conn_capturing():
+                conn = original_new_conn()
+                original_connect = conn.connect
+
+                def _connect_capturing():
+                    original_connect()
+                    capture.set(getattr(conn, "sock", None))
+
+                conn.connect = _connect_capturing
+                return conn
+
+            pool._new_conn = _new_conn_capturing
+            return pool
+else:  # pragma: no cover - offline/dry-run only, `requests` not installed
+    _CapturingHTTPAdapter = None  # type: ignore[assignment,misc]
+
+
 def _post_capturing_socket(
         session: Any, url: str, *, files: Any, data: Any, timeout: float,
         capture: "_SocketCapture") -> Any:
-    """`session.post(...)`, wiring `capture` to the socket urllib3 opens for this
-    request. Only a real `requests.Session` exposes the adapter/pool machinery this
-    needs; a duck-typed test double just posts directly -- there is no live socket
-    to capture, and nothing past the fake's own behavior that could hang."""
-    poolmanager = None
-    adapters = getattr(session, "adapters", None)
-    if requests is not None and isinstance(session, requests.Session) and adapters:
-        for prefix in ("https://", "http://"):
-            adapter = adapters.get(prefix)
-            if adapter is not None and hasattr(adapter, "poolmanager"):
-                poolmanager = adapter.poolmanager
-                break
-    if poolmanager is None:
+    """A FRESH `requests.Session()` per call, mounted with `_CapturingHTTPAdapter`,
+    wired to `capture` the socket urllib3 opens for this request.
+
+    A fresh session is not just belt-and-suspenders: an *empty* pool guarantees
+    `HTTPConnectionPool._new_conn` actually runs. `reuse.py`'s repro showed a
+    reused (keep-alive) connection on an already-used session never calls
+    `_new_conn` at all -- capture stayed unset even with the pool-identity fix
+    above -- because urlopen only calls it when the pool has no free connection
+    to hand back. A brand-new session's pool is always empty on its first (and
+    only) request, so this path is always taken.
+
+    Copies `trust_env` and headers from `session` so the fresh session carries
+    the same no-credential-discovery posture as the caller's; does not reuse
+    `session`'s connections (that's the point). Only a real `requests.Session`
+    exposes the adapter/pool machinery this needs; a duck-typed test double
+    just posts directly on the ORIGINAL session -- there is no live socket to
+    capture, and nothing past the fake's own behavior that could hang."""
+    if requests is None or not isinstance(session, requests.Session) or _CapturingHTTPAdapter is None:
         return session.post(url, files=files, data=data, timeout=timeout)
-    pool = poolmanager.connection_from_url(url)
-    original_new_conn = pool._new_conn
-
-    def _new_conn_capturing():
-        conn = original_new_conn()
-        original_connect = conn.connect
-
-        def _connect_capturing():
-            original_connect()
-            capture.set(getattr(conn, "sock", None))
-
-        conn.connect = _connect_capturing
-        return conn
-
-    pool._new_conn = _new_conn_capturing
+    fresh = requests.Session()
+    fresh.trust_env = getattr(session, "trust_env", True)
+    fresh.headers.update(getattr(session, "headers", {}) or {})
+    adapter = _CapturingHTTPAdapter(capture=capture)
+    fresh.mount("http://", adapter)
+    fresh.mount("https://", adapter)
     try:
-        return session.post(url, files=files, data=data, timeout=timeout)
+        return fresh.post(url, files=files, data=data, timeout=timeout)
     finally:
-        pool._new_conn = original_new_conn
+        fresh.close()
 
 
 def _post_with_hard_deadline(
         session: Any, url: str, *, files: Any, data: Any, timeout: float,
-        logger: logging.Logger, label: str) -> Any:
+        logger: logging.Logger, label: str,
+        _worker_handle: list[threading.Thread] | None = None) -> Any:
     """Run `session.post(...)` under a hard wall-clock bound.
 
     `requests`' own `timeout` argument bounds connect and each individual read, but
@@ -3191,12 +3309,15 @@ def _post_with_hard_deadline(
     Running the POST on a worker thread and giving the *whole call* a hard,
     suspend-proof join (`_sliced_deadline_wait`, sized with headroom via
     `_post_join_timeout` -- LOW-1) bounds it regardless of where the stall is or
-    whether the host slept through part of it. On expiry the captured socket is
-    shut down directly (HIGH-1) and the session is also closed as a second,
-    best-effort line of defense; the worker thread is daemon and otherwise
-    abandoned, never left holding a live socket past process exit. The stall is
-    reported as a TransientProxyError so the existing 3-attempt loop in
-    `retry_transient_proxy` retries it exactly like any other transient failure.
+    whether the host slept through part of it. `_post_capturing_socket` (HIGH-1)
+    gives that worker's request its OWN fresh `requests.Session()`, so on expiry
+    the captured socket can be shut down directly to unblock the worker; the
+    original caller-supplied `session` (which never made this request) is also
+    closed as a harmless, best-effort second step. The worker thread is daemon
+    and otherwise abandoned, never left holding a live socket past process
+    exit. The stall is reported as a TransientProxyError so the existing
+    3-attempt loop in `retry_transient_proxy` retries it exactly like any other
+    transient failure.
     """
     outcome: dict[str, Any] = {}
     capture = _SocketCapture()
@@ -3210,6 +3331,8 @@ def _post_with_hard_deadline(
             outcome["error"] = exc
 
     worker = threading.Thread(target=_worker, name=f"{label}-post", daemon=True)
+    if _worker_handle is not None:
+        _worker_handle.append(worker)  # test hook: HIGH-1 -- prove the WORKER dies too
     worker.start()
 
     def _join_poll(seconds: float) -> bool:
@@ -4881,10 +5004,6 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                     retain_finalization_failure("bootstrap-failure.json write", secondary)
     finally:
         try:
-            keep_awake.disarm()
-        except BaseException as secondary:
-            retain_finalization_failure("keep-awake disarm", secondary)
-        try:
             if proxy_client is not None:
                 close_proxy = getattr(proxy_client, "close", None)
                 if callable(close_proxy):
@@ -4992,6 +5111,14 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
             run_directory_lock.release()
         except BaseException as secondary:
             retain_finalization_failure("recovery run-directory lock release", secondary)
+        # LOW-1: keep the host awake through every other teardown step -- watchdog
+        # stop, the pod-termination `lease.close()`, and all bookkeeping above -- and
+        # disarm last, so nothing in this `finally` can race a host that goes back to
+        # sleep the moment keep-awake is lifted.
+        try:
+            keep_awake.disarm()
+        except BaseException as secondary:
+            retain_finalization_failure("keep-awake disarm", secondary)
     if caught is None and not result["termination_verified"]:
         caught = PodStillRunning(f"POD STILL RUNNING {result['pod_id'] or 'UNKNOWN'}")
     if caught:

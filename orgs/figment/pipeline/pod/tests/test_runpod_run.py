@@ -2982,6 +2982,75 @@ def test_sliced_deadline_wait_is_suspend_proof_via_a_dual_clock_check():
     assert outcome["result"] is False
 
 
+def test_sliced_deadline_wait_grace_absorbs_a_small_forward_ntp_step():
+    """LOW-2: an ordinary forward NTP step (no suspend) must not fire the wait
+    early just because the wall clock alone looks past its deadline -- only a
+    skew bigger than `WALL_CLOCK_GRACE_SECONDS` should matter. Monotonic still
+    has plenty of budget left, and the wall step here (90s) is comfortably
+    inside the 120s grace, so the wait must complete normally (poll returns
+    True) rather than being reported as expired."""
+    monotonic_value = [0.0]
+    wall_value = [0.0]
+
+    def poll(_seconds):
+        return True  # completes on the first slice
+
+    result = rr._sliced_deadline_wait(
+        total_seconds=10.0, poll=poll, slice_seconds=0.02,
+        monotonic=lambda: monotonic_value[0], wall_clock=lambda: wall_value[0],
+    )
+    assert result is True
+
+    # Now step the wall clock forward by less than the grace, with barely any
+    # monotonic time spent -- still well within budget on both clocks once the
+    # grace is applied, so the wait must not be reported as already expired.
+    wall_value[0] += 90.0
+
+    def poll_records(_seconds):
+        outcome_calls.append(_seconds)
+        return True
+
+    outcome_calls: list = []
+    result2 = rr._sliced_deadline_wait(
+        total_seconds=10.0, poll=poll_records, slice_seconds=0.02,
+        monotonic=lambda: monotonic_value[0], wall_clock=lambda: wall_value[0],
+    )
+    assert result2 is True
+    assert outcome_calls, "wait returned False (expired) instead of polling"
+
+
+def test_sliced_deadline_wait_logs_skew_once_and_again_only_past_the_change_threshold():
+    """LOW-2: a long wait under a sustained skew must not re-log a warning on
+    every 15s-ish slice -- only once initially, and again once the skew has
+    moved by at least SKEW_LOG_CHANGE_THRESHOLD_SECONDS."""
+    monotonic_value = [0.0]
+    wall_value = [200.0]
+    calls = {"n": 0}
+
+    def poll(_seconds):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            wall_value[0] += 200.0  # opens a 200s skew -- must log (first time)
+            return False
+        if calls["n"] == 2:
+            wall_value[0] += 10.0  # skew moves by only 10s -- must NOT log again
+            return False
+        if calls["n"] == 3:
+            wall_value[0] += 100.0  # skew moves by 110s (>= 60) -- must log again
+            return False
+        return True  # stop on the fifth slice
+
+    logger, stream = logger_and_stream()
+    result = rr._sliced_deadline_wait(
+        total_seconds=1_000_000.0, poll=poll, slice_seconds=0.02,
+        monotonic=lambda: monotonic_value[0], wall_clock=lambda: wall_value[0],
+        logger=logger,
+    )
+    assert result is True
+    warnings = [ln for ln in stream.getvalue().splitlines() if "skew" in ln]
+    assert len(warnings) == 2, warnings
+
+
 def test_watchdog_suspend_proof_deadline_fires_on_the_next_slice_after_a_clock_jump():
     """BLOCKER-1: the 09-21 pod ran 252 minutes against a 185-minute ceiling and the
     watchdog never logged, because its one long relative `Event.wait(seconds)` does
@@ -3046,6 +3115,50 @@ def test_keep_awake_arms_and_disarms_around_a_lifecycle_including_the_exception_
     assert calls[-1] == rr.ES_CONTINUOUS
 
 
+def test_keep_awake_warns_when_set_thread_execution_state_returns_zero():
+    """LOW-3: a 0 return from SetThreadExecutionState means the call failed (per
+    the Win32 docs) -- silently ignoring that leaves the host free to sleep with
+    no signal anything went wrong. Both the assert call and the clear call must
+    warn on failure."""
+    logger, stream = logger_and_stream()
+    keep_awake = rr.KeepAwake(
+        logger, set_execution_state=lambda flags: 0,  # always "fails"
+        reassert_seconds=0.02,
+    )
+    keep_awake.arm()
+    time.sleep(0.08)
+    keep_awake.disarm()
+
+    warnings = stream.getvalue()
+    assert "SetThreadExecutionState" in warnings
+    assert "returned 0" in warnings or "clear returned 0" in warnings
+
+
+def test_keep_awake_clears_the_flag_from_the_same_thread_that_asserted_it():
+    """LOW-3: SetThreadExecutionState is thread-scoped, so the clearing call
+    (ES_CONTINUOUS alone) must be made from the SAME thread that made the
+    asserting call (ES_CONTINUOUS | ES_SYSTEM_REQUIRED), never from disarm()'s
+    caller thread."""
+    thread_ids: list = []
+    logger, _stream = logger_and_stream()
+
+    def recording_setter(flags):
+        thread_ids.append(threading.current_thread().ident)
+        return 1
+
+    keep_awake = rr.KeepAwake(
+        logger, set_execution_state=recording_setter, reassert_seconds=0.02,
+    )
+    keep_awake.arm()
+    time.sleep(0.05)
+    disarm_thread_id = threading.current_thread().ident
+    keep_awake.disarm()
+
+    assert thread_ids, "setter was never called"
+    assert len(set(thread_ids)) == 1, "assert and clear ran on different threads"
+    assert thread_ids[0] != disarm_thread_id
+
+
 def test_keep_awake_is_a_no_op_off_windows(monkeypatch):
     monkeypatch.setattr(rr.sys, "platform", "linux")
     logger, _stream = logger_and_stream()
@@ -3073,6 +3186,24 @@ def test_run_harness_arms_and_disarms_keep_awake_even_when_the_run_raises(
 
     monkeypatch.setattr(rr, "KeepAwake", RecordingKeepAwake)
 
+    # LOW-1: keep-awake must disarm LAST -- strictly after the watchdog is stopped
+    # and the pod's own `lease.close()` teardown call -- so record those too.
+    original_watchdog_stop = rr.Watchdog.stop
+
+    def recording_watchdog_stop(self, timeout=None):
+        events.append("watchdog-stop")
+        return original_watchdog_stop(self, timeout)
+
+    monkeypatch.setattr(rr.Watchdog, "stop", recording_watchdog_stop)
+
+    original_lease_close = rr.PodLease.close
+
+    def recording_lease_close(self):
+        events.append("lease-close")
+        return original_lease_close(self)
+
+    monkeypatch.setattr(rr.PodLease, "close", recording_lease_close)
+
     class SlowUploadComfy(FakeComfy):
         def upload_file(self, local_path, subfolder, _overwrite):
             time.sleep(0.5)
@@ -3089,7 +3220,12 @@ def test_run_harness_arms_and_disarms_keep_awake_even_when_the_run_raises(
             allow_empty_ledger=True,
         )
 
-    assert events == ["arm", "disarm"]
+    assert events[0] == "arm"
+    assert events[-1] == "disarm"
+    assert "watchdog-stop" in events
+    assert events.index("watchdog-stop") < events.index("disarm")
+    if "lease-close" in events:
+        assert events.index("lease-close") < events.index("disarm")
 
 
 def test_bootstrap_script_contains_a_pod_side_dead_man_switch_sized_to_max_minutes():
@@ -3127,6 +3263,81 @@ def test_bootstrap_script_never_bakes_a_real_runpod_api_key_into_the_dead_man_sw
     assert '${RUNPOD_API_KEY:-}' in script
 
 
+def test_dead_man_switch_tries_an_ordered_chain_and_logs_credential_presence_only():
+    """MEDIUM-1: RunPod DOES inject a pod-scoped `RUNPOD_API_KEY` and preinstalls
+    `runpodctl` by default (docs.runpod.io/pods/references/environment-variables;
+    runpodctl overview) -- the dead-man switch should actually try to stop billing
+    via the CLI, in an ordered chain, before ever falling back to a bare shutdown.
+    It should also log runpodctl/API-key PRESENCE at bootstrap start (never the
+    key's value) so a failure to fire is diagnosable from `_bootstrap.log` alone."""
+    secret = "ambient-runpod-key-must-not-enter-the-dead-man-switch"
+    script = rr.bootstrap_script(manifest())
+
+    # Presence-only log line, emitted early (bootstrap start), never the key value.
+    assert 'log_line "dead-man: runpodctl=$RUNPODCTL_PRESENCE api_key=$API_KEY_PRESENCE"' in script
+    assert secret not in script
+
+    # The ordered chain: remove -> stop -> newer-CLI spellings -> shutdown fallback,
+    # each attempt strictly after the previous one's failure branch in script order.
+    remove_idx = script.index('runpodctl remove pod "$RUNPOD_POD_ID"')
+    stop_idx = script.index('runpodctl stop pod "$RUNPOD_POD_ID"')
+    pod_delete_idx = script.index('runpodctl pod delete "$RUNPOD_POD_ID"')
+    pod_stop_idx = script.index('runpodctl pod stop "$RUNPOD_POD_ID"')
+    shutdown_idx = script.rindex('shutdown -h now')
+    assert remove_idx < stop_idx < pod_delete_idx < pod_stop_idx < shutdown_idx
+
+
+def test_dead_man_epoch_persists_across_a_rerun_and_sleeps_only_the_remainder(tmp_path):
+    """MEDIUM-2: a container restart must not hand the dead-man switch a fresh
+    countdown -- it should persist the FIRST start's epoch to
+    `<volume>/.deadman_epoch` (write-once) and sleep only what remains of the
+    original `max_minutes + 10` budget. Exercised as real bash (Git Bash) against a
+    temp directory standing in for /workspace, since this is pure shell logic with
+    no pod/network dependency."""
+    bash = shutil.which("bash")
+    if not bash:
+        pytest.skip("bash (Git Bash) not on PATH")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    workspace_posix = "/" + str(workspace).replace("\\", "/").lstrip("/")
+    if len(workspace_posix) > 2 and workspace_posix[2] == ":":
+        # Windows "C:/..." -> Git Bash "/c/..." style, but a plain POSIX-looking
+        # path also works fine as a literal directory under Git Bash on Windows;
+        # keep it simple and just use the drive-letter form bash understands too.
+        workspace_posix = "/" + workspace_posix[1].lower() + workspace_posix[3:]
+
+    m = manifest()
+    m["volume_mount_path"] = workspace_posix
+    script = rr.bootstrap_script(m, None, 0.1)  # small max_minutes -> small budget
+
+    start_marker = "DEAD_MAN_SECONDS="
+    end_marker = '( sleep "$DEADMAN_REMAINING"'
+    snippet = script[script.index(start_marker):script.index(end_marker)]
+    snippet += 'echo "REMAINING=$DEADMAN_REMAINING EPOCH=$DEADMAN_EPOCH"\n'
+    harness = (
+        "log_line() { :; }\n"  # stub: the real log_line isn't defined in this slice
+        + snippet
+    )
+
+    first = subprocess.run([bash, "-c", harness], capture_output=True, text=True, timeout=10)
+    assert first.returncode == 0, first.stderr
+    first_line = [ln for ln in first.stdout.splitlines() if ln.startswith("REMAINING=")][0]
+    first_remaining = int(first_line.split()[0].split("=")[1])
+    first_epoch = int(first_line.split()[1].split("=")[1])
+    assert (workspace / ".deadman_epoch").exists()
+
+    time.sleep(1.1)
+    second = subprocess.run([bash, "-c", harness], capture_output=True, text=True, timeout=10)
+    assert second.returncode == 0, second.stderr
+    second_line = [ln for ln in second.stdout.splitlines() if ln.startswith("REMAINING=")][0]
+    second_remaining = int(second_line.split()[0].split("=")[1])
+    second_epoch = int(second_line.split()[1].split("=")[1])
+
+    assert second_epoch == first_epoch, "epoch was not persisted across the rerun"
+    assert second_remaining < first_remaining, "remaining budget did not shrink -- countdown restarted"
+
+
 def test_hard_deadline_unblocks_a_real_hung_socket_and_a_fresh_attempt_then_succeeds(
         monkeypatch):
     """HIGH-1, reproduced live: the worker thread was still alive 20s after
@@ -3134,8 +3345,9 @@ def test_hard_deadline_unblocks_a_real_hung_socket_and_a_fresh_attempt_then_succ
     only closes IDLE pooled connections, never one a worker thread is actively
     blocked sending on. A real localhost server that accepts but never reads proves
     the fix at the socket level: the worker must be dead within a few seconds of the
-    hard deadline, and a fresh attempt (HIGH-1: each attempt gets its own Session)
-    against a server that DOES respond must then succeed."""
+    hard deadline, and a fresh attempt (HIGH-1: each POST gets its own fresh
+    Session, at the `_post_capturing_socket` level) against a server that DOES
+    respond must then succeed."""
     monkeypatch.setattr(rr, "_post_join_timeout", lambda per_read_timeout: per_read_timeout)
     logger, _stream = logger_and_stream()
 
@@ -3161,6 +3373,7 @@ def test_hard_deadline_unblocks_a_real_hung_socket_and_a_fresh_attempt_then_succ
     session.trust_env = False
     big_payload = b"x" * (64 * 1024 * 1024)  # large enough to fill socket buffers
     result_holder: dict = {}
+    worker_handle: list = []
 
     def _call() -> None:
         try:
@@ -3168,6 +3381,7 @@ def test_hard_deadline_unblocks_a_real_hung_socket_and_a_fresh_attempt_then_succ
                 session, f"http://127.0.0.1:{hang_port}/upload/image",
                 files={"image": ("f.bin", io.BytesIO(big_payload))}, data={},
                 timeout=1.0, logger=logger, label="test-hang",
+                _worker_handle=worker_handle,
             )
         except BaseException as exc:  # noqa: BLE001
             result_holder["error"] = exc
@@ -3180,10 +3394,21 @@ def test_hard_deadline_unblocks_a_real_hung_socket_and_a_fresh_attempt_then_succ
     caller.join(6.0)
     elapsed = time.monotonic() - started
 
-    assert not caller.is_alive(), "worker thread was not unblocked by the socket shutdown"
+    assert not caller.is_alive(), "caller thread did not return by its own deadline"
     assert elapsed < 6.0
     assert isinstance(result_holder.get("error"), rr.TransientProxyError)
     assert "hard deadline" in str(result_holder["error"])
+
+    # HIGH-1: the caller returning only proves `_post_with_hard_deadline` gave up
+    # on the join -- it does NOT by itself prove the abandoned WORKER thread (the
+    # one actually blocked inside the socket send) was ever unblocked. Assert the
+    # worker itself dies shortly after, which only happens if the captured socket
+    # was really shut down.
+    assert len(worker_handle) == 1, "worker thread handle was not captured"
+    worker = worker_handle[0]
+    worker.join(3.0)
+    assert not worker.is_alive(), "worker thread was not unblocked by the socket shutdown"
+
     hang_server.close()
     hang_thread.join(timeout=2.0)
 

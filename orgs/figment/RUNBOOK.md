@@ -221,7 +221,10 @@ digests, it is left alone rather than rebuilt on every `pipeline` call.
 - **Pods self-terminate at `max_minutes + 10` even if the host sleeps** (2026-09-22): the
   host is kept awake and the ceiling is suspend-proof for as long as it's running, but the
   pod also carries its own independent dead-man switch as a backstop for a host that never
-  comes back at all — see GUARDRAILS.md #6.
+  comes back at all. RunPod injects a pod-scoped `RUNPOD_API_KEY` and preinstalls `runpodctl`
+  by default, so its normal path (`runpodctl remove`/`stop pod`, then the newer `pod
+  delete`/`pod stop` spelling) actually stops GPU billing; a bare `shutdown -h now` is only
+  the last-resort fallback — see GUARDRAILS.md #6.
 - **The qwen3vl caption pod ($1.95 ceiling, `caption` stage profile) is NOT in the
   plan-time preflight table.** `caption_mode: "qwen3vl"` only dispatches its pod later,
   from inside `apply-rulings --stage dataset` (`_live_qwen3vl_job_runner`) — `plan` never
