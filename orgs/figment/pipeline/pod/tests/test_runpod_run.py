@@ -2982,41 +2982,66 @@ def test_sliced_deadline_wait_is_suspend_proof_via_a_dual_clock_check():
     assert outcome["result"] is False
 
 
-def test_sliced_deadline_wait_grace_absorbs_a_small_forward_ntp_step():
-    """LOW-2: an ordinary forward NTP step (no suspend) must not fire the wait
-    early just because the wall clock alone looks past its deadline -- only a
-    skew bigger than `WALL_CLOCK_GRACE_SECONDS` should matter. Monotonic still
-    has plenty of budget left, and the wall step here (90s) is comfortably
-    inside the 120s grace, so the wait must complete normally (poll returns
-    True) rather than being reported as expired."""
+def test_sliced_deadline_wait_grace_absorbs_a_90s_forward_step_taken_mid_wait():
+    """LOW-1/LOW-2: an ordinary forward NTP step (no suspend) must not fire the
+    wait early just because the wall clock alone looks past its deadline --
+    only a skew bigger than `WALL_CLOCK_GRACE_SECONDS` should matter. The step
+    is applied FROM THE POLL CALLBACK, on the first slice, jumping the wall
+    clock straight past its own deadline by 90s -- comfortably inside the
+    120s grace -- while monotonic is left untouched and so still has its full
+    budget. This exercises the grace actually keeping a single wait alive
+    mid-flight (a prior version of this test took two separate waits and
+    stepped the wall clock only between them, never touching the grace logic
+    at all -- it passed even with WALL_CLOCK_GRACE_SECONDS monkeypatched to
+    0, proving nothing). The paired test below pins WALL_CLOCK_GRACE_SECONDS
+    to 0 and asserts this same scenario then fails."""
     monotonic_value = [0.0]
     wall_value = [0.0]
+    calls = {"n": 0}
 
     def poll(_seconds):
-        return True  # completes on the first slice
+        calls["n"] += 1
+        if calls["n"] == 1:
+            # First slice past the nominal 10s deadline: an NTP-style forward
+            # step of 90s, landing the raw wall clock 90s beyond its own
+            # deadline. Monotonic is not touched, so it still has its full
+            # 10s of headroom.
+            wall_value[0] = 10.0 + 90.0
+            return False
+        return True
 
     result = rr._sliced_deadline_wait(
         total_seconds=10.0, poll=poll, slice_seconds=0.02,
         monotonic=lambda: monotonic_value[0], wall_clock=lambda: wall_value[0],
     )
     assert result is True
+    assert calls["n"] == 2, "wait ended before poll got a second slice to complete it"
 
-    # Now step the wall clock forward by less than the grace, with barely any
-    # monotonic time spent -- still well within budget on both clocks once the
-    # grace is applied, so the wait must not be reported as already expired.
-    wall_value[0] += 90.0
 
-    def poll_records(_seconds):
-        outcome_calls.append(_seconds)
+def test_sliced_deadline_wait_grace_absorbs_a_90s_forward_step__fails_at_zero_grace(
+        monkeypatch):
+    """LOW-1: pins that the test above actually depends on the grace. Forcing
+    WALL_CLOCK_GRACE_SECONDS to 0 makes the same 90s mid-wait step read as
+    fully expired (remaining = -90) on the very next slice, so the wait
+    returns False and poll never gets its second call."""
+    monkeypatch.setattr(rr, "WALL_CLOCK_GRACE_SECONDS", 0.0)
+    monotonic_value = [0.0]
+    wall_value = [0.0]
+    calls = {"n": 0}
+
+    def poll(_seconds):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            wall_value[0] = 10.0 + 90.0
+            return False
         return True
 
-    outcome_calls: list = []
-    result2 = rr._sliced_deadline_wait(
-        total_seconds=10.0, poll=poll_records, slice_seconds=0.02,
+    result = rr._sliced_deadline_wait(
+        total_seconds=10.0, poll=poll, slice_seconds=0.02,
         monotonic=lambda: monotonic_value[0], wall_clock=lambda: wall_value[0],
     )
-    assert result2 is True
-    assert outcome_calls, "wait returned False (expired) instead of polling"
+    assert result is False
+    assert calls["n"] == 1
 
 
 def test_sliced_deadline_wait_logs_skew_once_and_again_only_past_the_change_threshold():
@@ -3319,16 +3344,17 @@ def test_dead_man_epoch_persists_across_a_rerun_and_sleeps_only_the_remainder(tm
         "log_line() { :; }\n"  # stub: the real log_line isn't defined in this slice
         + snippet
     )
+    env = dict(os.environ, RUNPOD_POD_ID="pod-aaa")
 
-    first = subprocess.run([bash, "-c", harness], capture_output=True, text=True, timeout=10)
+    first = subprocess.run([bash, "-c", harness], capture_output=True, text=True, timeout=10, env=env)
     assert first.returncode == 0, first.stderr
     first_line = [ln for ln in first.stdout.splitlines() if ln.startswith("REMAINING=")][0]
     first_remaining = int(first_line.split()[0].split("=")[1])
     first_epoch = int(first_line.split()[1].split("=")[1])
-    assert (workspace / ".deadman_epoch").exists()
+    assert (workspace / ".deadman_epoch.pod-aaa").exists()
 
     time.sleep(1.1)
-    second = subprocess.run([bash, "-c", harness], capture_output=True, text=True, timeout=10)
+    second = subprocess.run([bash, "-c", harness], capture_output=True, text=True, timeout=10, env=env)
     assert second.returncode == 0, second.stderr
     second_line = [ln for ln in second.stdout.splitlines() if ln.startswith("REMAINING=")][0]
     second_remaining = int(second_line.split()[0].split("=")[1])
@@ -3336,6 +3362,128 @@ def test_dead_man_epoch_persists_across_a_rerun_and_sleeps_only_the_remainder(tm
 
     assert second_epoch == first_epoch, "epoch was not persisted across the rerun"
     assert second_remaining < first_remaining, "remaining budget did not shrink -- countdown restarted"
+
+
+def _deadman_snippet(m):
+    """Shared harness slice: bootstrap_script's dead-man epoch block plus an
+    echo of the resulting remaining/epoch, with `log_line` stubbed out."""
+    script = rr.bootstrap_script(m, None, 0.1)
+    start_marker = "DEAD_MAN_SECONDS="
+    end_marker = '( sleep "$DEADMAN_REMAINING"'
+    snippet = script[script.index(start_marker):script.index(end_marker)]
+    snippet += 'echo "REMAINING=$DEADMAN_REMAINING EPOCH=$DEADMAN_EPOCH"\n'
+    return "log_line() { :; }\n" + snippet
+
+
+def _run_deadman(bash, harness, env, extra_env=None):
+    full_env = dict(env)
+    if extra_env:
+        full_env.update(extra_env)
+    result = subprocess.run([bash, "-c", harness], capture_output=True, text=True, timeout=10, env=full_env)
+    assert result.returncode == 0, result.stderr
+    line = [ln for ln in result.stdout.splitlines() if ln.startswith("REMAINING=")][0]
+    remaining = int(line.split()[0].split("=")[1])
+    epoch = line.split()[1].split("=")[1]
+    return remaining, epoch
+
+
+def test_dead_man_epoch_is_keyed_by_pod_id_so_a_reused_volume_does_not_kill_a_new_pod(tmp_path):
+    """HIGH-1: a network volume can be reattached to a fresh pod carrying a
+    stale `.deadman_epoch` from a PRIOR pod's run. Keying the epoch file by
+    `$RUNPOD_POD_ID` means two different pod ids sharing the same volume each
+    get their own full countdown, while the same pod id reused twice (a
+    container restart of the SAME pod) still sees its remaining budget
+    shrink, per MEDIUM-2's original persistence guarantee."""
+    bash = shutil.which("bash")
+    if not bash:
+        pytest.skip("bash (Git Bash) not on PATH")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    workspace_posix = "/" + str(workspace).replace("\\", "/").lstrip("/")
+    if len(workspace_posix) > 2 and workspace_posix[2] == ":":
+        workspace_posix = "/" + workspace_posix[1].lower() + workspace_posix[3:]
+
+    m = manifest()
+    m["volume_mount_path"] = workspace_posix
+    harness = _deadman_snippet(m)
+    base_env = dict(os.environ)
+
+    # Different pod ids sharing the volume: each gets a full countdown (their
+    # own epoch files, not fooled by each other's).
+    remaining_a, epoch_a = _run_deadman(bash, harness, base_env, {"RUNPOD_POD_ID": "pod-a"})
+    remaining_b, epoch_b = _run_deadman(bash, harness, base_env, {"RUNPOD_POD_ID": "pod-b"})
+    assert epoch_a != epoch_b or remaining_a == remaining_b  # independent countdowns
+    assert (workspace / ".deadman_epoch.pod-a").exists()
+    assert (workspace / ".deadman_epoch.pod-b").exists()
+    full_budget = remaining_a
+
+    # Same pod id twice (a restart of the SAME pod): remaining must shrink,
+    # proving persistence still works within one pod's own epoch file.
+    time.sleep(1.1)
+    remaining_a2, epoch_a2 = _run_deadman(bash, harness, base_env, {"RUNPOD_POD_ID": "pod-a"})
+    assert epoch_a2 == epoch_a
+    assert remaining_a2 < full_budget, "remaining did not shrink -- same pod id's countdown restarted"
+
+
+def test_dead_man_epoch_validates_garbage_empty_future_and_unwritable_values(tmp_path):
+    """MEDIUM-1: a corrupted, empty, multi-token, or future epoch value must
+    never be trusted as-is -- each case falls back to a fresh `date +%s` epoch
+    (full budget), and a future epoch's arithmetic must not hand back MORE
+    than the full `DEAD_MAN_SECONDS` budget. An unwritable epoch-file
+    directory must not crash the countdown either -- it still gets the full
+    budget for this boot, just re-derived every time."""
+    bash = shutil.which("bash")
+    if not bash:
+        pytest.skip("bash (Git Bash) not on PATH")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    workspace_posix = "/" + str(workspace).replace("\\", "/").lstrip("/")
+    if len(workspace_posix) > 2 and workspace_posix[2] == ":":
+        workspace_posix = "/" + workspace_posix[1].lower() + workspace_posix[3:]
+
+    m = manifest()
+    m["volume_mount_path"] = workspace_posix
+    harness = _deadman_snippet(m)
+    env = dict(os.environ, RUNPOD_POD_ID="pod-x")
+    epoch_file = workspace / ".deadman_epoch.pod-x"
+    full_budget = int(0.1 * 60) + 600  # dead_man_seconds for max_minutes=0.1 (see bootstrap_script)
+
+    for label, content in (("empty", ""), ("garbage", "garbage"), ("multi-token", "1 2 3")):
+        epoch_file.write_text(content)
+        remaining, epoch = _run_deadman(bash, harness, env)
+        assert epoch.isdigit(), f"{label}: epoch was not regenerated to a clean integer"
+        assert 0 <= remaining <= full_budget, f"{label}: remaining {remaining} out of sane range"
+
+    # Future epoch: arithmetic must be capped at the full budget, not allowed
+    # to exceed it just because "elapsed" comes out negative.
+    future_epoch = int(time.time()) + 10_000
+    epoch_file.write_text(str(future_epoch))
+    remaining, epoch = _run_deadman(bash, harness, env)
+    assert epoch == str(future_epoch)
+    assert remaining == full_budget, "future epoch was not capped at the full budget"
+
+    # Unwritable directory: the epoch file can't be created/read at all, but
+    # the countdown still gets the full budget rather than crashing or
+    # silently arming with 0.
+    unwritable_root = workspace / "locked"
+    unwritable_root.mkdir()
+    unwritable_posix = workspace_posix.rstrip("/") + "/locked"
+    m2 = manifest()
+    m2["volume_mount_path"] = unwritable_posix
+    harness2 = _deadman_snippet(m2)
+    env2 = dict(os.environ, RUNPOD_POD_ID="pod-x")
+    locked_harness = (
+        f'chmod 000 {shlex.quote(str(unwritable_root))} 2>/dev/null\n'
+        + harness2
+    )
+    try:
+        remaining2, epoch2 = _run_deadman(bash, locked_harness, env2)
+        assert epoch2.isdigit()
+        assert remaining2 == full_budget, "unwritable epoch dir did not fall back to full budget"
+    finally:
+        os.chmod(unwritable_root, 0o755)
 
 
 def test_hard_deadline_unblocks_a_real_hung_socket_and_a_fresh_attempt_then_succeeds(

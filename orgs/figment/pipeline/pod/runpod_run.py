@@ -2971,7 +2971,7 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
         'shutdown -h now >>"$BOOTSTRAP_LOG" 2>&1 || true'
     )
     volume_root = str(manifest.get("volume_mount_path", "/workspace"))
-    deadman_epoch_file = shlex.quote(volume_root.rstrip("/") + "/.deadman_epoch")
+    deadman_epoch_prefix = shlex.quote(volume_root.rstrip("/") + "/.deadman_epoch.")
     lines.extend([
         f"DEAD_MAN_SECONDS={dead_man_seconds}",
         'if command -v runpodctl >/dev/null 2>&1; then RUNPODCTL_PRESENCE=present; '
@@ -2982,15 +2982,35 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
         # MEDIUM-2: a container restart (e.g. the bootstrap re-runs after a crash)
         # must not hand the dead-man switch a fresh `max_minutes + 10` budget --
         # that would let it keep re-arming forever and never actually fire. Persist
-        # the FIRST start's epoch (write-once: only when the file is still absent)
-        # and sleep only the time remaining against it, so a restart picks up where
-        # the original countdown left off instead of restarting it.
-        f"DEADMAN_EPOCH_FILE={deadman_epoch_file}",
-        'if [ ! -f "$DEADMAN_EPOCH_FILE" ]; then date +%s > "$DEADMAN_EPOCH_FILE"; fi',
-        'DEADMAN_EPOCH="$(cat "$DEADMAN_EPOCH_FILE")"',
+        # the FIRST start's epoch and sleep only the time remaining against it, so
+        # a restart picks up where the original countdown left off instead of
+        # restarting it.
+        # HIGH-1: key the epoch file by $RUNPOD_POD_ID. A network volume can be
+        # reattached to a brand-new pod carrying a stale epoch file left by a
+        # PRIOR pod's run -- an un-keyed file would then kill the new pod almost
+        # immediately. Keying by pod id means a genuinely new pod always starts a
+        # fresh countdown, while a restart of the SAME pod (same id) still finds
+        # and persists its own file.
+        f'DEADMAN_EPOCH_FILE={deadman_epoch_prefix}"$RUNPOD_POD_ID"',
+        # MEDIUM-1: never trust the epoch file's contents blindly -- an empty
+        # file, non-numeric garbage, or multiple tokens must not corrupt the
+        # arithmetic below (which would otherwise silently arm with a bogus, even
+        # negative, remaining). Any invalid value is replaced with a fresh
+        # `date +%s` epoch (full budget) and written back best-effort; a failed
+        # write just means this boot re-derives it again next time, which is
+        # exactly the "full budget" fallback we want when the directory itself is
+        # unwritable.
+        'DEADMAN_EPOCH="$(cat "$DEADMAN_EPOCH_FILE" 2>/dev/null)"',
+        'case "$DEADMAN_EPOCH" in '
+        "''|*[!0-9]*) DEADMAN_EPOCH=$(date +%s); "
+        'printf \'%s\\n\' "$DEADMAN_EPOCH" > "$DEADMAN_EPOCH_FILE" 2>/dev/null || true;; '
+        'esac',
         'DEADMAN_ELAPSED=$(( $(date +%s) - DEADMAN_EPOCH ))',
         'DEADMAN_REMAINING=$((DEAD_MAN_SECONDS - DEADMAN_ELAPSED))',
         'if [ "$DEADMAN_REMAINING" -lt 0 ]; then DEADMAN_REMAINING=0; fi',
+        # A future epoch (clock skew, or a value someone hand-edited) must not
+        # hand back MORE than the full budget.
+        'if [ "$DEADMAN_REMAINING" -gt "$DEAD_MAN_SECONDS" ]; then DEADMAN_REMAINING=$DEAD_MAN_SECONDS; fi',
         'log_line "dead-man: epoch=$DEADMAN_EPOCH elapsed=${DEADMAN_ELAPSED}s remaining=${DEADMAN_REMAINING}s"',
         f'( sleep "$DEADMAN_REMAINING"; {dead_man_body} ) & disown',
     ])

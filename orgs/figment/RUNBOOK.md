@@ -224,7 +224,9 @@ digests, it is left alone rather than rebuilt on every `pipeline` call.
   comes back at all. RunPod injects a pod-scoped `RUNPOD_API_KEY` and preinstalls `runpodctl`
   by default, so its normal path (`runpodctl remove`/`stop pod`, then the newer `pod
   delete`/`pod stop` spelling) actually stops GPU billing; a bare `shutdown -h now` is only
-  the last-resort fallback — see GUARDRAILS.md #6.
+  the last-resort fallback — see GUARDRAILS.md #6. Note: `runpodctl stop`/`remove` end GPU
+  billing only — the network volume keeps billing until a real host-side delete or a
+  `status` sweep catches it, so don't treat "GPU billing ended" as "done."
 - **The qwen3vl caption pod ($1.95 ceiling, `caption` stage profile) is NOT in the
   plan-time preflight table.** `caption_mode: "qwen3vl"` only dispatches its pod later,
   from inside `apply-rulings --stage dataset` (`_live_qwen3vl_job_runner`) — `plan` never

@@ -46,6 +46,10 @@ restart.
    pod` -> the newer `runpodctl pod delete`/`pod stop` spelling, actually stopping GPU
    billing; a bare `shutdown -h now` is only the last-resort fallback if `runpodctl` or
    the key is somehow absent, and that presence is logged (never the key's value).
+   Note: `runpodctl remove`/`stop` (and the newer `pod delete`/`pod stop`) end GPU
+   billing but do NOT end storage billing on their own -- the network volume keeps
+   billing until the host does a real delete or a `status` sweep catches it, so
+   teardown verification (above) must not stop at "GPU billing ended."
 
 7. **The pickle-load ban (`pod/runpod_run.py` `models[]`) is narrower than "no pickle
    loads on the pod" reads.** It covers only `manifest["models"]` downloads
