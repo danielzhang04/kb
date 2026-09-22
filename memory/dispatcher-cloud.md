@@ -956,3 +956,21 @@
   2026-09-07 (~14d); 6a6bc3dd kb-ops iter-smoke state:halted stranded in working since 07-30.
 - Action-required carried: figment T3 GATE A eye-gate 65d8f246 (open since 09-03); atlas
   remediation diff >400 lines on codex/atlas-enhancements-20260820 awaiting Daniel review.
+
+## 2026-09-22 nightly cloud run
+- Clean core run: preamble OK, pyyaml OK, sync_skills --check OK (exit 0). Dispatched+executed
+  nightly-review card 6ab21c06-db0b6a4f; dashboards regenerated in full. Cost $0.00 vs $30.
+- sync_daemon_dirs recurring (13th night, unchanged): script is main-only, absent on ops, so the
+  literal step-2b command still fails [Errno 2]. LESSON (re-confirmed): do NOT report it as
+  "missing" — run the refs-fallback (git show origin/main:scripts/sync_daemon_dirs.py | python -
+  --check). That exits 1 with the SAME single ops-only drift file
+  orgs/kb-ops/workflows/acceptance-run.md every night. Filed one accurate card 6ab21c03; caught
+  and corrected an initial too-hasty "script missing" card before commit. Owed DESKTOP fix
+  (--sync/--prune the file + amend step 2b so it stops re-filing; 12+ dupes now open).
+- Queue snapshot: inbox 112, working 3, approvals 1, done 1604, archived 10.
+- Anomalies (none mine to sweep): 6a6bc3dd kb-ops iter-smoke stranded in working since 2026-07-30
+  (~53d); d126c410 figment track1:replicate has an UNQUOTED COLON in its action: value ->
+  cards.parse() raises yaml ScannerError (must skip/guard it when iterating working/). 
+- Action-required carried: figment T3 GATE A eye-gate 65d8f246 (open since 09-03); atlas
+  remediation diff >400 lines on codex/atlas-enhancements-20260820 awaiting Daniel review.
+- Push path: see final summary (DIRECT-PUSH vs PR-AWAITING-HUMAN-MERGE determined at push time).
