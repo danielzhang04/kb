@@ -32,6 +32,7 @@ import type { InternalServiceCaller } from '../auth/session.ts';
 import { MAX_DEFINITION_BYTES, instantiateWorkflowDef, parseWorkflowDef, type WorkflowDef } from '../workflows/defs.ts';
 import { compileWorkflowDef } from '../workflows/compile.ts';
 import { loadRuntimeSkillRegistry, workflowProfileIds, type RuntimeSkillRegistry } from './environment.ts';
+import { AGENT_CADENCE_PROFILE_ALLOWLIST } from './workflowProfiles.ts';
 import { validateServerCompiledPlanProposal, type ProposalRiskTier } from './proposal.ts';
 import { proposalSnapshotHash, type ControlPlaneStore } from './store.ts';
 import { executeApprovedLaunch, type LaunchOutcome } from './launch.ts';
@@ -474,6 +475,50 @@ function registeredWorkflowRequest(
   };
 }
 
+/** Matches the `cadence:<agent-id>` action family (F8). Group 1 is the named agent id, the same
+ *  grammar defs.ts's `SAFE_AGENT_ID_RE` uses for a declared agent identifier. */
+const CADENCE_ACTION_RE = /^cadence:([a-z0-9][a-z0-9-]{0,63})$/;
+
+/** Returns the named agent id for a `cadence:<agent-id>` action, or null for any other action shape. */
+function parseCadenceActionAgentId(action: string): string | null {
+  const match = CADENCE_ACTION_RE.exec(action);
+  return match ? match[1] : null;
+}
+
+/**
+ * F8 defense-in-depth for an agent-owner cadence card. `ScheduleService.create`/`setArmed`
+ * (`schedules/service.ts`, C-1/C-2) already enforce "declared agent" / "allowlisted profile" /
+ * "T1 risk-tier" when the SCHEDULE is created/armed, and `cards.py#schedule_occurrence_claim` always
+ * renders a consistent shape (owner === the action's named agent, risk-tier T1, an allowlisted
+ * profile). This re-checks the same three invariants at the ONE place every bare card — however it
+ * actually reached `queue/inbox` — is mapped to a governed run, so a hand-placed or corrupted
+ * `cadence:*` card can never bypass what the schedule layer intended to guarantee upstream. The
+ * server-owned action registry (`policy.ts#ALLOWED_ACTION_TIERS`) only admits the namespace with a T1
+ * FLOOR — a floor can raise a stage's effective tier but never cap one, so the T1/T2-only ceiling has to
+ * live here, not there.
+ */
+function validateCadenceCardShape(
+  id: string,
+  agentId: string,
+  profile: string,
+  riskTier: string | null,
+  options: CardToWorkflowOptions,
+): void {
+  if (typeof options.repoRoot !== 'string' || options.repoRoot.trim() === '') {
+    throw new QueueBridgeError(`card '${id}' names cadence agent '${agentId}' but no repository root was supplied`);
+  }
+  const declared = readDeclaredAgentDetails(options.repoRoot);
+  if (!declared.has(agentId)) {
+    throw new QueueBridgeError(`card '${id}' cadence action names undeclared agent '${agentId}'`);
+  }
+  if (!AGENT_CADENCE_PROFILE_ALLOWLIST.includes(profile)) {
+    throw new QueueBridgeError(`card '${id}' cadence profile '${profile}' is not in the agent-cadence allowlist`);
+  }
+  if (riskTier !== 'T1' && riskTier !== 'T2') {
+    throw new QueueBridgeError(`card '${id}' cadence risk-tier must be T1 or T2, got '${riskTier ?? '(none)'}'`);
+  }
+}
+
 /**
  * Map a claimed card to a one-stage workflow request. action/target/risk-tier are read from META; the
  * `## Work order` section is the authoritative stage work order; `## Evidence` is excluded; Feedback and
@@ -495,6 +540,11 @@ export function cardToWorkflowRequest(card: ParsedCard, options: CardToWorkflowO
   const target = requireMetaString(card.meta.target, 'target');
   const profile = requireMetaString(card.meta.profile, 'profile');
   const riskTier = typeof card.meta['risk-tier'] === 'string' ? card.meta['risk-tier'] : null;
+
+  const cadenceAgentId = parseCadenceActionAgentId(action);
+  if (cadenceAgentId !== null) {
+    validateCadenceCardShape(id, cadenceAgentId, profile, riskTier, options);
+  }
 
   const sections = parseCardSections(card.body);
   if (sections.workOrder.trim() === '') {
@@ -1060,6 +1110,126 @@ export async function defaultReconcileTriggerCard(ctx: SurfaceContext, card: Own
     await publishTriggerCardTransition(ctx, runGit, card.id, 'inbox', 'working');
   }
   await publishTriggerCardTransition(ctx, runGit, card.id, 'working', 'done', bridgedRun);
+}
+
+// ===================================================================================================
+// F8(b) — no infinite retry. Before this, a `dispatchClaimedCard` 'failed' outcome left the trigger card
+// exactly where it was (inbox/working): the next tick's scan claims it again, dispatch fails again,
+// forever (P13 evidence: the stuck `cadence:hygiene` card was refused every ~15s for ~22h). This splits
+// a 'failed' outcome into two kinds, per the caller's retry policy (wired in `http/surface.ts` production
+// dispatch): a STRUCTURAL refusal (the mapping/compile/validate stage — status 400 — refused the card's
+// own action/target/profile/shape; retrying the identical bytes can never change that) is transitioned
+// ONCE to a persisted terminal state and never re-dispatched; everything else 'failed' (409 conflict/
+// lock/outbox-degraded, 500 decision-audit, or whatever `executeApprovedLaunch` itself returned) is a
+// TRANSIENT operational condition that can clear on its own, so it stays retryable — with exponential
+// backoff instead of a fixed 15s hammer, and (because the backoff itself skips ticks) naturally only one
+// log line per actual attempt rather than one per poll.
+// ===================================================================================================
+
+export type DispatchFailureClass = 'structural' | 'transient';
+
+/**
+ * Classify a `dispatchClaimedCard` 'failed' outcome for the bridge's retry policy. Status 400 is returned
+ * ONLY by refusals that happen BEFORE any launch attempt — `cardToWorkflowRequest` (mapping/policy),
+ * capability/placement shape, or compile/validate — i.e. the card's own content was refused, which
+ * re-dispatching the same bytes can never fix. Every other status the caller passes through here.
+ */
+export function classifyDispatchFailure(result: Pick<DispatchCardResult, 'outcome' | 'status'>): DispatchFailureClass {
+  return result.outcome === 'failed' && result.status === 400 ? 'structural' : 'transient';
+}
+
+const BRIDGE_RETRY_BASE_MS = 15_000;
+const BRIDGE_RETRY_MAX_MS = 5 * 60_000;
+
+/** Exponential backoff for a transiently-failing card's NEXT retry: 15s, 30s, 60s, ... capped at 5 minutes. */
+export function bridgeRetryDelayMs(consecutiveFailures: number): number {
+  const exponent = Math.max(0, consecutiveFailures - 1);
+  return Math.min(BRIDGE_RETRY_BASE_MS * 2 ** exponent, BRIDGE_RETRY_MAX_MS);
+}
+
+/**
+ * Terminally fail a bridge-claimed trigger card whose refusal is STRUCTURAL (F8b): retrying the identical
+ * card can never change the outcome, so leaving it in `inbox`/`working` is pure log spam forever.
+ * Transitions it to `blocked` (`governance/card-schema.md`'s state vocabulary — legal from both `inbox`
+ * and `working`, and reversible only by a human walking it back to `inbox`) with a `## Result` line
+ * recording the reason, through the SAME serial card-transition publisher every other bridge write uses
+ * (`publishTriggerCardTransition`). `bridgeClaimsCard` only ever claims `inbox`/`working`, so a blocked
+ * card is never picked up again until a human resolves it.
+ */
+export async function failTriggerCardStructurally(
+  ctx: SurfaceContext,
+  card: OwnedCard,
+  reason: string,
+): Promise<void> {
+  const runGit = ctx.opsGit ?? defaultGitRunner;
+  await publishTriggerCardTransition(ctx, runGit, card.id, card.state, 'blocked', {
+    section: 'Result',
+    block: `FAILED: ${reason}`,
+  });
+}
+
+/** Per-card retry bookkeeping for {@link dispatchClaimedCardWithRetry}, keyed by card id. */
+export interface CardRetryState {
+  failures: number;
+  nextAttemptAt: number;
+}
+
+export interface DispatchRetryDeps {
+  /** Deps forwarded to the underlying dispatch call (the same shape `dispatchClaimedCard` takes). */
+  cardDeps?: DispatchCardDeps;
+  /** The underlying dispatcher. Default: the real `dispatchClaimedCard`; tests inject a stub. */
+  dispatch?: (ctx: SurfaceContext, card: OwnedCard, deps?: DispatchCardDeps) => Promise<DispatchCardResult>;
+  /** Cross-tick memory of consecutive transient failures per card id. Callers own its lifetime — the
+   *  production wiring keeps ONE map for the life of the armed queue bridge instance. */
+  retryState: Map<string, CardRetryState>;
+  now?: () => number;
+}
+
+/** {@link DispatchCardResult} plus the one extra outcome this wrapper can itself produce: a card still
+ *  inside its backoff window was never even attempted this tick. */
+export type DispatchRetryResult = DispatchCardResult | {
+  cardId: string;
+  outcome: 'deferred';
+  status: 0;
+  reconciled: false;
+  detail: 'backing off';
+};
+
+/**
+ * F8(b): wrap `dispatchClaimedCard` with the bridge's retry policy. A card still inside its backoff
+ * window is skipped without even attempting dispatch (`'deferred'`, no launch attempt, no log-worthy
+ * event). A STRUCTURAL failure clears any retry state and transitions the card to `blocked` exactly once
+ * ({@link failTriggerCardStructurally}) — the caller sees the underlying 'failed' result and should log it
+ * once, but the card will never be handed to this function again (it is no longer `inbox`/`working`). A
+ * TRANSIENT failure bumps the per-card failure count and schedules the next attempt at the backed-off
+ * delay; because a still-backing-off card is deferred above without logging, each actual dispatch attempt
+ * is naturally the only log-worthy event for that state change — never one line per 15s poll.
+ */
+export async function dispatchClaimedCardWithRetry(
+  ctx: SurfaceContext,
+  card: OwnedCard,
+  deps: DispatchRetryDeps,
+): Promise<DispatchRetryResult> {
+  const now = deps.now ?? Date.now;
+  const dispatch = deps.dispatch ?? dispatchClaimedCard;
+  const prior = deps.retryState.get(card.id);
+  if (prior && now() < prior.nextAttemptAt) {
+    return { cardId: card.id, outcome: 'deferred', status: 0, reconciled: false, detail: 'backing off' };
+  }
+  const result = await dispatch(ctx, card, deps.cardDeps);
+  if (result.outcome === 'launched' || result.outcome === 'replayed') {
+    deps.retryState.delete(card.id);
+    return result;
+  }
+  if (result.outcome !== 'failed') return result;
+  if (classifyDispatchFailure(result) === 'structural') {
+    deps.retryState.delete(card.id);
+    await failTriggerCardStructurally(ctx, card, result.detail ?? 'refused');
+    return result;
+  }
+  const failures = (prior?.failures ?? 0) + 1;
+  deps.retryState.set(card.id, { failures, nextAttemptAt: now() + bridgeRetryDelayMs(failures) });
+  return result;
 }
 
 // ===================================================================================================

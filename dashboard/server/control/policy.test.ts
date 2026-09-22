@@ -29,6 +29,10 @@ describe('evaluateExecutionPolicy', () => {
     expect(classifyActionRisk('wiki:refresh')).toEqual({ disposition: 'allowed', minimumTier: 'T1' });
     expect(classifyActionRisk('test:synthetic')).toEqual({ disposition: 'allowed', minimumTier: 'T2' });
     expect(classifyActionRisk('deploy:production')).toEqual({ disposition: 'allowed', minimumTier: 'T3' });
+    // F8 (p13 rehearsal finding): an agent-owner cadence card's `cadence:<agent-id>` action family is
+    // admitted with a T1 floor. The agent-declared / profile-allowlist / T1-T2-only ceiling this floor
+    // cannot express live in queueBridge.ts#cardToWorkflowRequest, not here.
+    expect(classifyActionRisk('cadence:hygiene')).toEqual({ disposition: 'allowed', minimumTier: 'T1' });
     expect(classifyActionRisk('agent-invented:surprise')).toEqual({
       disposition: 'forbidden', reason: 'action-not-in-server-owned-registry',
     });

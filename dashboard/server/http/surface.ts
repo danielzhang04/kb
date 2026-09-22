@@ -53,7 +53,7 @@ import { createFileDefinitionAmendmentStore } from '../workflows/amendmentStore.
 import { readScopeForSubject, registerControlRoutes } from '../control/routes.ts';
 import { registerPaidActionRoute } from '../control/paidActionRoute.ts';
 import { buildActivatedExecution, createExecutionLatch, isOperatorUnlockSource } from '../control/activation.ts';
-import { createQueueBridge, dispatchClaimedCard } from '../control/queueBridge.ts';
+import { createQueueBridge, dispatchClaimedCard, dispatchClaimedCardWithRetry, type CardRetryState } from '../control/queueBridge.ts';
 import { publishAttemptIoSignal } from '../hub/bus.ts';
 import { createSessionRunStore } from '../pty/sessionRuns.ts';
 import { createRawSessionReplaySource } from '../pty/replayReader.ts';
@@ -592,6 +592,10 @@ export function makeSurfaceContext(
         // win32-desktop operator unlock — security review 2, N0). `env-override` is excluded on
         // purpose — it is the headless/testing arm and must stay inert.
         if (execution && isOperatorUnlockSource(state.source) && serviceCaller) {
+          // F8(b): one retry-state map for the life of THIS armed queue bridge instance — a fresh
+          // execution/unlock cycle (a new `bridge` below) starts fresh backoff state, never carries a
+          // stale card's failure count across a restart. See queueBridge.ts's dispatchClaimedCardWithRetry.
+          const bridgeRetryState = new Map<string, CardRetryState>();
           const bridge = buildQueueBridge({
             repoRoot: ctx.repoRoot,
             runPy: ctx.runPy,
@@ -600,21 +604,27 @@ export function makeSurfaceContext(
               if (ctx.executionLatch?.current() !== execution) {
                 throw new Error('queue bridge dispatch refused outside the armed execution window');
               }
-              const result = await dispatchQueueCard(ctx, card, {
-                isArmed: () => ctx.executionLatch?.current() === execution,
-                internalCaller: (subject) => {
-                  if (subject !== serviceCaller.subject) {
-                    throw new Error('queue bridge requested an unexpected internal service subject');
-                  }
-                  if (ctx.executionLatch?.current() !== execution) {
-                    throw new Error('internal service caller unavailable outside the armed execution window');
-                  }
-                  return serviceCaller;
+              const result = await dispatchClaimedCardWithRetry(ctx, card, {
+                retryState: bridgeRetryState,
+                dispatch: dispatchQueueCard,
+                cardDeps: {
+                  isArmed: () => ctx.executionLatch?.current() === execution,
+                  internalCaller: (subject) => {
+                    if (subject !== serviceCaller.subject) {
+                      throw new Error('queue bridge requested an unexpected internal service subject');
+                    }
+                    if (ctx.executionLatch?.current() !== execution) {
+                      throw new Error('internal service caller unavailable outside the armed execution window');
+                    }
+                    return serviceCaller;
+                  },
+                  resolveScheduleReceiptOwner: (cardId) => ctx.controlStore.resolveScheduleReceiptOwner(cardId),
+                  bindScheduleOccurrenceRun: (cardId, runRef) => ctx.controlStore.bindScheduleOccurrenceRun(cardId, runRef),
                 },
-                resolveScheduleReceiptOwner: (cardId) => ctx.controlStore.resolveScheduleReceiptOwner(cardId),
-                bindScheduleOccurrenceRun: (cardId, runRef) => ctx.controlStore.bindScheduleOccurrenceRun(cardId, runRef),
               });
-              if (result.outcome !== 'launched' && result.outcome !== 'replayed') {
+              // 'deferred' (still inside its backoff window) is not log-worthy — it is the whole point of
+              // the backoff: no attempt was even made this tick, so nothing changed to report.
+              if (result.outcome !== 'launched' && result.outcome !== 'replayed' && result.outcome !== 'deferred') {
                 console.error('queue bridge dispatch did not launch', result);
               }
             },

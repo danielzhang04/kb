@@ -8,6 +8,10 @@ import {
   scanOwnedDashboardCards,
   createQueueBridge,
   defaultReconcileTriggerCard,
+  dispatchClaimedCardWithRetry,
+  classifyDispatchFailure,
+  bridgeRetryDelayMs,
+  failTriggerCardStructurally,
   QueueBridgeError,
   QUEUE_BRIDGE_SELECT_SCRIPT,
   QUEUE_BRIDGE_READ_CARD_SCRIPT,
@@ -15,6 +19,8 @@ import {
   isEngineOwnedStageCard,
   publishBridgeWakeCard,
   type OwnedCard,
+  type CardRetryState,
+  type DispatchCardResult,
 } from './queueBridge.ts';
 import { createReconciliationPublisher, createReconciliationRealPorts } from '../reconciliation/realPorts.ts';
 import { stagingGit } from '../testFixtures/stagingGit.ts';
@@ -456,6 +462,67 @@ describe('cardToWorkflowRequest — mapping + Evidence exclusion', () => {
     const sections = parseCardSections('## Work order\nWO\n\n## Evidence\nEVIL');
     expect(sections.workOrder).toBe('WO');
     expect(JSON.stringify(sections)).not.toContain('EVIL');
+  });
+});
+
+// F8 — the agent-owner cadence action family (`cadence:<agent-id>`). `hygiene` is a real declared agent
+// (`agents/hygiene.md`) read off the real repo root, exactly like the other REPO_ROOT-based tests in this
+// file (e.g. `realIterationDemoCard`) — the roster lookup is the real production seam, not a fixture.
+function cadenceCard(overrides: Partial<ParsedCard['meta']> = {}): ParsedCard {
+  return {
+    meta: {
+      id: 'cadence-card-1',
+      // A containment-safe target (unlike the real `cards.py` shape, which stamps the agent's bare
+      // `agents/<id>.md` sourcePath — see the F8 report: ORG CONTAINMENT, a PRE-EXISTING and orthogonal
+      // check, refuses that shape regardless of this fix, and is deliberately left untouched here).
+      // This card exercises exactly what this fix changed: agent-declared / profile-allowlist /
+      // risk-tier validation for the `cadence:` action family, with a target that would satisfy any
+      // bare card's containment check the same way `baseCard()`'s does.
+      project: 'kb-ops',
+      action: 'cadence:hygiene',
+      target: 'orgs/kb-ops/agents/hygiene.md',
+      'risk-tier': 'T1',
+      profile: 'cadence',
+      owner: 'hygiene',
+      state: 'inbox',
+      'execution-controller': 'dashboard',
+      ...overrides,
+    },
+    body: '## Work order\n\nRun the scheduled hygiene agent.\n',
+  };
+}
+
+describe('cardToWorkflowRequest — agent-owner cadence action family (F8)', () => {
+  const CADENCE_KNOWN = new Set(['cadence']);
+
+  it('maps cadence:hygiene with an allowlisted profile to a valid one-stage request', () => {
+    const req = cardToWorkflowRequest(cadenceCard(), { knownProfiles: CADENCE_KNOWN, repoRoot: REPO_ROOT });
+    expect(req.def.stages).toHaveLength(1);
+    expect(req.def.stages[0].action).toBe('cadence:hygiene');
+    expect(req.def.profile).toBe('cadence');
+  });
+
+  it('refuses a cadence card naming an undeclared agent', () => {
+    const emptyRoot = mkdtempSync(join(tmpdir(), 'queue-bridge-cadence-undeclared-'));
+    try {
+      const card = cadenceCard({ action: 'cadence:not-a-real-agent', owner: 'not-a-real-agent' });
+      expect(() => cardToWorkflowRequest(card, { knownProfiles: CADENCE_KNOWN, repoRoot: emptyRoot }))
+        .toThrow(/cadence action names undeclared agent 'not-a-real-agent'/);
+    } finally {
+      rmSync(emptyRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses a cadence card whose profile is not on the agent-cadence allowlist', () => {
+    const card = cadenceCard({ profile: 'producer' });
+    expect(() => cardToWorkflowRequest(card, { knownProfiles: new Set(['producer']), repoRoot: REPO_ROOT }))
+      .toThrow(/cadence profile 'producer' is not in the agent-cadence allowlist/);
+  });
+
+  it('refuses a cadence card whose risk-tier is T3', () => {
+    const card = cadenceCard({ 'risk-tier': 'T3' });
+    expect(() => cardToWorkflowRequest(card, { knownProfiles: CADENCE_KNOWN, repoRoot: REPO_ROOT }))
+      .toThrow(/cadence risk-tier must be T1 or T2, got 'T3'/);
   });
 });
 
@@ -2100,5 +2167,103 @@ describe('defaultReconcileTriggerCard — heredoc behaviour (test-first, pre-cut
     const done = readFileSync(join(root, 'queue', 'done', `${id}.md`), 'utf8');
     expect(done).toContain('## Bridged run');
     expect(done).toContain('run as run-abc.');
+  });
+});
+
+describe('F8(b) — no infinite retry: structural failures transition once, transient failures back off', () => {
+  function failedResult(status: number, detail = 'refused'): DispatchCardResult {
+    return { cardId: 'wf-trigger-1', outcome: 'failed', status, reconciled: false, detail };
+  }
+
+  it('classifyDispatchFailure: status 400 is structural, everything else failed is transient', () => {
+    expect(classifyDispatchFailure({ outcome: 'failed', status: 400 })).toBe('structural');
+    expect(classifyDispatchFailure({ outcome: 'failed', status: 409 })).toBe('transient');
+    expect(classifyDispatchFailure({ outcome: 'failed', status: 500 })).toBe('transient');
+    expect(classifyDispatchFailure({ outcome: 'launched', status: 201 })).toBe('transient');
+  });
+
+  it('bridgeRetryDelayMs doubles from 15s per consecutive failure, capped at 5 minutes', () => {
+    expect(bridgeRetryDelayMs(1)).toBe(15_000);
+    expect(bridgeRetryDelayMs(2)).toBe(30_000);
+    expect(bridgeRetryDelayMs(3)).toBe(60_000);
+    expect(bridgeRetryDelayMs(4)).toBe(120_000);
+    expect(bridgeRetryDelayMs(5)).toBe(240_000);
+    expect(bridgeRetryDelayMs(6)).toBe(300_000);
+    expect(bridgeRetryDelayMs(20)).toBe(300_000);
+  });
+
+  it('failTriggerCardStructurally transitions an inbox card to blocked with a FAILED ## Result line', async () => {
+    // cards.py's STATE_DIR keeps a `blocked` card's FILE physically in `queue/inbox/` (only its
+    // frontmatter `state:` field changes) — mirrors write/cardRespond.ts's own documented convention.
+    const { root, id, relPath } = bridgeRepo('inbox');
+    const ctx = bridgeCtx(root);
+
+    await failTriggerCardStructurally(ctx, { id, path: relPath, state: 'inbox' }, 'action-not-in-server-owned-registry');
+
+    const card = readFileSync(join(root, 'queue', 'inbox', `${id}.md`), 'utf8');
+    expect(card).toContain('state: blocked');
+    expect(card).toContain('## Result');
+    expect(card).toContain('FAILED: action-not-in-server-owned-registry');
+  });
+
+  it('a structural refusal is transitioned to blocked ONCE; the scanner never reclaims it again', async () => {
+    const { root, id, relPath } = bridgeRepo('inbox');
+    const ctx = bridgeCtx(root);
+    const retryState = new Map<string, CardRetryState>();
+    const dispatch = vi.fn(async () => failedResult(400, 'action-not-in-server-owned-registry'));
+    const card: OwnedCard = { id, path: relPath, state: 'inbox' };
+
+    const first = await dispatchClaimedCardWithRetry(ctx, card, { retryState, dispatch });
+
+    expect(first.outcome).toBe('failed');
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(retryState.has(id)).toBe(false); // structural clears any retry bookkeeping, nothing to back off
+    const onDisk = readFileSync(join(root, 'queue', 'inbox', `${id}.md`), 'utf8');
+    expect(onDisk).toContain('state: blocked');
+    expect(onDisk).toContain('FAILED: action-not-in-server-owned-registry');
+    // The real scanner (`bridgeClaimsCard`) reads the card's frontmatter `state`, which is now `blocked`
+    // (not `inbox`/`working`) — never re-offered on the next tick, the durable end of the retry loop.
+    expect(bridgeClaimsCard({ 'execution-controller': 'dashboard', state: 'blocked' })).toBe(false);
+  });
+
+  it('a transient refusal is retried with exponential backoff instead of every 15s poll', async () => {
+    const ctx = { repoRoot: '/repo' } as unknown as SurfaceContext;
+    const retryState = new Map<string, CardRetryState>();
+    const dispatch = vi.fn(async () => failedResult(409, 'outbox-degraded'));
+    const card: OwnedCard = { id: 'wf-transient-1', path: 'queue/inbox/wf-transient-1.md', state: 'inbox' };
+    let now = 0;
+    const clock = () => now;
+
+    const first = await dispatchClaimedCardWithRetry(ctx, card, { retryState, dispatch, now: clock });
+    expect(first.outcome).toBe('failed');
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(retryState.get(card.id)).toEqual({ failures: 1, nextAttemptAt: 15_000 });
+
+    // Still inside the 15s backoff window: deferred without even attempting dispatch again.
+    now = 5_000;
+    const deferred = await dispatchClaimedCardWithRetry(ctx, card, { retryState, dispatch, now: clock });
+    expect(deferred.outcome).toBe('deferred');
+    expect(dispatch).toHaveBeenCalledTimes(1);
+
+    // Backoff has elapsed: retried, and the delay doubles for the NEXT wait.
+    now = 16_000;
+    const second = await dispatchClaimedCardWithRetry(ctx, card, { retryState, dispatch, now: clock });
+    expect(second.outcome).toBe('failed');
+    expect(dispatch).toHaveBeenCalledTimes(2);
+    expect(retryState.get(card.id)).toEqual({ failures: 2, nextAttemptAt: 16_000 + 30_000 });
+  });
+
+  it('clears retry state once a previously-transient card finally launches', async () => {
+    const ctx = { repoRoot: '/repo' } as unknown as SurfaceContext;
+    const retryState = new Map<string, CardRetryState>();
+    retryState.set('wf-transient-1', { failures: 3, nextAttemptAt: 0 });
+    const dispatch = vi.fn(async (): Promise<DispatchCardResult> =>
+      ({ cardId: 'wf-transient-1', outcome: 'launched', status: 201, runRef: 'run-x', reconciled: true }));
+    const card: OwnedCard = { id: 'wf-transient-1', path: 'queue/inbox/wf-transient-1.md', state: 'inbox' };
+
+    const result = await dispatchClaimedCardWithRetry(ctx, card, { retryState, dispatch });
+
+    expect(result.outcome).toBe('launched');
+    expect(retryState.has('wf-transient-1')).toBe(false);
   });
 });
