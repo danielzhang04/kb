@@ -550,15 +550,21 @@ defects below for where these two sources disagree past 09-04.
   `run.json["error"]` doesn't happen to contain one of those exact substrings still refuses
   and needs a reviewed widening, not another live retry to discover the gap.
 - ~~**A stalled ComfyUI upload POST could block for hours despite a computed per-part
-  timeout**~~ — RESOLVED 2026-09-22: a live `gen` run (`orgs/figment/runs/creator-001/
+  timeout**~~ — RESOLVED 2026-09-22, corrected: a live `gen` run (`orgs/figment/runs/creator-001/
   live-20260916b`, pod `u86413a8wjzsni`, 2026-09-21) blocked ~3h53m on one chunk POST
   (computed timeout ~76s) because `requests`' `timeout` bounds connect + each read but not a
-  stalled body send, and the 185-minute run ceiling never independently unstuck it; `upload_file`/
-  `upload_part` (`pod/runpod_run.py`) now run every ComfyUI upload POST on a worker thread with a
-  hard `join(timeout)` and close the session on expiry, converting a hang into a normal
-  `TransientProxyError` the existing 3-attempt retry already handles — the `Watchdog` itself was
-  re-verified independent of the main thread (`test_watchdog_fires_and_terminates_while_upload_is_blocked`)
-  and needed no change.
+  stalled body send; the initial 2026-09-22 fix (worker thread + hard `join(timeout)` +
+  `session.close()`) shipped believing the `Watchdog` "needed no change" — an opus review the
+  same day found the TRUE trigger: the pod actually ran 252 minutes against a 185-minute
+  ceiling and the `Watchdog` never logged, because a Windows host suspend does not advance a
+  relative `Event.wait`/`Thread.join`, so both the upload's own join and the `Watchdog`'s
+  ceiling silently stretched together. Fixed for real: both now wait in short slices and check
+  a wall-clock deadline alongside the monotonic one (`_sliced_deadline_wait`), so a suspend is
+  caught on the very next slice regardless of which relative clock got fooled; `session.close()`
+  alone also turned out not to unblock an in-flight send (`PoolManager.clear()` only closes idle
+  connections) — the deadline now captures and directly `shutdown()`s the stuck socket. The pod
+  also carries its own independent dead-man switch as a backstop for a host that never comes
+  back at all. See GUARDRAILS.md #6.
 - ~~**qwen3vl caption pod: first live attempt failed at upload preflight on a zero-byte
   sentinel**~~ — RESOLVED 2026-09-16 (`_images.ready`, live run `creator-001/live-20260916b`):
   sentinel now carries real JSON content; the caption start-script template is now also

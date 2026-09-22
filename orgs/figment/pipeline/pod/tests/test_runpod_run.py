@@ -11,15 +11,18 @@ import os
 import shlex
 import signal
 import shutil
+import socket
 import subprocess
 import tempfile
 import threading
 import time
 import traceback
 from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+import requests
 
 import sys
 
@@ -2792,13 +2795,19 @@ def test_non_2xx_upload_and_download_close_the_response(tmp_path):
     assert download_response.closed is True
 
 
-def test_upload_part_post_is_bounded_by_a_hard_wall_clock_join_when_the_handler_hangs():
+def test_upload_part_post_is_bounded_by_a_hard_wall_clock_join_when_the_handler_hangs(
+        monkeypatch):
     """A live upload once blocked ~3h53m on a single chunk POST despite a computed
     ~76s `timeout` (orgs/figment/runs/creator-001/live-20260916b/downstream/gen/
     gen-harness-stderr.log, pod u86413a8wjzsni, 2026-09-21): `requests`' `timeout`
     bounds connect + each read, not a stalled body send. The POST must run under a
     hard wall-clock join so a handler that never returns still fails fast, and the
-    session must be closed to unblock the leaked worker thread."""
+    session must be closed to unblock the leaked worker thread.
+
+    LOW-1's join-headroom (`_post_join_timeout`) is exercised by its own dedicated
+    arithmetic test; pinned to identity here so this test's tight timing keeps
+    proving the hang-abort mechanism itself, fast."""
+    monkeypatch.setattr(rr, "_post_join_timeout", lambda per_read_timeout: per_read_timeout)
     closed = threading.Event()
 
     class HangingSession:
@@ -2826,6 +2835,7 @@ def test_upload_part_post_is_bounded_by_a_hard_wall_clock_join_when_the_handler_
 def test_upload_file_post_is_bounded_by_a_hard_wall_clock_join_when_the_handler_hangs(
         tmp_path, monkeypatch):
     monkeypatch.setattr(rr, "REQUEST_TIMEOUT", 0.5)
+    monkeypatch.setattr(rr, "_post_join_timeout", lambda per_read_timeout: per_read_timeout)
     local = tmp_path / "frame.png"
     local.write_bytes(b"pixels")
     closed = threading.Event()
@@ -2849,6 +2859,364 @@ def test_upload_file_post_is_bounded_by_a_hard_wall_clock_join_when_the_handler_
 
     assert elapsed < 5.5
     assert closed.is_set()
+
+
+def test_post_join_timeout_adds_1_5x_plus_30s_headroom():
+    """LOW-1: the join must outlive the per-read socket timeout (unchanged) by
+    headroom, not equal it -- otherwise the hard join races requests' own timeout
+    and wins every time on a genuinely slow (not hung) transfer."""
+    assert rr._post_join_timeout(30.0) == pytest.approx(75.0)
+    assert rr._post_join_timeout(0.0) == pytest.approx(30.0)
+    assert rr._post_join_timeout(20.0) == pytest.approx(60.0)
+
+
+def test_upload_file_sizes_its_hard_deadline_to_the_whole_file_not_a_fixed_30s(tmp_path):
+    """MEDIUM-2: the hard join now bounds connect + the ENTIRE body send (it used
+    to be a per-read window), so a large unchunked file needs more than the fixed
+    REQUEST_TIMEOUT floor -- sized the same way upload_chunk_part_timeout sizes a
+    chunk part, via the same per-second floor constant."""
+    size = 10 * 1024 * 1024
+    local = tmp_path / "big.safetensors"
+    with local.open("wb") as handle:
+        handle.seek(size - 1)
+        handle.write(b"\0")
+    captured = {}
+
+    class RecordingSession:
+        headers = {}
+
+        def post(self, _url, **kwargs):
+            captured["timeout"] = kwargs["timeout"]
+            return StubResponse(200, {
+                "name": "big.safetensors", "subfolder": "persona-a", "type": "input",
+            })
+
+    rr.ComfyClient("https://proxy", RecordingSession()).upload_file(
+        local, "persona-a", overwrite=True,
+    )
+
+    expected = max(rr.REQUEST_TIMEOUT, size / rr.UPLOAD_CHUNK_ASSUMED_MIN_BYTES_PER_SECOND)
+    assert expected > rr.REQUEST_TIMEOUT
+    assert captured["timeout"] == pytest.approx(expected)
+
+
+def test_upload_file_lets_runcancelled_propagate_instead_of_retrying_it(
+        tmp_path, monkeypatch):
+    """MEDIUM-1: a signal handler can raise RunCancelled in the MAIN thread while
+    it is blocked inside _post_with_hard_deadline's join (Python delivers a signal
+    to the main thread, interrupting whatever it is doing there). That must
+    propagate as a real cancellation, never be reinterpreted by the broad
+    `except Exception` below it as a retryable TransientProxyError."""
+    local = tmp_path / "frame.png"
+    local.write_bytes(b"pixels")
+
+    def fake_post_with_hard_deadline(*_a, **_kw):
+        raise rr.RunCancelled("received signal 2")
+
+    monkeypatch.setattr(rr, "_post_with_hard_deadline", fake_post_with_hard_deadline)
+
+    with pytest.raises(rr.RunCancelled, match="received signal"):
+        rr.ComfyClient("https://proxy", object()).upload_file(
+            local, "persona-a", overwrite=True,
+        )
+
+
+def test_upload_part_lets_runcancelled_propagate_instead_of_retrying_it(monkeypatch):
+    """MEDIUM-1, mirrored for upload_part."""
+    def fake_post_with_hard_deadline(*_a, **_kw):
+        raise rr.RunCancelled("received signal 15")
+
+    monkeypatch.setattr(rr, "_post_with_hard_deadline", fake_post_with_hard_deadline)
+
+    with pytest.raises(rr.RunCancelled, match="received signal"):
+        rr.ComfyClient("https://proxy", object()).upload_part(
+            b"data", "part-0000", "persona-a", False, 1.0,
+        )
+
+
+def test_retry_transient_proxy_raises_runcancelled_once_the_cancel_event_is_set():
+    """MEDIUM-1: once `cancel` is set (e.g. by a signal handler racing the retry
+    loop), a TransientProxyError attempt must not fall into the ordinary 3-attempt
+    retry/backoff -- it must surface as a real cancellation instead."""
+    cancel = threading.Event()
+    logger, _stream = logger_and_stream()
+    watchdog = rr.Watchdog(10_000.0, lease=None, cancel=cancel, logger=logger)
+    cancel.set()
+
+    def operation():
+        raise rr.TransientProxyError("stalled")
+
+    with pytest.raises(rr.RunCancelled):
+        rr.retry_transient_proxy(operation, "upload x", watchdog, lambda _s: None, logger)
+
+
+def test_sliced_deadline_wait_is_suspend_proof_via_a_dual_clock_check():
+    """BLOCKER-1's shared primitive (used by both Watchdog._run and
+    _post_with_hard_deadline's join): whichever clock says 'over' wins, so a host
+    suspend -- simulated here by jumping the fake wall clock far forward while the
+    fake monotonic clock barely advances, exactly like a real suspend on this box's
+    QueryPerformanceCounter-backed monotonic clock -- is caught on the very next
+    slice instead of stretching the wait."""
+    monotonic_value = [0.0]
+    wall_value = [0.0]
+
+    def poll(_seconds):
+        return False  # never stops early on its own
+
+    outcome = {}
+
+    def run():
+        outcome["result"] = rr._sliced_deadline_wait(
+            total_seconds=1_000_000.0, poll=poll, slice_seconds=0.02,
+            monotonic=lambda: monotonic_value[0], wall_clock=lambda: wall_value[0],
+        )
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    time.sleep(0.05)
+    monotonic_value[0] += 0.02
+    wall_value[0] += 2_000_000.0
+    thread.join(timeout=1.0)
+
+    assert not thread.is_alive()
+    assert outcome["result"] is False
+
+
+def test_watchdog_suspend_proof_deadline_fires_on_the_next_slice_after_a_clock_jump():
+    """BLOCKER-1: the 09-21 pod ran 252 minutes against a 185-minute ceiling and the
+    watchdog never logged, because its one long relative `Event.wait(seconds)` does
+    not count time spent in a Windows suspend. Slicing the wait and checking a
+    wall-clock deadline alongside the monotonic one means a suspend -- simulated
+    here as a big wall-clock jump with monotonic barely moving -- fires the
+    watchdog on its very next slice."""
+    monotonic_value = [0.0]
+    wall_value = [0.0]
+
+    class FakeLease:
+        def __init__(self):
+            self.closed = threading.Event()
+
+        def close(self):
+            self.closed.set()
+
+    lease = FakeLease()
+    cancel = threading.Event()
+    logger, _stream = logger_and_stream()
+    watchdog = rr.Watchdog(
+        1_000_000.0, lease, cancel, logger,
+        monotonic=lambda: monotonic_value[0], wall_clock=lambda: wall_value[0],
+        slice_seconds=0.02,
+    )
+    watchdog.start()
+    time.sleep(0.1)
+    assert not watchdog.fired.is_set()
+
+    monotonic_value[0] += 0.02
+    wall_value[0] += 2_000_000.0
+
+    assert watchdog.fired.wait(timeout=1.0)
+    watchdog.stop(timeout=1.0)
+    assert lease.closed.is_set()
+
+
+def test_keep_awake_arms_and_disarms_around_a_lifecycle_including_the_exception_path():
+    """BLOCKER-2: SetThreadExecutionState must be asserted
+    (ES_CONTINUOUS | ES_SYSTEM_REQUIRED) while a pod is alive and cleared
+    (ES_CONTINUOUS) on every exit path, including an exception raised mid-run."""
+    calls = []
+    logger, _stream = logger_and_stream()
+    keep_awake = rr.KeepAwake(
+        logger, set_execution_state=lambda flags: calls.append(flags),
+        reassert_seconds=0.02,
+    )
+
+    class Boom(Exception):
+        pass
+
+    try:
+        keep_awake.arm()
+        time.sleep(0.08)  # let it reassert at least once
+        raise Boom("simulated mid-run failure")
+    except Boom:
+        pass
+    finally:
+        keep_awake.disarm()
+
+    assert (rr.ES_CONTINUOUS | rr.ES_SYSTEM_REQUIRED) in calls
+    assert calls[-1] == rr.ES_CONTINUOUS
+
+
+def test_keep_awake_is_a_no_op_off_windows(monkeypatch):
+    monkeypatch.setattr(rr.sys, "platform", "linux")
+    logger, _stream = logger_and_stream()
+    keep_awake = rr.KeepAwake(logger)
+    keep_awake.arm()
+    assert keep_awake._thread is None
+    keep_awake.disarm()  # must not raise
+
+
+def test_run_harness_arms_and_disarms_keep_awake_even_when_the_run_raises(
+        tmp_path, monkeypatch):
+    """BLOCKER-2 wired into run_harness: armed before the pod is created, disarmed
+    in the always-run `finally:` teardown -- even when the run raises."""
+    events = []
+
+    class RecordingKeepAwake:
+        def __init__(self, _logger, **_kw):
+            pass
+
+        def arm(self):
+            events.append("arm")
+
+        def disarm(self):
+            events.append("disarm")
+
+    monkeypatch.setattr(rr, "KeepAwake", RecordingKeepAwake)
+
+    class SlowUploadComfy(FakeComfy):
+        def upload_file(self, local_path, subfolder, _overwrite):
+            time.sleep(0.5)
+            return {"name": local_path.name, "subfolder": subfolder, "type": "input"}
+
+    configured, manifest_path = p1i_training_manifest(tmp_path)
+    api = FakeAPI()
+    with pytest.raises(rr.RunCancelled, match="maximum runtime"):
+        rr.run_harness(
+            configured, manifest_path, tmp_path / "out",
+            max_usd=1, max_minutes=0.002, dry_run=False, api=api,
+            logger=logger_and_stream()[0], comfy_factory=SlowUploadComfy,
+            sleep=lambda _seconds: None, ledger_dir=tmp_path / "ledger",
+            allow_empty_ledger=True,
+        )
+
+    assert events == ["arm", "disarm"]
+
+
+def test_bootstrap_script_contains_a_pod_side_dead_man_switch_sized_to_max_minutes():
+    """BLOCKER-3: independent of the host, a backgrounded loop on the pod itself
+    self-terminates `max_minutes + 10` minutes past the harness's own ceiling."""
+    script = rr.bootstrap_script(manifest(), None, 42.0)
+    expected_seconds = int(round((42.0 + 10) * 60))
+
+    assert f"DEAD_MAN_SECONDS={expected_seconds}" in script
+    assert "runpodctl remove pod" in script
+    assert "RUNPOD_POD_ID" in script
+    assert "RUNPOD_API_KEY" in script
+    assert "shutdown -h now" in script
+    assert "DEADMAN" in script
+    # armed as early as possible -- well before the ComfyUI health poll/wait.
+    assert script.index("DEAD_MAN_SECONDS=") < script.index("comfy-health")
+
+
+def test_create_payload_threads_max_minutes_into_the_dead_man_switch():
+    payload = rr.create_payload(manifest(), None, 7.0)
+    script = base64.b64decode(payload["env"]["FIGMENT_BOOTSTRAP_B64"]).decode()
+    expected_seconds = int(round((7.0 + 10) * 60))
+    assert f"DEAD_MAN_SECONDS={expected_seconds}" in script
+
+
+def test_bootstrap_script_never_bakes_a_real_runpod_api_key_into_the_dead_man_switch(
+        monkeypatch):
+    """The dead-man switch reads $RUNPOD_API_KEY from the pod's own environment at
+    fire-time (a literal shell reference); GUARDRAILS #5 -- it must never be
+    interpolated into the rendered script by this harness."""
+    secret = "ambient-runpod-key-must-not-enter-the-dead-man-switch"
+    monkeypatch.setenv("RUNPOD_API_KEY", secret)
+    script = rr.bootstrap_script(manifest())
+    assert secret not in script
+    assert '${RUNPOD_API_KEY:-}' in script
+
+
+def test_hard_deadline_unblocks_a_real_hung_socket_and_a_fresh_attempt_then_succeeds(
+        monkeypatch):
+    """HIGH-1, reproduced live: the worker thread was still alive 20s after
+    `session.close()`, dying only at its own socket timeout -- `PoolManager.clear()`
+    only closes IDLE pooled connections, never one a worker thread is actively
+    blocked sending on. A real localhost server that accepts but never reads proves
+    the fix at the socket level: the worker must be dead within a few seconds of the
+    hard deadline, and a fresh attempt (HIGH-1: each attempt gets its own Session)
+    against a server that DOES respond must then succeed."""
+    monkeypatch.setattr(rr, "_post_join_timeout", lambda per_read_timeout: per_read_timeout)
+    logger, _stream = logger_and_stream()
+
+    hang_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    hang_server.bind(("127.0.0.1", 0))
+    hang_server.listen(1)
+    hang_port = hang_server.getsockname()[1]
+    accepted = threading.Event()
+
+    def hang_accept() -> None:
+        conn, _addr = hang_server.accept()
+        accepted.set()
+        time.sleep(15.0)  # never reads; the test closes hang_server well before this
+        try:
+            conn.close()
+        except OSError:
+            pass
+
+    hang_thread = threading.Thread(target=hang_accept, daemon=True)
+    hang_thread.start()
+
+    session = requests.Session()
+    session.trust_env = False
+    big_payload = b"x" * (64 * 1024 * 1024)  # large enough to fill socket buffers
+    result_holder: dict = {}
+
+    def _call() -> None:
+        try:
+            rr._post_with_hard_deadline(
+                session, f"http://127.0.0.1:{hang_port}/upload/image",
+                files={"image": ("f.bin", io.BytesIO(big_payload))}, data={},
+                timeout=1.0, logger=logger, label="test-hang",
+            )
+        except BaseException as exc:  # noqa: BLE001
+            result_holder["error"] = exc
+
+    caller = threading.Thread(target=_call, daemon=True)
+    caller.start()
+    assert accepted.wait(5.0)
+
+    started = time.monotonic()
+    caller.join(6.0)
+    elapsed = time.monotonic() - started
+
+    assert not caller.is_alive(), "worker thread was not unblocked by the socket shutdown"
+    assert elapsed < 6.0
+    assert isinstance(result_holder.get("error"), rr.TransientProxyError)
+    assert "hard deadline" in str(result_holder["error"])
+    hang_server.close()
+    hang_thread.join(timeout=2.0)
+
+    class _HealthyHandler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", "0"))
+            self.rfile.read(length)
+            body = json.dumps({"ok": True}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_a):
+            return
+
+    healthy = ThreadingHTTPServer(("127.0.0.1", 0), _HealthyHandler)
+    healthy_thread = threading.Thread(target=healthy.serve_forever, daemon=True)
+    healthy_thread.start()
+    try:
+        fresh_session = requests.Session()
+        fresh_session.trust_env = False
+        response = rr._post_with_hard_deadline(
+            fresh_session, f"http://127.0.0.1:{healthy.server_address[1]}/upload/image",
+            files={"image": ("f.bin", io.BytesIO(b"small"))}, data={},
+            timeout=5.0, logger=logger, label="test-healthy",
+        )
+        assert response.status_code == 200
+        assert response.json() == {"ok": True}
+    finally:
+        healthy.shutdown()
+        healthy_thread.join(timeout=2.0)
 
 
 def test_watchdog_fires_and_terminates_while_upload_is_blocked(tmp_path, monkeypatch):

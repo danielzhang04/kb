@@ -218,6 +218,10 @@ digests, it is left alone rather than rebuilt on every `pipeline` call.
 - **Every pod carries its own `--max-usd`/`--max-minutes`** (`max_placement_attempts: 1` —
   no automatic retry on a live run); `train`'s ceiling is derived from `steps × per-step
   rate`, never a fixed quoted figure — read it off your own `plan.json`.
+- **Pods self-terminate at `max_minutes + 10` even if the host sleeps** (2026-09-22): the
+  host is kept awake and the ceiling is suspend-proof for as long as it's running, but the
+  pod also carries its own independent dead-man switch as a backstop for a host that never
+  comes back at all — see GUARDRAILS.md #6.
 - **The qwen3vl caption pod ($1.95 ceiling, `caption` stage profile) is NOT in the
   plan-time preflight table.** `caption_mode: "qwen3vl"` only dispatches its pod later,
   from inside `apply-rulings --stage dataset` (`_live_qwen3vl_job_runner`) — `plan` never

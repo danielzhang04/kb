@@ -35,7 +35,11 @@ restart.
    and termination is VERIFIED via API, not assumed. A forgotten pod silently drains the
    balance. This now explicitly includes a hung upload: every ComfyUI upload POST runs
    under a hard wall-clock `join(timeout)` so a stalled body send fails closed as a
-   transient error instead of blocking the run (and the ceiling) indefinitely.
+   transient error instead of blocking the run (and the ceiling) indefinitely. It also
+   now covers a host that sleeps mid-run (2026-09-22): the host is kept awake for the
+   whole pod lifetime and the ceiling itself is suspend-proof (dual monotonic/wall-clock
+   check), and the pod carries its own independent dead-man switch that self-terminates
+   `max_minutes + 10` minutes past the ceiling even if the host never comes back.
 
 7. **The pickle-load ban (`pod/runpod_run.py` `models[]`) is narrower than "no pickle
    loads on the pod" reads.** It covers only `manifest["models"]` downloads

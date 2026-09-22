@@ -9,6 +9,7 @@ import base64
 import calendar
 import copy
 import csv
+import ctypes
 import hashlib
 import importlib.util
 import io
@@ -19,6 +20,7 @@ import os
 import re
 import shlex
 import signal
+import socket
 import sys
 import threading
 import time
@@ -967,15 +969,138 @@ def bootstrap_dependency_failure_reason(exc: BootstrapFailed) -> str | None:
     return " ".join(str(exc).split())[:500]
 
 
+SUSPEND_SKEW_WARN_SECONDS = 60.0
+DEFAULT_SLICE_SECONDS = 15.0
+
+
+def _sliced_deadline_wait(
+        *, total_seconds: float, poll: Callable[[float], bool],
+        slice_seconds: float = DEFAULT_SLICE_SECONDS,
+        monotonic: Callable[[], float] = time.monotonic,
+        wall_clock: Callable[[], float] = time.time,
+        logger: logging.Logger | None = None,
+) -> bool:
+    """Wait up to `total_seconds`, in short slices, checking BOTH a monotonic and a
+    wall-clock deadline so a host suspend cannot silently stretch the wait.
+
+    On Windows a relative wait (`Event.wait(seconds)`, `Thread.join(timeout)`) does
+    not count time spent in a low-power state -- the 09-21 pod ran 252 minutes
+    against a 185-minute ceiling and the watchdog never logged, because its one long
+    relative wait simply resumed with its remaining budget intact after the host
+    woke up. `time.monotonic()` on this box is backed by QueryPerformanceCounter and
+    keeps counting through a suspend (verified against that log's 12.8-minute gap),
+    so slicing the wait and re-deriving `remaining` from `monotonic()` each slice
+    would, on its own, still be fooled the same way. Checking a `time.time()`
+    wall-clock deadline too means whichever clock says "over" wins: a suspend makes
+    the wall clock jump far ahead of monotonic, so the wall check fires immediately
+    on the next slice even though monotonic still thinks time remains.
+
+    `poll(seconds)` is called with the next slice's duration and must return True to
+    stop the wait early (e.g. `threading.Event.wait`, or a wrapper around
+    `Thread.join`). Returns True if `poll` ever returned True, False once a deadline
+    is reached.
+    """
+    monotonic_deadline = monotonic() + total_seconds
+    wall_deadline = wall_clock() + total_seconds
+    while True:
+        remaining_monotonic = monotonic_deadline - monotonic()
+        remaining_wall = wall_deadline - wall_clock()
+        if logger is not None and abs(remaining_monotonic - remaining_wall) > SUSPEND_SKEW_WARN_SECONDS:
+            logger.warning(
+                "host suspend suspected: monotonic vs wall skew %.0fs",
+                abs(remaining_monotonic - remaining_wall),
+            )
+        remaining = min(remaining_monotonic, remaining_wall)
+        if remaining <= 0:
+            return False
+        if poll(min(slice_seconds, remaining)):
+            return True
+
+
+ES_CONTINUOUS = 0x80000000
+ES_SYSTEM_REQUIRED = 0x00000001
+KEEP_AWAKE_REASSERT_SECONDS = 30.0
+
+
+class KeepAwake:
+    """Suppresses Windows sleep/Modern-Standby for as long as a rented pod is
+    alive and billing (BLOCKER-2). A relative deadline wait does not count time
+    spent suspended (see `_sliced_deadline_wait`'s docstring for the evidence), so
+    keeping the host awake for the pod's whole life -- from create through verified
+    teardown -- removes that failure mode rather than only detecting it after the
+    fact. Re-asserts `SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)`
+    from a dedicated daemon thread every `KEEP_AWAKE_REASSERT_SECONDS` (the flag is
+    thread-scoped and does not survive the asserting thread exiting, hence a
+    long-lived thread rather than a one-shot call). No-op on non-Windows platforms.
+    `disarm()` is safe to call multiple times and on a never-armed instance.
+    """
+
+    def __init__(self, logger: logging.Logger, *,
+                 set_execution_state: Callable[[int], int] | None = None,
+                 reassert_seconds: float = KEEP_AWAKE_REASSERT_SECONDS):
+        self.logger = logger
+        self._set_execution_state = set_execution_state
+        self._reassert_seconds = reassert_seconds
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def _resolve_setter(self) -> Callable[[int], int] | None:
+        if self._set_execution_state is not None:
+            return self._set_execution_state
+        if sys.platform != "win32":
+            return None
+        try:
+            return ctypes.windll.kernel32.SetThreadExecutionState  # type: ignore[attr-defined]
+        except AttributeError:  # pragma: no cover - defensive only
+            return None
+
+    def arm(self) -> None:
+        if self._thread is not None:
+            return
+        setter = self._resolve_setter()
+        if setter is None:
+            return
+        self._set_execution_state = setter
+        self._stop.clear()
+
+        def _run() -> None:
+            while True:
+                setter(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
+                if self._stop.wait(self._reassert_seconds):
+                    return
+
+        self._thread = threading.Thread(target=_run, name="pod-keep-awake", daemon=True)
+        self._thread.start()
+        self.logger.info(
+            "keep-awake armed: host sleep suppressed while the pod is alive"
+        )
+
+    def disarm(self) -> None:
+        if self._thread is None:
+            return
+        self._stop.set()
+        self._thread.join(timeout=5.0)
+        self._thread = None
+        if self._set_execution_state is not None:
+            self._set_execution_state(ES_CONTINUOUS)
+        self.logger.info("keep-awake disarmed")
+
+
 class Watchdog:
     """Wall-clock guard that directly tears down the lease from a daemon thread."""
 
     def __init__(self, seconds: float, lease: PodLease, cancel: threading.Event,
-                 logger: logging.Logger):
+                 logger: logging.Logger, *,
+                 monotonic: Callable[[], float] = time.monotonic,
+                 wall_clock: Callable[[], float] = time.time,
+                 slice_seconds: float = DEFAULT_SLICE_SECONDS):
         self.seconds = seconds
         self.lease = lease
         self.cancel = cancel
         self.logger = logger
+        self._monotonic = monotonic
+        self._wall_clock = wall_clock
+        self._slice_seconds = slice_seconds
         self._stop = threading.Event()
         self.fired = threading.Event()
         self.error: BaseException | None = None
@@ -985,7 +1110,13 @@ class Watchdog:
         self.thread.start()
 
     def _run(self) -> None:
-        if self._stop.wait(self.seconds):
+        completed = _sliced_deadline_wait(
+            total_seconds=self.seconds, poll=self._stop.wait,
+            slice_seconds=self._slice_seconds,
+            monotonic=self._monotonic, wall_clock=self._wall_clock,
+            logger=self.logger,
+        )
+        if completed:
             return
         self.fired.set()
         self.cancel.set()
@@ -1574,6 +1705,8 @@ def retry_transient_proxy(
         try:
             return operation()
         except TransientProxyError:
+            if watchdog.cancel.is_set():
+                raise RunCancelled("cancelled during retry")
             if attempt == 3:
                 raise
             delay = 15.0 * attempt
@@ -2403,10 +2536,11 @@ def settled_cost_estimate(*, elapsed_seconds: float, dry_run: bool,
 
 def create_payload(
     manifest: dict[str, Any], manifest_path: Path | None = None,
+    max_minutes: float | None = None,
 ) -> dict[str, Any]:
     gpu = manifest["gpu"]
     encoded_bootstrap = base64.b64encode(
-        bootstrap_script(manifest, manifest_path).encode("utf-8")
+        bootstrap_script(manifest, manifest_path, max_minutes).encode("utf-8")
     ).decode("ascii")
     bootstrap_command = (
         'echo "$FIGMENT_BOOTSTRAP_B64" | base64 -d > /workspace/bootstrap.sh '
@@ -2661,7 +2795,10 @@ def _safe_node_name(url: str, explicit: str | None) -> str:
 
 def bootstrap_script(
     manifest: dict[str, Any], manifest_path: Path | None = None,
+    max_minutes: float | None = None,
 ) -> str:
+    if max_minutes is None:
+        max_minutes = effective_max_minutes(None, manifest)
     comfy = manifest.get("comfyui") or {}
     root = str(comfy.get("root", "/workspace/ComfyUI"))
     git_ref = str(comfy["git_ref"])
@@ -2737,6 +2874,48 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
         "fatal() { reason=\"$1\"; rc=\"${2:-1}\"; if [ \"$rc\" -eq 0 ]; then rc=1; fi; fatal_active=1; trap - EXIT; printf '%s\\n' \"$reason\" > \"$BOOTSTRAP_FAILED\"; log_line \"FATAL $reason\"; start_diagnostics || true; sleep 60; exit \"$rc\"; }",
         "on_exit() { rc=$?; if [ \"$rc\" -ne 0 ] && [ \"$fatal_active\" -eq 0 ]; then fatal \"unexpected bootstrap failure at line ${BASH_LINENO[0]} rc=$rc\" \"$rc\"; fi; }",
         "trap on_exit EXIT",
+    ]
+    # BLOCKER-3: a pod-side dead-man switch, independent of the host. The host-side
+    # Watchdog/keep-awake pair (BLOCKER-1/2) protects against the host itself
+    # suspending or dying, but neither helps if the *pod* loses its network path back
+    # to the host (or the host process is killed outright) -- nothing would ever
+    # again ask this pod to stop billing. This backgrounded, detached loop sleeps
+    # `max_minutes + 10` minutes past the harness's own ceiling, then self-terminates
+    # regardless of whether the host is still listening. RunPod injects
+    # `RUNPOD_POD_ID` into every pod, but NOT a pod-scoped API credential by default
+    # (GUARDRAILS #5: never bake a real API key into the manifest, so this bootstrap
+    # never sets one either) -- `RUNPOD_API_KEY` is only present if the operator
+    # configured it themselves via RunPod's own pod-env-var mechanism, outside this
+    # manifest. When it is, `runpodctl remove pod` actually stops GPU billing.
+    # Otherwise the honest fallback is `shutdown -h now`: it reliably stops the
+    # ComfyUI process (and everything else) inside the container, which is the most
+    # this bootstrap can do without a credential it deliberately does not carry, but
+    # for most RunPod pod types is NOT guaranteed to stop the platform from billing
+    # the still-allocated GPU the way an explicit `remove pod` call is -- see
+    # RUNBOOK.md's budget-rules note.
+    dead_man_seconds = int(round((max_minutes + 10) * 60))
+    dead_man_body = (
+        'printf "DEADMAN firing after %ss (max_minutes+10 margin)\\n" '
+        '"$DEAD_MAN_SECONDS" >>"$BOOTSTRAP_LOG" 2>&1; '
+        'if command -v runpodctl >/dev/null 2>&1 && [ -n "${RUNPOD_API_KEY:-}" ] '
+        '&& [ -n "${RUNPOD_POD_ID:-}" ]; then '
+        'printf "DEADMAN attempting runpodctl remove pod %s\\n" "$RUNPOD_POD_ID" '
+        '>>"$BOOTSTRAP_LOG" 2>&1; '
+        'if runpodctl remove pod "$RUNPOD_POD_ID" >>"$BOOTSTRAP_LOG" 2>&1; then '
+        'printf "DEADMAN runpodctl remove succeeded\\n" >>"$BOOTSTRAP_LOG" 2>&1; '
+        'exit 0; fi; '
+        'printf "DEADMAN runpodctl remove failed; falling back to shutdown -h now\\n" '
+        '>>"$BOOTSTRAP_LOG" 2>&1; '
+        'else printf "DEADMAN no pod-scoped runpodctl credential available '
+        '(RUNPOD_API_KEY unset); falling back to shutdown -h now\\n" '
+        '>>"$BOOTSTRAP_LOG" 2>&1; fi; '
+        'shutdown -h now >>"$BOOTSTRAP_LOG" 2>&1 || true'
+    )
+    lines.extend([
+        f"DEAD_MAN_SECONDS={dead_man_seconds}",
+        f'( sleep "$DEAD_MAN_SECONDS"; {dead_man_body} ) & disown',
+    ])
+    lines.extend([
         "run_required() { label=\"$1\"; shift; \"$@\" >>\"$BOOTSTRAP_LOG\" 2>&1; rc=$?; log_line \"STEP $label rc=$rc\"; if [ \"$rc\" -ne 0 ]; then fatal \"$label failed with rc=$rc\" \"$rc\"; fi; }",
         "retry_required() { label=\"$1\"; shift; attempt=1; while :; do \"$@\" >>\"$BOOTSTRAP_LOG\" 2>&1; rc=$?; log_line \"STEP $label attempt=$attempt rc=$rc\"; if [ \"$rc\" -eq 0 ]; then return 0; fi; if [ \"$attempt\" -ge 3 ]; then fatal \"$label failed after $attempt attempts with rc=$rc\" \"$rc\"; return \"$rc\"; fi; if [ \"$attempt\" -eq 1 ]; then backoff=15; else backoff=30; fi; log_line \"STEP $label retrying in ${backoff}s\"; sleep \"$backoff\"; attempt=$((attempt + 1)); done; }",
         "retry_optional() { label=\"$1\"; shift; attempt=1; while :; do \"$@\" >>\"$BOOTSTRAP_LOG\" 2>&1; rc=$?; log_line \"STEP $label attempt=$attempt rc=$rc\"; if [ \"$rc\" -eq 0 ]; then return 0; fi; if [ \"$attempt\" -ge 3 ]; then return \"$rc\"; fi; if [ \"$attempt\" -eq 1 ]; then backoff=15; else backoff=30; fi; log_line \"STEP $label retrying in ${backoff}s\"; sleep \"$backoff\"; attempt=$((attempt + 1)); done; }",
@@ -2748,7 +2927,7 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
         "run_required gpu-present bash -lc 'gpu_lines=$(nvidia-smi -L) && test -n \"$gpu_lines\" && printf \'%s\\n\' \"$gpu_lines\"'",
         "run_required torch-cuda python -c 'import torch,sys; sys.exit(0 if torch.cuda.is_available() else 3)'",
         "wait_for_network",
-    ]
+    ])
     clone_comfy = (
         f"git clone --branch {shlex.quote(git_ref)} --depth 1 "
         f"{shlex.quote(source_url)} {shlex.quote(root)}"
@@ -2914,6 +3093,87 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
     return "\n".join(lines) + "\n"
 
 
+def _post_join_timeout(per_read_timeout: float) -> float:
+    """LOW-1: the worker-thread join must outlive `per_read_timeout` (the
+    connect/per-read socket timeout given to `session.post(..., timeout=...)`,
+    which itself is unchanged) by enough headroom that a genuinely slow -- but not
+    hung -- transfer's own `requests`-level timeout gets a chance to fail it closed
+    normally, instead of the hard join racing it and firing first on every attempt.
+    """
+    return 1.5 * per_read_timeout + 30.0
+
+
+class _SocketCapture:
+    """Thread-safe single-slot handle for the raw socket backing an in-flight POST,
+    set the moment urllib3 connects it -- well before any data is sent, so it is
+    available long before a stalled body send could block (HIGH-1). `session.close()`
+    alone does not interrupt an in-flight send: `PoolManager.clear()` only closes
+    *idle* pooled connections, not one a worker thread is actively blocked inside
+    (reproduced directly: the worker was still alive 20s after `close()`, and only
+    died at its own socket timeout). Shutting the captured socket down directly
+    unblocks the worker's blocking send/recv call within seconds."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._sock: Any = None
+
+    def set(self, sock: Any) -> None:
+        with self._lock:
+            self._sock = sock
+
+    def shutdown_and_close(self) -> None:
+        with self._lock:
+            sock = self._sock
+        if sock is None:
+            return
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        try:
+            sock.close()
+        except OSError:
+            pass
+
+
+def _post_capturing_socket(
+        session: Any, url: str, *, files: Any, data: Any, timeout: float,
+        capture: "_SocketCapture") -> Any:
+    """`session.post(...)`, wiring `capture` to the socket urllib3 opens for this
+    request. Only a real `requests.Session` exposes the adapter/pool machinery this
+    needs; a duck-typed test double just posts directly -- there is no live socket
+    to capture, and nothing past the fake's own behavior that could hang."""
+    poolmanager = None
+    adapters = getattr(session, "adapters", None)
+    if requests is not None and isinstance(session, requests.Session) and adapters:
+        for prefix in ("https://", "http://"):
+            adapter = adapters.get(prefix)
+            if adapter is not None and hasattr(adapter, "poolmanager"):
+                poolmanager = adapter.poolmanager
+                break
+    if poolmanager is None:
+        return session.post(url, files=files, data=data, timeout=timeout)
+    pool = poolmanager.connection_from_url(url)
+    original_new_conn = pool._new_conn
+
+    def _new_conn_capturing():
+        conn = original_new_conn()
+        original_connect = conn.connect
+
+        def _connect_capturing():
+            original_connect()
+            capture.set(getattr(conn, "sock", None))
+
+        conn.connect = _connect_capturing
+        return conn
+
+    pool._new_conn = _new_conn_capturing
+    try:
+        return session.post(url, files=files, data=data, timeout=timeout)
+    finally:
+        pool._new_conn = original_new_conn
+
+
 def _post_with_hard_deadline(
         session: Any, url: str, *, files: Any, data: Any, timeout: float,
         logger: logging.Logger, label: str) -> Any:
@@ -2923,35 +3183,54 @@ def _post_with_hard_deadline(
     NOT a stalled body send -- a live upload once blocked ~3h53m on a single 16 MiB
     chunk POST despite a computed ~76s timeout (orgs/figment/runs/creator-001/
     live-20260916b/downstream/gen/gen-harness-stderr.log, pod u86413a8wjzsni,
-    2026-09-21), and the 185-minute run ceiling had no independent way to unstick it.
-    Running the POST on a worker thread and giving the *whole call* a hard
-    `join(timeout)` bounds it regardless of where the stall is. On expiry the session
-    is closed to unblock the worker thread's socket call (best-effort -- the thread is
-    daemon and is otherwise abandoned, never left holding a live socket past process
-    exit), and the stall is reported as a TransientProxyError so the existing
-    3-attempt loop in `retry_transient_proxy` retries it exactly like any other
-    transient failure.
+    2026-09-21). The true trigger was a host suspend (BLOCKER-1's `Watchdog` fix
+    docstring has the evidence): a relative wait/join does not count suspended time,
+    so both the per-POST join below and the run's own 185-minute `Watchdog` ceiling
+    silently stretched.
+
+    Running the POST on a worker thread and giving the *whole call* a hard,
+    suspend-proof join (`_sliced_deadline_wait`, sized with headroom via
+    `_post_join_timeout` -- LOW-1) bounds it regardless of where the stall is or
+    whether the host slept through part of it. On expiry the captured socket is
+    shut down directly (HIGH-1) and the session is also closed as a second,
+    best-effort line of defense; the worker thread is daemon and otherwise
+    abandoned, never left holding a live socket past process exit. The stall is
+    reported as a TransientProxyError so the existing 3-attempt loop in
+    `retry_transient_proxy` retries it exactly like any other transient failure.
     """
     outcome: dict[str, Any] = {}
+    capture = _SocketCapture()
 
     def _worker() -> None:
         try:
-            outcome["response"] = session.post(url, files=files, data=data, timeout=timeout)
+            outcome["response"] = _post_capturing_socket(
+                session, url, files=files, data=data, timeout=timeout, capture=capture,
+            )
         except BaseException as exc:  # noqa: BLE001 - surfaced to the caller below
             outcome["error"] = exc
 
     worker = threading.Thread(target=_worker, name=f"{label}-post", daemon=True)
     worker.start()
-    worker.join(timeout)
-    if worker.is_alive():
+
+    def _join_poll(seconds: float) -> bool:
+        worker.join(seconds)
+        return not worker.is_alive()
+
+    join_timeout = _post_join_timeout(timeout)
+    completed = _sliced_deadline_wait(
+        total_seconds=join_timeout, poll=_join_poll, logger=logger,
+    )
+    if not completed:
         logger.error(
-            "%s POST exceeded its %.0fs hard deadline; closing the session to "
-            "unblock it", label, timeout,
+            "%s POST exceeded its %.0fs hard deadline (per-read timeout %.0fs); "
+            "shutting down its socket and closing the session to unblock it",
+            label, join_timeout, timeout,
         )
+        capture.shutdown_and_close()
         close = getattr(session, "close", None)
         if callable(close):
             close()
-        raise TransientProxyError(f"{label} POST exceeded its {timeout:.0f}s hard deadline")
+        raise TransientProxyError(f"{label} POST exceeded its {join_timeout:.0f}s hard deadline")
     if "error" in outcome:
         exc = outcome["error"]
         raise TransientProxyError(
@@ -3045,6 +3324,16 @@ class ComfyClient:
             "type": "input",
         }
         try:
+            size_bytes = local_path.stat().st_size
+        except OSError as exc:
+            raise HarnessError(
+                f"ComfyUI upload file could not be read: {type(exc).__name__}"
+            ) from exc
+        # MEDIUM-2: the whole-transfer join now covers connect + the entire body
+        # send (not just one read), so a large unchunked file needs more than the
+        # fixed REQUEST_TIMEOUT floor -- size it like a chunk part.
+        upload_timeout = max(REQUEST_TIMEOUT, size_bytes / UPLOAD_CHUNK_ASSUMED_MIN_BYTES_PER_SECOND)
+        try:
             with local_path.open("rb") as handle:
                 try:
                     response = _post_with_hard_deadline(
@@ -3055,9 +3344,15 @@ class ComfyClient:
                             "type": "input",
                             "overwrite": "true" if overwrite else "false",
                         },
-                        timeout=REQUEST_TIMEOUT, logger=self.logger,
+                        timeout=upload_timeout, logger=self.logger,
                         label=f"upload {local_path.name}",
                     )
+                except RunCancelled:
+                    # MEDIUM-1: a signal handler can raise RunCancelled in the main
+                    # thread while it is blocked inside the hard-deadline join above;
+                    # it must propagate as a real cancellation, never be reinterpreted
+                    # as a retryable transport failure.
+                    raise
                 except TransientProxyError:
                     raise
                 except Exception as exc:
@@ -3125,6 +3420,9 @@ class ComfyClient:
                 },
                 timeout=timeout, logger=self.logger, label=f"upload {remote_name}",
             )
+        except RunCancelled:
+            # MEDIUM-1: see the matching comment in upload_file.
+            raise
         except TransientProxyError:
             raise
         except Exception as exc:
@@ -4049,6 +4347,13 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
         if machine_host is not None:
             active_machine_host = machine_host
 
+    # BLOCKER-2: armed for the pod's whole life (create through verified teardown,
+    # every exit path -- the `finally:` below always runs); a no-op in dry-run,
+    # where no pod is ever actually rented.
+    keep_awake = KeepAwake(logger)
+    if not dry_run:
+        keep_awake.arm()
+
     try:
         for placement_attempt in range(1, max_placement_attempts + 1):
             if placement_attempt > 1:
@@ -4068,7 +4373,7 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                         "placement recreation refused: avoided-pod cost plus the next "
                         "full-run estimate exceeds the arc cap"
                     )
-            payload = create_payload(manifest, manifest_path)
+            payload = create_payload(manifest, manifest_path, max_minutes)
             # This write is intentionally immediately before the create request.  If
             # the desktop dies during POST, a surviving host has one narrow name,
             # manifest digest, receipt path, and budget-bound attempt to reconcile.
@@ -4575,6 +4880,10 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 except BaseException as secondary:
                     retain_finalization_failure("bootstrap-failure.json write", secondary)
     finally:
+        try:
+            keep_awake.disarm()
+        except BaseException as secondary:
+            retain_finalization_failure("keep-awake disarm", secondary)
         try:
             if proxy_client is not None:
                 close_proxy = getattr(proxy_client, "close", None)
