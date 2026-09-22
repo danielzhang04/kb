@@ -7,7 +7,7 @@ target: orgs/kb-ops/output/v1-acceptance-demo/tailnet-acl-basics/research-a
 risk-tier: T2
 owner: worker-desktop
 claim-token: 1b09b74578432984
-state: inbox
+state: working
 approval: null
 workflow: run-c96b5d4d-4a2d-4779-916e-f2de76294d95
 depends-on: []
