@@ -199,6 +199,58 @@ const CASES = [
   ['rehearsal drain step1 (-VM root@localhost) while closed', 'closed', 'Bash', `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1' -VM root@localhost -URL http://localhost:4317"`, 0],
   ['rehearsal drain step1 while OPEN', 'open', 'Bash', `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1' -VM root@localhost -URL http://localhost:4317"`, 0],
   ['rehearsal drain step1, -File form is not a reviewed shape at all (A-1: no bypass to fall back on)', 'closed', 'Bash', `${PS} -File "${T}\\drain-v2\\drain-step1-v2.ps1" -VM root@localhost -URL http://localhost:4317`, 2],
+
+  // ---- F3 (p13, 2026-09-22): drain-step1/drain-step2 need -WslDistro (and their other declared
+  // rehearsal-only path params) to actually route promote_vm_outbox.py's ssh/scp calls through the
+  // rehearsal host instead of real Windows OpenSSH on port 22 (evidence.md p13 F3). ops-refresh.ps1
+  // (C5B) never calls Invoke-Promote and declares no -WslDistro/-CurlHeader param at all, so it is
+  // deliberately NOT given either group — see the "C5b" cases below.
+  ['C3 drain step1 rehearsal -WslDistro, window closed', 'closed', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1' -VM root@localhost -WslDistro kb-rehearsal"`, 0],
+  ['C3 drain step1 rehearsal -WslDistro, window open', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1' -VM root@localhost -WslDistro kb-rehearsal"`, 0],
+  ['C3 drain step1 -WslDistro WITHOUT -VM root@localhost is refused (prod-targeting shape, unmatched)', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1' -WslDistro kb-rehearsal"`, 2],
+  ['C3 drain step1 -WslDistro with metacharacters blocked', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1' -VM root@localhost -WslDistro kb-rehearsal;rm"`, 2],
+  ['C3 drain step1 -WslDistro given a path (not a distro word) blocked', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1' -VM root@localhost -WslDistro C:\\Users\\danie\\kb-rehearsal\\tooling"`, 2],
+  ['C3 drain step1 full rehearsal shape: -Spool/-Work/-ApprovalDir/-WslDistro/-CurlHeader, window closed', 'closed', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1' -VM root@localhost -URL http://localhost:4317 -SshShimDir C:\\shims -Spool C:\\Users\\danie\\kb-backups\\outbox-snapshots -Work C:\\Users\\danie\\kb-backups\\outbox-work -ApprovalDir ${T}\\rehearsal\\p13\\approval -WslDistro kb-rehearsal -CurlHeader X-Tailscale-Serve:1"`, 0],
+  ['C3 drain step1 -Spool outside T/kb-backups blocked', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1' -VM root@localhost -Spool C:\\tmp\\spool"`, 2],
+  ['C3 drain step1 -ApprovalDir traversal blocked', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1' -VM root@localhost -ApprovalDir ${T}\\..\\..\\secrets"`, 2],
+  ['C3 drain step1, prod-shaped line still window-gated (unaffected by F3)', 'closed', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1'"`, 2],
+
+  ['C5a drain step2 rehearsal -WslDistro, window closed', 'closed', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step2-v2.ps1' -VM root@localhost -WslDistro kb-rehearsal"`, 0],
+  ['C5a drain step2 rehearsal -WslDistro, window open', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step2-v2.ps1' -VM root@localhost -WslDistro kb-rehearsal"`, 0],
+  ['C5a drain step2 -WslDistro WITHOUT -VM root@localhost is refused (prod-targeting shape, unmatched)', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step2-v2.ps1' -WslDistro kb-rehearsal"`, 2],
+  ['C5a drain step2 -WslDistro with metacharacters blocked', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step2-v2.ps1' -VM root@localhost -WslDistro kb-rehearsal;rm"`, 2],
+  ['C5a drain step2 -WslDistro given a path (not a distro word) blocked', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step2-v2.ps1' -VM root@localhost -WslDistro C:\\Users\\danie\\kb-rehearsal\\tooling"`, 2],
+  ['C5a drain step2 full rehearsal shape: -Spool/-Work/-Signers/-WslDistro/-CurlHeader, window closed', 'closed', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step2-v2.ps1' -VM root@localhost -URL http://localhost:4317 -SshShimDir C:\\shims -Spool C:\\Users\\danie\\kb-backups\\outbox-snapshots -Work C:\\Users\\danie\\kb-backups\\outbox-work -Signers C:\\Users\\danie\\kb-backups\\kb-ops-approver.allowed-signers -WslDistro kb-rehearsal -CurlHeader X-Tailscale-Serve:1"`, 0],
+  ['C5a drain step2 -Signers outside T/kb-backups blocked', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step2-v2.ps1' -VM root@localhost -Signers C:\\tmp\\signers"`, 2],
+  ['C5a drain step2, prod-shaped line still window-gated (unaffected by F3)', 'closed', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step2-v2.ps1'"`, 2],
+
+  // ops-refresh.ps1 (C5B) declares no -WslDistro/-CurlHeader/-Spool/-Work/-ApprovalDir/-Signers
+  // param at all (it never calls Invoke-Promote) — it is deliberately excluded from the F3 fix,
+  // confirmed here: -WslDistro must still be refused even with a genuine -VM root@localhost marker.
+  ['C5b ops-refresh -WslDistro is refused (script declares no such param), window open', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\ops-refresh.ps1' -VM root@localhost -WslDistro kb-rehearsal"`, 2],
+  ['C5b ops-refresh rehearsal -VM/-SshShimDir alone remains allowed (unaffected by F3)', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\ops-refresh.ps1' -VM root@localhost -SshShimDir C:\\shims"`, 0],
+  ['C5b ops-refresh, prod-shaped line still window-gated (unaffected by F3)', 'closed', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\ops-refresh.ps1'"`, 2],
+
   ['ordinary git command while open', 'open', 'Bash', 'git status --short', 0],
   ['ordinary test run while open', 'open', 'Bash', 'node --test tests/hooks/prod_window_guard.test.js', 0],
 
