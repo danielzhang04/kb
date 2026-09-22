@@ -239,6 +239,85 @@ describe('control-store schedule authority', () => {
     };
     expect(document.scheduleOccurrenceClaims.filter((row) => row.runRef === launched.run.runRef && row.completionReceipt !== null)).toHaveLength(1);
   });
+
+  it('F7: nextAt advances once the occurrence reaches card-saved, without waiting for its run to terminate', async () => {
+    // Root cause (p13 rehearsal finding F7): the ONLY pre-existing place `schedule.nextAt` was written
+    // was `completeStoredScheduleOccurrence`, reached only via a RUN reaching a terminal lifecycle
+    // (`transitionRun`, exercised above). `scripts/dispatch.py#dispatch_claimed_occurrence` never calls
+    // that path at all (its own state machine stops at `ledger-appended`), and even when a run IS
+    // eventually launched from the card, that run can sit non-terminal indefinitely (e.g. parked behind
+    // an unrelated activation gate — p13 finding F6). Either way, `nextAt` never advanced, so
+    // `dispatch_stored_schedules`'s `covered_next_at` gate
+    // (see tests/test_schedule_store.py::test_later_same_window_tick_skips_an_occurrence_already_covered_by_next_at,
+    // which independently proves that gate honors a correctly-advanced nextAt) never received an
+    // advanced value to honor, and every tick re-reported the same occurrence due=1 forever. The fix
+    // advances `schedule.nextAt` the first time the occurrence reaches `card-saved` — the card is
+    // durably on disk at that point, so the schedule's due pointer can move on regardless of what
+    // happens to any run later minted from it.
+    const root = mkdtempSync(join(tmpdir(), 'control-store-schedule-nextat-'));
+    roots.push(root);
+    const scheduledFor = '2026-09-22T07:18:00.000Z';
+    const nextFire = '2026-09-23T07:18:00.000Z'; // the true next daily cron occurrence after scheduledFor
+    const renderScheduleClaim = vi.fn(async (input: { scheduleId: string; scheduledFor: string; owner: { id: string } }) => {
+      const cardIdHash = createHash('sha256').update(`schedule-card\0${input.scheduleId}\0${input.scheduledFor}`).digest('hex');
+      return { card: {
+        meta: {
+          'schema-version': 1, id: `${cardIdHash.slice(0, 8)}-${cardIdHash.slice(8, 16)}`,
+          project: 'kb', action: `cadence:${input.owner.id}`, target: `agents/${input.owner.id}.md`,
+          'risk-tier': 'T1', owner: input.owner.id, 'claim-token': null, state: 'inbox', approval: null,
+          workflow: null, 'depends-on': [], 'variant-group': null, role: 'work', 'session-id': null,
+          runtime: null, model: null, 'execution-controller': 'dashboard', scheduled_for: input.scheduledFor,
+        },
+        body: '## Work order\n\nRun the scheduled hygiene agent.\n',
+      }, cardBytesSha256: 'c'.repeat(64) };
+    });
+    const store = createFileControlPlaneStore(root, { renderScheduleClaim });
+    const owner = { type: 'agent' as const, id: 'hygiene', sourcePath: 'agents/hygiene.md' as const };
+    const api = new ScheduleService({
+      store, resolveOwner: async () => owner, mirrorPathForOwner: () => 'orgs/kb-ops/HEARTBEAT.md', seedAuthorization: async () => true,
+    });
+    const created = await api.create({
+      owner: { type: 'agent' as const, id: 'hygiene' },
+      cadence: { kind: 'cron' as const, minute: '18', hour: '7', dayOfMonth: '*', month: '*', dayOfWeek: '*' },
+      expectedCollectionRevision: 0, idempotencyKey: 'nextat-create', workflowProfile: 'cadence',
+    });
+    await api.setArmed(created.schedule.id, { expectedVersion: created.schedule.version, idempotencyKey: 'nextat-arm', armed: true });
+    const before = store.getScheduleSnapshot().schedules[0];
+
+    await api.claimScheduleOccurrence({
+      occurrence: { scheduleId: before.id, scheduledFor, nextAt: nextFire },
+      expectedVersion: before.version, idempotencyKey: 'nextat-claim-1',
+    });
+    // A bare CLAIM alone does not advance nextAt (the brief's "phase >= card-saved" boundary).
+    expect(store.getScheduleSnapshot().schedules[0].nextAt).toBe(before.nextAt);
+
+    await store.advanceScheduleOccurrence({
+      scheduleId: before.id, scheduledFor, nextAt: nextFire,
+      phase: 'card-saved', idempotencyKey: 'nextat-claim-1:card-saved',
+    });
+    const afterCardSaved = store.getScheduleSnapshot().schedules[0];
+    expect(afterCardSaved.nextAt).toBe(nextFire); // advanced to the true next cron occurrence
+    expect(afterCardSaved.version).toBe(before.version + 1);
+    // The exact invariant dispatch.py's `covered_next_at` gate needs to report due=0 on a second tick for
+    // this SAME occurrence: nextAt must now be strictly after the occurrence just claimed.
+    expect(new Date(afterCardSaved.nextAt!).getTime()).toBeGreaterThan(new Date(scheduledFor).getTime());
+
+    // A dispatch.py replay (crash-then-retry) re-sends the identical idempotencyKey for the same phase.
+    // That must return the same receipt and must NOT re-mutate the schedule a second time.
+    const replay = await store.advanceScheduleOccurrence({
+      scheduleId: before.id, scheduledFor, nextAt: nextFire,
+      phase: 'card-saved', idempotencyKey: 'nextat-claim-1:card-saved',
+    });
+    expect(replay.phase).toBe('card-saved');
+    expect(store.getScheduleSnapshot().schedules[0]).toMatchObject({ nextAt: nextFire, version: afterCardSaved.version });
+
+    // The ledger-appended step (a later phase, not 'card-saved') must not advance nextAt again.
+    await store.advanceScheduleOccurrence({
+      scheduleId: before.id, scheduledFor, nextAt: nextFire,
+      phase: 'ledger-appended', idempotencyKey: 'nextat-claim-1:ledger-appended',
+    });
+    expect(store.getScheduleSnapshot().schedules[0]).toMatchObject({ nextAt: nextFire, version: afterCardSaved.version });
+  });
 });
 
 // Production migrations are up-only (rollback is restore-from-backup, never down-migrate), so this

@@ -92,11 +92,29 @@ transaction. The tick will keep skipping (and keep logging) every interval until
   two overlapping ticks; the flag exists so a slow tick doesn't queue a redundant `dispatch.py` spawn
   behind it.
 - Underneath both, `dispatch.py`'s own claim/advance state machine (unchanged by this ruling) is what
-  makes a REPLAYED tick a no-op for an individual occurrence: a schedule's `nextAt` only advances after
-  a successful claim, and a claim already past `card-saved` or `ledger-appended` returns that phase
-  directly rather than re-writing the card or re-appending the ledger row
-  (`scripts/dispatch.py:dispatch_claimed_occurrence`). Proven end-to-end over the real Unix-socket
-  server in `tests/test_schedule_store.py:test_double_tick_dispatches_the_due_occurrence_exactly_once_over_the_real_socket`.
+  makes a REPLAYED tick a no-op for an individual occurrence: a claim already past `card-saved` or
+  `ledger-appended` returns that phase directly rather than re-writing the card or re-appending the
+  ledger row (`scripts/dispatch.py:dispatch_claimed_occurrence`). Proven end-to-end over the real
+  Unix-socket server in
+  `tests/test_schedule_store.py:test_double_tick_dispatches_the_due_occurrence_exactly_once_over_the_real_socket`.
+
+### `nextAt` advance (F7 fix, 2026-09-22)
+
+A schedule's own `nextAt` (the field `dispatch_stored_schedules`'s `covered_next_at` gate reads to
+decide whether an occurrence is still due) advances the first time that occurrence's claim reaches
+phase `card-saved` — `dashboard/server/control/store.ts#advanceScheduleOccurrence`. Before this fix
+**nothing in the production dispatch path ever advanced it**: the only code that wrote
+`schedule.nextAt` was `completeStoredScheduleOccurrence`, reached only when a RUN minted from the
+card later transitions to a terminal lifecycle (`transitionRun`) — and `dispatch.py` never calls that
+at all (its own state machine stops at `ledger-appended`), while a launched run can sit non-terminal
+indefinitely (e.g. parked behind an unrelated activation gate, independent of the schedule itself). A
+cron row's `nextAt` could therefore stay pinned at a stale value forever, and every tick re-reported
+`due=1` for the same already-dispatched occurrence (p13 rehearsal finding F7 — the standing
+`self-lint-report` daily cadence, `18 3 * * *`). The `card-saved` boundary was chosen deliberately: the
+trigger card is durably on disk by then, so the schedule's due pointer can move on regardless of
+whether a run is ever minted from it or how long that run takes to finish. The later
+`completeStoredScheduleOccurrence` write on run-terminal still fires when reached and is a no-op (same
+value) against an already-advanced `nextAt` — the two paths do not conflict.
 
 ## Failure / retry
 

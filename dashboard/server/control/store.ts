@@ -2709,6 +2709,31 @@ function makeStore(
         if (next !== current + 1) throw scheduleFailure(409, 'schedule-phase-conflict');
         claim.phase = input.phase;
         claim.phaseReceipts.push({ idempotencyKey: input.idempotencyKey, fingerprint });
+        // F7 fix: advance the SCHEDULE's own `nextAt` the first time an occurrence reaches `card-saved`
+        // (the trigger card is durably on disk at this point, so the occurrence is "consumed" even if the
+        // ledger-append step that follows has to retry). Before this, nothing in the production dispatch
+        // path ever called it: `completeScheduleOccurrence` (the ONLY other place `schedule.nextAt` is
+        // written) requires a bound `runRef`, which is set by the TS queue bridge only after a card is
+        // separately picked up and launched — `scripts/dispatch.py#dispatch_claimed_occurrence` never
+        // calls it at all (its state machine stops at `ledger-appended`). A cron row's `nextAt` therefore
+        // never moved past whatever it was seeded/created with, so `dispatch_stored_schedules`'s
+        // `covered_next_at` gate stayed permanently satisfied and every tick re-reported `due=1` for the
+        // SAME occurrence forever (p13 finding F7) — reported as idempotent re-claims only because
+        // `claimScheduleOccurrence`'s own dedupe on `(scheduleId, scheduledFor)` happened to make each
+        // one a no-op, not because the schedule was actually caught up.
+        // `claim.nextAt` is the value `claimScheduleOccurrence` stored from the CALLER's own
+        // `next_occurrence(spec, occurrence)` computation (dispatch.py's `next_fire`) — the true next cron
+        // occurrence strictly after `scheduled_for`, already validated by the caller, never recomputed
+        // here. A schedule the row was deleted out from under (a live occurrence outliving its schedule)
+        // has no row left to advance; the claim's own phase walk still completes either way.
+        if (input.phase === 'card-saved') {
+          const schedule = document.schedules.find((candidate) => candidate.id === input.scheduleId);
+          if (schedule) {
+            schedule.nextAt = claim.nextAt;
+            schedule.version += 1;
+            document.scheduleCollectionRevision += 1;
+          }
+        }
         commit(document);
         return claimReceipt(claim);
       });
