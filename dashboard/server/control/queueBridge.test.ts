@@ -524,6 +524,29 @@ describe('cardToWorkflowRequest — agent-owner cadence action family (F8)', () 
     expect(() => cardToWorkflowRequest(card, { knownProfiles: CADENCE_KNOWN, repoRoot: REPO_ROOT }))
       .toThrow(/cadence risk-tier must be T1 or T2, got 'T3'/);
   });
+
+  // F8-adjacent (2026-09-23 ruling): `scripts/cards.py#schedule_occurrence_claim` used to stamp an
+  // agent-owner card's target as the agent's bare declaration path (`agents/<agent>.md`, always
+  // outside `orgs/<project>/`) -- ORG CONTAINMENT (defs.ts:954-956) refused every such card, no matter
+  // how it was shaped otherwise. The fix moved the target to the agent's declared cadence output
+  // directory, `orgs/<project>/output/cadence/<agent-id>` (no trailing slash -- `isSafeRepoRelativePath`
+  // refuses one), with `meta.project` stamped to the SAME project. This is that real shape, exactly as
+  // `cards.py` now renders it for `hygiene` (fleet-scoped -> `kb-ops`, per
+  // `store.ts#deriveAgentCadenceProject`) -- proving the bridge admits it with no org-tree refusal.
+  it('maps the real cards.py-shaped agent-owner target (orgs/<project>/output/cadence/<agent-id>) with no org-tree refusal', () => {
+    const card = cadenceCard({ project: 'kb-ops', target: 'orgs/kb-ops/output/cadence/hygiene' });
+    const req = cardToWorkflowRequest(card, { knownProfiles: CADENCE_KNOWN, repoRoot: REPO_ROOT });
+    expect(req.def.stages).toHaveLength(1);
+    expect(req.def.stages[0].target).toBe('orgs/kb-ops/output/cadence/hygiene');
+    expect(req.def.project).toBe('kb-ops');
+  });
+
+  it('still refuses a cadence card whose target sits outside its own declared project tree', () => {
+    // meta.project says kb-ops, but the target points at a different project's tree entirely.
+    const card = cadenceCard({ project: 'kb-ops', target: 'orgs/kb/output/cadence/hygiene' });
+    expect(() => cardToWorkflowRequest(card, { knownProfiles: CADENCE_KNOWN, repoRoot: REPO_ROOT }))
+      .toThrow(/target must be inside this definition's own org tree 'orgs\/kb-ops\/'/);
+  });
 });
 
 describe('dispatchClaimedCard — launch-drive orchestration', () => {

@@ -18,6 +18,7 @@ import {
   AUTHORIZED_20260801_FAILED_RUN_REF,
   createInMemoryControlPlaneStore,
   createPythonScheduleClaimRenderer,
+  deriveAgentCadenceProject,
   emptyStoreDocumentForTest,
   exactAuthorized20260801ProposalRevision,
   proposalSnapshotHash,
@@ -682,6 +683,48 @@ describe('createPythonScheduleClaimRenderer platform-root resolution (hotfix-3)'
     } finally {
       warnSpy.mockRestore();
     }
+  });
+
+  // F8-adjacent: the renderer must derive `agentCadenceProject` from `repoRoot` (never `platformRoot`,
+  // which on the VM is the coordination-only-free RELEASE tree and never carries `agents/`) and thread
+  // it into `cards.py`, which stamps it as both `meta.project` and the `orgs/<project>/output/cadence/
+  // <agent-id>` target -- the shape `workflows/defs.ts`'s ORG CONTAINMENT check now accepts.
+  it('derives agentCadenceProject from the REAL declared agent at repoRoot and renders an org-contained target', async () => {
+    const realRepoRoot = fileURLToPath(new URL('../../../', import.meta.url));
+    const platformRoot = rootWithCardsScript('hotfix3-platform-real-agent-');
+    const renderer = createPythonScheduleClaimRenderer(realRepoRoot, () => new Date('2026-09-15T00:00:00.000Z'), platformRoot);
+
+    const result = await renderer({
+      ...claimInput,
+      owner: { type: 'agent' as const, id: 'hygiene', sourcePath: 'agents/hygiene.md' as const },
+    });
+
+    expect(result.card.meta as Record<string, unknown>).toMatchObject({
+      project: 'kb-ops',
+      target: 'orgs/kb-ops/output/cadence/hygiene',
+      profile: 'cadence',
+    });
+  });
+});
+
+// F8-adjacent (2026-09-23 ruling): the project an agent-owner cadence's stage target/`meta.project`
+// resolves to. Must mirror `dashboard/server/index.ts#createScheduleService`'s `mirrorPathForOwner`
+// exactly (same fleet-scoped fallback, same primary-project pick), read off the REAL declared agents
+// under this repo -- `hygiene` (`group: system`, `projects: []`) and `fyt-checker`
+// (`projects: [faceless-youtube]`, not system-scoped) -- not a synthetic fixture.
+describe('deriveAgentCadenceProject (F8-adjacent)', () => {
+  const REAL_REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
+
+  it('resolves a fleet-scoped agent (group: system) to the kb-ops default', () => {
+    expect(deriveAgentCadenceProject(REAL_REPO_ROOT, 'hygiene')).toBe('kb-ops');
+  });
+
+  it('resolves a project-declared agent to its own primary project', () => {
+    expect(deriveAgentCadenceProject(REAL_REPO_ROOT, 'fyt-checker')).toBe('faceless-youtube');
+  });
+
+  it('falls back to kb-ops for an undeclared agent id', () => {
+    expect(deriveAgentCadenceProject(REAL_REPO_ROOT, 'not-a-real-agent')).toBe('kb-ops');
   });
 });
 

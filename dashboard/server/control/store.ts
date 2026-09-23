@@ -30,6 +30,7 @@ import {
   CONTROL_PLANE_SCHEMA_VERSION,
 } from './generated/controlPlaneSchema.ts';
 import { decodeHostKind, decodeRun, decodeRunnableRef, decodeStoredRun } from './p2Decoders.ts';
+import { readDeclaredAgentDetails } from '../agents/roster.ts';
 import { FAIL_CLOSED_RUN_TAGS } from './ownerTags.ts';
 import type {
   RunnableRef,
@@ -418,6 +419,21 @@ function retryPredecessorRefusal(document: StoreDocument, predecessor: StoredRun
 
 
 /**
+ * The project an agent-owner cadence's rendered card is scoped to (F8-adjacent, 2026-09-23 ruling):
+ * the agent's own declared primary project, or the fleet default `kb-ops` when the agent is
+ * fleet-scoped (`group: system`, per `agents/<id>.md`) or undeclared. Deliberately mirrors
+ * `dashboard/server/index.ts#createScheduleService`'s `mirrorPathForOwner` derivation exactly (same
+ * `group === 'system'` fleet check, same `[...projects].sort()[0]` primary-project pick) so an agent's
+ * cadence output directory and its HEARTBEAT mirror path always agree on which project owns it.
+ */
+export function deriveAgentCadenceProject(repoRoot: string, agentId: string): string {
+  const declaration = readDeclaredAgentDetails(repoRoot).get(agentId);
+  if (!declaration || declaration.group === 'system') return 'kb-ops';
+  const primaryProject = [...declaration.projects].sort()[0];
+  return primaryProject ?? 'kb-ops';
+}
+
+/**
  * Invoke the canonical Python card renderer without a shell or caller-provided path.
  *
  * `scripts/cards.py` ships with the platform release, not with the coordination-only ops
@@ -447,6 +463,9 @@ export function createPythonScheduleClaimRenderer(
         mirrorPath: input.mirrorPath,
         dispatchedAt: now().toISOString(),
         workflowProfile: input.workflowProfile,
+        agentCadenceProject: input.owner.type === 'agent'
+          ? deriveAgentCadenceProject(repoRoot, input.owner.id)
+          : undefined,
       }),
       encoding: 'utf8',
       maxBuffer: 1024 * 1024,
