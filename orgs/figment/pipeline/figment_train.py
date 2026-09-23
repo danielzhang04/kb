@@ -4356,6 +4356,10 @@ def _verify_tester_receipt_evidence(manifest: dict[str, Any], out_dir: Path, *, 
 # it only against a real observed receipt, never speculatively.
 RETRY_ELIGIBLE_ERROR_SUBSTRINGS = (
     "NameResolutionError", "ConnectionError", "MaxRetryError", "ReadTimeout", "placement",
+    # LIVE 2026-09-23 (detail pod w20n3wtn30cceg): a host that never starts the container
+    # (2400 s in desiredStatus=RUNNING, proxy 404, no runtime status) is a placement-class
+    # failure too -- nothing ran; the harness records the host as bad on this path.
+    "ReadinessTimeout",
 )
 # P5 (LIVE 2026-09-16, creator-001/live-20260916b): a RunPod capacity 500 at `POST
 # /pods` create time ("There are no instances currently available") is exactly as

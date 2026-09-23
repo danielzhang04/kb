@@ -4179,6 +4179,31 @@ def test_prior_attempt_never_created_refuses_without_a_recovery_journal(
     assert "recovery journal" in reason
 
 
+def test_readiness_timeout_is_a_retry_eligible_placement_failure(command, tmp_path):
+    """LIVE 2026-09-23: detail pod w20n3wtn30cceg never started its container (2400 s in
+    desiredStatus=RUNNING, proxy 404), verified teardown, zero output -- eligible; the
+    same receipt with a recorded job is not."""
+    run_out = tmp_path / "run-out"
+    run_out.mkdir(parents=True)
+    receipt = {
+        "pod_id": "w20n3wtn30cceg", "termination_verified": True,
+        "placement_attempts": [{"pod_id": "w20n3wtn30cceg", "machine_host": "41actztivcth",
+                                "termination_verified": True}],
+        "jobs": [], "artifacts": [],
+        "error": ("ReadinessTimeout: pod readiness timed out after 2400s: stuck in "
+                  "desiredStatus=RUNNING while proxy /system_stats returned 404"),
+    }
+    (run_out / "run.json").write_text(json.dumps(receipt), encoding="utf-8")
+    (run_out / "recovery-figment-bakeoff-20260923-052020-54c15e.json").write_text(json.dumps({
+        "state": "terminated", "absence_verified": True, "pod_id": "w20n3wtn30cceg",
+    }), encoding="utf-8")
+    assert command._out_dir_retry_eligibility_reason(run_out) is None
+
+    receipt["jobs"] = [{"output_name": "x", "files": ["x.png"]}]
+    (run_out / "run.json").write_text(json.dumps(receipt), encoding="utf-8")
+    assert command._out_dir_retry_eligibility_reason(run_out) is not None
+
+
 def test_prior_attempt_never_created_refuses_a_non_create_call_error(command, tmp_path):
     run_out = tmp_path / "run-out"
     run_out.mkdir(parents=True)

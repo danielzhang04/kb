@@ -325,7 +325,8 @@ plan.
   `state: "terminated"` and `absence_verified: true` — an `uncertain` or unterminated
   journal refuses the retry even if the receipt itself looks clean;
 - an `error` string naming a transport/placement failure (substring match against
-  `NameResolutionError`, `ConnectionError`, `MaxRetryError`, `ReadTimeout`, `placement`);
+  `NameResolutionError`, `ConnectionError`, `MaxRetryError`, `ReadTimeout`, `placement`,
+  `ReadinessTimeout` — a host that never started the container, live 2026-09-23);
   **or (2026-09-16, P5)** `termination_verified: false` with `pod_id: null`,
   `placement_attempts`/`jobs`/`artifacts` all empty, an `error` naming
   `CreateCallError`, and a fresh live scan finding no pod named in the out dir's own
