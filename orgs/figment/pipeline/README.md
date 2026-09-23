@@ -477,6 +477,12 @@ guarantee, and the `HF_TOKEN` secret-reference mechanism are documented once, in
 | 09-17 | train, 3000 steps (ceiling $15.73), after operator raised daily limit to 20 | g82uvbgep3ov9q | $2.90 actual | complete — 12 checkpoints (250…2750 + final, 228 MB each). Run root `live-20260916b` |
 | 09-17 | tester, 12-checkpoint ladder | mqhofpqmdvn12x | $0.43 | gate **2/12 pass**: step 2000 (identity_own 0.895, face_px 689, judge same_person 88) and final/3000 (0.900, 663, 74) — first creator-001 ladder to clear the full gate (prior best 0.78, 1250-step train-first). `--checkpoint-step 2000` chosen (equal identity to final, stronger judge); `chosen_checkpoint_step: 2000` recorded (commit ee6ce232) |
 | 09-17 | gen | — | $0 | REFUSED at plan-time budget preflight — arc ($58.04 + $4.01 > $60) and daily ($16.16 + $4.01 > $20) both tripped on a stale ledger (see Open defects: the coordination-checkout `figment-2026-09-17.tsv` lost its settled train row only — the tester's row is present, re-appended on its own settle — to an unrelated ops-branch sync at 19:36); true arc ≈ $47.7 of $60 |
+| 09-21 | gen, 3 attempts | 4 pods | $5.30, zero output | ALL FAILED before rendering — `MediaPipeFaceMask` `regions` DynamicCombo encoding bug (hit twice), a DNS poll drop, and an upload hang during a Windows host suspend (alone $4.58, root-caused and fixed 2026-09-22, see Open defects) |
+| 09-22/23 | gen, default recipe (look-clause, refine 0.35, detailer 0.15) | `x0lwu992xprg95` | $0.38 | gate **0/12** — identity_own median ~0.89 fine, but 9/12 fail `face_px` (475–592 vs 600, "waist up" framing) and the 3 that pass fail judge `same_person` (45–68 vs 70.2). Run root `creator-001/live-20260916b/downstream/gen` |
+| 09-22 | gen, A/B `gen_prompt_style: "trigger-scene"` | — | $0.41 | gate **0/12**, WORSE — judge `same_person` 30–60, judge `age_delta` 4–10; confirms "prompt and LoRA must agree" (10sorlabs). Run root `ab-20260922-trigger-scene-2` |
+| 09-23 | gen, `look-clause-close` prompts, refine denoise 0, detailer denoise 0.20 | — | $0.61 | gate **3/12 PASS** — first gen stills ever to clear the full gate. Judge `same_person` median 72 (35–78), identity_own median ~0.87, face_px 548–719. Same checkpoint's tester single-pass (no refine/detail) scores judge 88 — the refine/detail passes cost ~25–40 judge points. Run root `run1-20260923-close-norefine` |
+| 09-23 | detail, first live run (`d0.15`/`d0.27` A/B on run1's kept stills) | `w20n3wtn30cceg` (ReadinessTimeout dead host, $0.87), `n93u1vkssd448s` | $0.23 real run | gate **1/6 pass** — `d0.15` passes at judge same_person 78; `d0.27` variants score 55–62 with `skin_realism` 18–28. Run root `detail1-20260923` |
+| 09-23 | video, first live Wan 2.2 TI2V run | `x925o3140m34lv` | $0.18 | gate **0/11**, "no face detected" on every sampled frame — mechanically clean (81 frames @1280×704, `candidate.mp4` + `reel.mp4` built) but the still rendered landscape, the camera tilts the face toward the top ~25–30% of frame height (motion instruction not honoured), the reel crop to 1080×1920 compounds it, and MTCNN misses the resulting small/off-center face. Run root `video1-20260923` |
 
 Sources: `orgs/figment/STATE.md` 2026-09-03 23:50 through 2026-09-07 00:40, cross-checked
 against `ledgers/cost/figment-2026-09-0{3,4,6,7}.tsv` where a row is identifiable. See Open
@@ -609,6 +615,18 @@ defects below for where these two sources disagree past 09-04.
   (pod `y3mz2hqqbnf4ci`) with `execute() missing 1 required positional argument: 'regions'`;
   the API form is the bare option-key string `"all"`/`"custom"`. See
   `research/r23-mediapipe-node-spike.md` (live-refuted section) for the ComfyUI source cite.
+- **`gen`'s default recipe scores 0/12 live** (2026-09-22/23, `live-20260916b/downstream/gen`):
+  every checkpoint image renders "waist up" at 475–592 px against the 600 `face_px` floor, and
+  the handful of images that do clear `face_px` fail the judge's `same_person` floor. A fixed
+  recipe (refine denoise 0, detailer denoise ≤0.20, `gen_prompt_style: "look-clause-close"`)
+  clears 3/12 live (run1) but is not yet the default — see `STATE.md` "Next" item 1.
+- **`video` aspect/motion/gate defects, open** (2026-09-23, video1): the review-candidate still
+  renders landscape (1280×704) even though the reel target is portrait; the motion instruction
+  ("stands still, turns head") is not honoured, so the camera tilts and the face drifts toward
+  the top ~25–30% of frame height; the reel's 1080×1920 crop compounds the framing; and MTCNN
+  (the gate's face detector) misses the face on all 11/11 sampled frames as a result. Video's
+  mechanical chain (manifest → render → assemble → reel → extract → grade) is proven; these are
+  content/gate defects on top of it, not wiring bugs. See `STATE.md` "Next" item 3.
 
 ## How to iterate
 
