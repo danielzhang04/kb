@@ -63,6 +63,8 @@ import { selectPlacementHost } from './placement/select.ts';
 import type { WriterLease } from './control/writerLease.ts';
 import { createExistingRootFileStoreHarnessForTest } from './control/test-fixtures/controlStore.ts';
 import { readDevelopmentScheduleSeedSource } from './schedules/seedImport.ts';
+import { ScheduleService } from './schedules/service.ts';
+import { createHash } from 'node:crypto';
 import { publishVerifiedScheduleMarkerRemoval } from './write/branch.ts';
 import type { GitRunner } from './write/branch.ts';
 import { DEFAULT_OUTBOX_ROOT } from './write/outbox.ts';
@@ -370,6 +372,102 @@ describe('server', () => {
         request.end('{}');
       });
       expect(statusCode, url).toBe(404);
+    }
+  });
+
+  // F11 boot backfill (2026-09-23 ruling): `runScheduleBootMigrations` must itself call
+  // `controlStore.backfillStaleScheduleNextAt` (not leave it to a separate caller) and log one
+  // `schedule-backfill: <id> nextAt <old> -> <new>` line per repaired row, so a real boot's journal
+  // shows exactly what P14's evidence.md asked for.
+  it('repairs a stuck schedule row during boot and logs one schedule-backfill line', async () => {
+    const stateRoot = mkdtempSync(join(tmpdir(), 'schedule-f11-boot-state-'));
+    const repoRoot = mkdtempSync(join(tmpdir(), 'schedule-f11-boot-repo-'));
+    const harness = createExistingRootFileStoreHarnessForTest();
+    const scheduledFor = '2026-09-22T07:18:00.000Z';
+    const correctNextAt = '2026-09-23T07:18:00.000Z';
+    const bootNow = new Date('2026-09-22T22:52:44.000Z');
+    const renderScheduleClaim = vi.fn(async (input: { scheduleId: string; scheduledFor: string; owner: { id: string } }) => {
+      const cardIdHash = createHash('sha256').update(`schedule-card\0${input.scheduleId}\0${input.scheduledFor}`).digest('hex');
+      return { card: {
+        meta: {
+          'schema-version': 1, id: `${cardIdHash.slice(0, 8)}-${cardIdHash.slice(8, 16)}`,
+          project: 'kb', action: `cadence:${input.owner.id}`, target: `agents/${input.owner.id}.md`,
+          'risk-tier': 'T1', owner: input.owner.id, 'claim-token': null, state: 'inbox', approval: null,
+          workflow: null, 'depends-on': [], 'variant-group': null, role: 'work', 'session-id': null,
+          runtime: null, model: null, 'execution-controller': 'dashboard', scheduled_for: input.scheduledFor,
+        },
+        body: '## Work order\n\nRun the scheduled hygiene agent.\n',
+      }, cardBytesSha256: 'e'.repeat(64) };
+    });
+    try {
+      // Boot 1: real dev seed files present, so runP2ScheduleStartupMigrations completes the seed
+      // import and stamps the marker -- a prerequisite this test needs satisfied before it can call
+      // runScheduleBootMigrations a second time below without a schedule-owner-migration-required
+      // refusal (the gate a FRESH, unseeded store correctly fails closed on).
+      const source = await readDevelopmentScheduleSeedSource(REPO_ROOT);
+      for (const file of [...source.heartbeatFiles, ...source.agentFiles]) {
+        const path = join(repoRoot, ...file.path.split('/'));
+        mkdirSync(join(path, '..'), { recursive: true });
+        writeFileSync(path, file.bytes, 'utf8');
+      }
+      let store = harness.open(stateRoot, { renderScheduleClaim });
+      await runScheduleBootMigrations(repoRoot, store);
+
+      const owner = { type: 'agent' as const, id: 'hygiene', sourcePath: 'agents/hygiene.md' as const };
+      const api = new ScheduleService({
+        store, resolveOwner: async () => owner, mirrorPathForOwner: () => 'orgs/kb-ops/HEARTBEAT.md', seedAuthorization: async () => true,
+      });
+      const created = await api.create({
+        owner: { type: 'agent' as const, id: 'hygiene' },
+        cadence: { kind: 'cron' as const, minute: '18', hour: '7', dayOfMonth: '*', month: '*', dayOfWeek: '*' },
+        // The dev seed import above already populated (and bumped) the collection, so the revision to
+        // race against is whatever it left the store at, not a bare 0.
+        expectedCollectionRevision: store.getScheduleSnapshot().collectionRevision,
+        idempotencyKey: 'f11-boot-create', workflowProfile: 'cadence',
+      });
+      await api.setArmed(created.schedule.id, { expectedVersion: created.schedule.version, idempotencyKey: 'f11-boot-arm', armed: true });
+      const before = store.getScheduleSnapshot().schedules.find((row) => row.id === created.schedule.id);
+      if (!before) throw new Error('freshly created+armed schedule missing from the snapshot');
+      await api.claimScheduleOccurrence({
+        occurrence: { scheduleId: before.id, scheduledFor, nextAt: correctNextAt },
+        expectedVersion: before.version, idempotencyKey: 'f11-boot-claim-1',
+      });
+      await store.advanceScheduleOccurrence({
+        scheduleId: before.id, scheduledFor, nextAt: correctNextAt,
+        phase: 'card-saved', idempotencyKey: 'f11-boot-claim-1:card-saved',
+      });
+      await store.advanceScheduleOccurrence({
+        scheduleId: before.id, scheduledFor, nextAt: correctNextAt,
+        phase: 'ledger-appended', idempotencyKey: 'f11-boot-claim-1:ledger-appended',
+      });
+      const docPath = join(stateRoot, 'control', 'control-plane.json');
+      const document = JSON.parse(readFileSync(docPath, 'utf8')) as { schedules: Array<{ id: string; nextAt: string | null }> };
+      const row = document.schedules.find((candidate) => candidate.id === before.id);
+      if (!row) throw new Error('schedule row missing from the freshly written document');
+      row.nextAt = scheduledFor; // regress: reconstruct the pre-F7 stuck signature on disk
+      writeFileSync(docPath, `${JSON.stringify(document)}\n`, 'utf8');
+
+      const resolveScheduleNextOccurrenceBatch = vi.fn(async () => new Map([[before.id, correctNextAt]]));
+      store = harness.restart(stateRoot, { renderScheduleClaim, resolveScheduleNextOccurrenceBatch });
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      let warnedLines: string[];
+      try {
+        await runScheduleBootMigrations(repoRoot, store, undefined, { now: () => bootNow });
+        warnedLines = warnSpy.mock.calls.map((call) => String(call[0]));
+      } finally {
+        warnSpy.mockRestore();
+      }
+
+      expect(resolveScheduleNextOccurrenceBatch).toHaveBeenCalledWith(
+        [{ scheduleId: before.id, source: '18 7 * * *' }], bootNow,
+      );
+      const afterRow = store.getScheduleSnapshot().schedules.find((row) => row.id === before.id);
+      expect(afterRow).toMatchObject({ nextAt: correctNextAt });
+      expect(warnedLines).toContainEqual(`schedule-backfill: ${before.id} nextAt ${scheduledFor} -> ${correctNextAt}`);
+    } finally {
+      harness.close();
+      rmSync(repoRoot, { recursive: true, force: true });
+      rmSync(stateRoot, { recursive: true, force: true });
     }
   });
 

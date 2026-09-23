@@ -10,6 +10,7 @@ import csv
 import datetime
 import fnmatch
 import hashlib
+import json
 import re
 import sys
 from dataclasses import dataclass
@@ -776,6 +777,26 @@ def next_occurrence(spec: CronSpec | None, now: datetime.datetime) -> datetime.d
     return None
 
 
+def next_occurrences_after(rows: list, after: datetime.datetime) -> list[dict]:
+    """Batch `next_occurrence` lookups for the F11 boot backfill (`dashboard/server/index.ts`).
+
+    `rows` is `[{"scheduleId": str, "source": str}, ...]` -- `source` is a schedule's
+    `cadence.source` field verbatim, the SAME string `dispatch_stored_schedules` reads
+    (`cadence.get("source")`) and feeds `parse_cron`. Returns one `{"scheduleId", "nextAt"}` per row,
+    in the same order, `nextAt` an ISO string or `None` when `source` does not parse as cron (a
+    legacy `daily`/`weekly:<day>` row, or malformed input -- the caller skips repairing either,
+    exactly as `dispatch_stored_schedules` already ignores a schedule whose `parse_cron` returns
+    `None`). Pure: no store/filesystem access, so a caller can invoke it standalone (this is exactly
+    what `--schedule-backfill-next-at` does).
+    """
+    results = []
+    for row in rows:
+        spec = parse_cron(row.get("source"))
+        next_at = next_occurrence(spec, after) if spec is not None else None
+        results.append({"scheduleId": row.get("scheduleId"), "nextAt": next_at.isoformat() if next_at else None})
+    return results
+
+
 def due(cadence: dict, today: datetime.date,
         now: datetime.datetime | None = None) -> bool:
     """True iff `cadence` is scheduled for `today` (and, for cron, by `now`).
@@ -1229,9 +1250,27 @@ class _LiveScheduleStoreClient:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--tier", required=True, choices=("cloud", "desktop"))
-    ap.add_argument("--agent", required=True)
+    ap.add_argument("--tier", choices=("cloud", "desktop"))
+    ap.add_argument("--agent")
+    # F11 boot backfill (dashboard/server/index.ts#backfillStaleScheduleNextAt): a pure cron-math
+    # mode with no queue/ledger/socket access, so the daemon can shell out to the SAME cron evaluator
+    # `dispatch_stored_schedules` uses without a live schedule socket or `--tier`/`--agent`.
+    ap.add_argument("--schedule-backfill-next-at", action="store_true")
     args = ap.parse_args()
+    if args.schedule_backfill_next_at:
+        try:
+            request = json.load(sys.stdin)
+            after = datetime.datetime.fromisoformat(request["after"])
+            if after.tzinfo is None:
+                raise ValueError("'after' must be timezone-aware")
+            results = next_occurrences_after(request["rows"], after)
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+            print(str(error)[:256], file=sys.stderr)
+            return 2
+        json.dump({"results": results}, sys.stdout, separators=(",", ":"))
+        return 0
+    if not args.tier or not args.agent:
+        ap.error("--tier and --agent are required unless --schedule-backfill-next-at is given")
     repo_root = Path.cwd()
     # Dependency release remains a queue concern independent of schedule
     # authority, so the production tick retains that bounded pass.

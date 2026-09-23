@@ -321,6 +321,163 @@ describe('control-store schedule authority', () => {
   });
 });
 
+describe('F11 boot backfill: backfillStaleScheduleNextAt (2026-09-23 ruling)', () => {
+  const scheduledFor = '2026-09-22T07:18:00.000Z';
+  const correctNextAt = '2026-09-23T07:18:00.000Z'; // the true next daily cron occurrence after scheduledFor
+  const now = new Date('2026-09-22T22:52:44.000Z'); // matches p14's evidence window (still the SAME cron day)
+
+  const renderScheduleClaim = vi.fn(async (input: { scheduleId: string; scheduledFor: string; owner: { id: string } }) => {
+    const cardIdHash = createHash('sha256').update(`schedule-card\0${input.scheduleId}\0${input.scheduledFor}`).digest('hex');
+    return { card: {
+      meta: {
+        'schema-version': 1, id: `${cardIdHash.slice(0, 8)}-${cardIdHash.slice(8, 16)}`,
+        project: 'kb', action: `cadence:${input.owner.id}`, target: `agents/${input.owner.id}.md`,
+        'risk-tier': 'T1', owner: input.owner.id, 'claim-token': null, state: 'inbox', approval: null,
+        workflow: null, 'depends-on': [], 'variant-group': null, role: 'work', 'session-id': null,
+        runtime: null, model: null, 'execution-controller': 'dashboard', scheduled_for: input.scheduledFor,
+      },
+      body: '## Work order\n\nRun the scheduled hygiene agent.\n',
+    }, cardBytesSha256: 'd'.repeat(64) };
+  });
+
+  /**
+   * Builds a schedule row on disk in the EXACT pre-F7 stuck shape: its latest occurrence claim
+   * reached `ledger-appended`, but `schedule.nextAt` is pinned at that SAME claim's own
+   * `scheduledFor` (never advanced) rather than the claim's own correct forward `nextAt` -- the
+   * signature `advanceScheduleOccurrence` leaves behind for a claim it never got to run for. Built
+   * by running the real create/arm/claim/advance flow (so every other field is exactly what
+   * production would produce) and then regressing `nextAt` on disk, since the CURRENT code always
+   * advances it correctly and there is no public way to reproduce the historical bug through the API.
+   */
+  async function buildStuckRoot(): Promise<{ root: string; scheduleId: string }> {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-schedule-f11-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, { renderScheduleClaim });
+    const owner = { type: 'agent' as const, id: 'hygiene', sourcePath: 'agents/hygiene.md' as const };
+    const api = new ScheduleService({
+      store, resolveOwner: async () => owner, mirrorPathForOwner: () => 'orgs/kb-ops/HEARTBEAT.md', seedAuthorization: async () => true,
+    });
+    const created = await api.create({
+      owner: { type: 'agent' as const, id: 'hygiene' },
+      cadence: { kind: 'cron' as const, minute: '18', hour: '7', dayOfMonth: '*', month: '*', dayOfWeek: '*' },
+      expectedCollectionRevision: 0, idempotencyKey: 'f11-create', workflowProfile: 'cadence',
+    });
+    await api.setArmed(created.schedule.id, { expectedVersion: created.schedule.version, idempotencyKey: 'f11-arm', armed: true });
+    const before = store.getScheduleSnapshot().schedules[0];
+    await api.claimScheduleOccurrence({
+      occurrence: { scheduleId: before.id, scheduledFor, nextAt: correctNextAt },
+      expectedVersion: before.version, idempotencyKey: 'f11-claim-1',
+    });
+    await store.advanceScheduleOccurrence({
+      scheduleId: before.id, scheduledFor, nextAt: correctNextAt,
+      phase: 'card-saved', idempotencyKey: 'f11-claim-1:card-saved',
+    });
+    await store.advanceScheduleOccurrence({
+      scheduleId: before.id, scheduledFor, nextAt: correctNextAt,
+      phase: 'ledger-appended', idempotencyKey: 'f11-claim-1:ledger-appended',
+    });
+    const docPath = join(root, 'control', 'control-plane.json');
+    const document = JSON.parse(readFileSync(docPath, 'utf8')) as { schedules: Array<{ id: string; nextAt: string | null }> };
+    const row = document.schedules.find((candidate) => candidate.id === before.id);
+    if (!row) throw new Error('schedule row missing from the freshly written document');
+    row.nextAt = scheduledFor; // regress: the pre-F7 stuck value
+    writeFileSync(docPath, `${JSON.stringify(document)}\n`, 'utf8');
+    return { root, scheduleId: before.id };
+  }
+
+  it('repairs a stuck row: nextAt pinned at its own latest completed claim scheduledFor', async () => {
+    const { root, scheduleId } = await buildStuckRoot();
+    const resolveScheduleNextOccurrenceBatch = vi.fn(async () => new Map([[scheduleId, correctNextAt]]));
+    const store = fileStores.restart(root, { renderScheduleClaim, resolveScheduleNextOccurrenceBatch });
+    const before = store.getScheduleSnapshot().schedules[0];
+    expect(before).toMatchObject({ nextAt: scheduledFor });
+
+    const repairs = await store.backfillStaleScheduleNextAt(now);
+
+    expect(repairs).toEqual([{ scheduleId, from: scheduledFor, to: correctNextAt }]);
+    const after = store.getScheduleSnapshot().schedules[0];
+    expect(after).toMatchObject({ nextAt: correctNextAt, version: before.version + 1 });
+    expect(resolveScheduleNextOccurrenceBatch).toHaveBeenCalledWith(
+      [{ scheduleId, source: '18 7 * * *' }], now,
+    );
+  });
+
+  it('is idempotent: a second run against an already-repaired row repairs nothing', async () => {
+    const { root, scheduleId } = await buildStuckRoot();
+    const resolveScheduleNextOccurrenceBatch = vi.fn(async () => new Map([[scheduleId, correctNextAt]]));
+    const store = fileStores.restart(root, { renderScheduleClaim, resolveScheduleNextOccurrenceBatch });
+
+    const first = await store.backfillStaleScheduleNextAt(now);
+    expect(first).toHaveLength(1);
+    const versionAfterFirst = store.getScheduleSnapshot().schedules[0].version;
+
+    const second = await store.backfillStaleScheduleNextAt(now);
+
+    expect(second).toEqual([]);
+    expect(store.getScheduleSnapshot().schedules[0]).toMatchObject({ nextAt: correctNextAt, version: versionAfterFirst });
+  });
+
+  it('leaves a healthy row (nextAt already advanced past its latest claim) untouched', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-schedule-f11-healthy-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, { renderScheduleClaim });
+    const owner = { type: 'agent' as const, id: 'hygiene', sourcePath: 'agents/hygiene.md' as const };
+    const api = new ScheduleService({
+      store, resolveOwner: async () => owner, mirrorPathForOwner: () => 'orgs/kb-ops/HEARTBEAT.md', seedAuthorization: async () => true,
+    });
+    const created = await api.create({
+      owner: { type: 'agent' as const, id: 'hygiene' },
+      cadence: { kind: 'cron' as const, minute: '18', hour: '7', dayOfMonth: '*', month: '*', dayOfWeek: '*' },
+      expectedCollectionRevision: 0, idempotencyKey: 'f11-healthy-create', workflowProfile: 'cadence',
+    });
+    await api.setArmed(created.schedule.id, { expectedVersion: created.schedule.version, idempotencyKey: 'f11-healthy-arm', armed: true });
+    const before = store.getScheduleSnapshot().schedules[0];
+    await api.claimScheduleOccurrence({
+      occurrence: { scheduleId: before.id, scheduledFor, nextAt: correctNextAt },
+      expectedVersion: before.version, idempotencyKey: 'f11-healthy-claim-1',
+    });
+    // Under the CURRENT (fixed) code, this already advances nextAt correctly -- nothing stuck here.
+    await store.advanceScheduleOccurrence({
+      scheduleId: before.id, scheduledFor, nextAt: correctNextAt,
+      phase: 'card-saved', idempotencyKey: 'f11-healthy-claim-1:card-saved',
+    });
+    const healthy = store.getScheduleSnapshot().schedules[0];
+    expect(healthy.nextAt).toBe(correctNextAt);
+
+    const resolveScheduleNextOccurrenceBatch = vi.fn(async () => new Map());
+    const repairs = await store.backfillStaleScheduleNextAt(now);
+
+    expect(repairs).toEqual([]);
+    expect(resolveScheduleNextOccurrenceBatch).not.toHaveBeenCalled();
+    expect(store.getScheduleSnapshot().schedules[0]).toMatchObject({ nextAt: correctNextAt, version: healthy.version });
+  });
+
+  it('leaves a disarmed row untouched even when it carries the stuck signature', async () => {
+    const { root, scheduleId } = await buildStuckRoot();
+    const resolveScheduleNextOccurrenceBatch = vi.fn(async () => new Map([[scheduleId, correctNextAt]]));
+    const store = fileStores.restart(root, { renderScheduleClaim, resolveScheduleNextOccurrenceBatch });
+    const before = store.getScheduleSnapshot().schedules[0];
+    await store.setScheduleArmed(scheduleId, { expectedVersion: before.version, idempotencyKey: 'f11-disarm', armed: false });
+
+    const repairs = await store.backfillStaleScheduleNextAt(now);
+
+    expect(repairs).toEqual([]);
+    expect(resolveScheduleNextOccurrenceBatch).not.toHaveBeenCalled();
+    expect(store.getScheduleSnapshot().schedules[0]).toMatchObject({ nextAt: scheduledFor, armed: false });
+  });
+
+  it('leaves a stuck row unrepaired (fail-safe) when no resolver is wired', async () => {
+    const { root, scheduleId } = await buildStuckRoot();
+    const store = fileStores.restart(root, { renderScheduleClaim }); // no resolveScheduleNextOccurrenceBatch
+
+    const repairs = await store.backfillStaleScheduleNextAt(now);
+
+    expect(repairs).toEqual([]);
+    expect(store.getScheduleSnapshot().schedules[0]).toMatchObject({ nextAt: scheduledFor });
+    void scheduleId;
+  });
+});
+
 // Production migrations are up-only (rollback is restore-from-backup, never down-migrate), so this
 // test helper hand-builds a legacy on-disk v1 document to exercise the store's up-migration-on-load
 // path. It converts each run's `lifecycle` back to a v1 `state` and drops the v2/v3/v4 collections and

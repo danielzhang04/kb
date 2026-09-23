@@ -322,6 +322,7 @@ import type {
   RunActivationInput,
   CanonicalStageProjectionInput,
   ControlPlaneStore,
+  ScheduleNextAtBackfillRepair,
 } from './storeTypes.ts';
 export type {
   StoredProposal,
@@ -382,6 +383,7 @@ export type {
   BrokerStoreBackend,
   HostAdvertisementUpsertResult,
   ControlPlaneStore,
+  ScheduleNextAtBackfillRepair,
 } from './storeTypes.ts';
 
 function retryPredecessorRefusal(document: StoreDocument, predecessor: StoredRun): string | null {
@@ -485,6 +487,60 @@ export function createPythonScheduleClaimRenderer(
       throw Object.assign(new Error('schedule-card-renderer-invalid'), { status: 503, code: 'schedule-card-renderer-invalid' });
     }
     return parsed as { card: Record<string, unknown>; cardBytesSha256: string };
+  };
+}
+
+
+/**
+ * Production wiring for the F11 boot backfill's cron resolver (`ControlStoreOptions
+ * .resolveScheduleNextOccurrenceBatch`): shells out to `scripts/dispatch.py
+ * --schedule-backfill-next-at`, the SAME cron evaluator (`next_occurrence`/`parse_cron`)
+ * `dispatch_stored_schedules` uses on every tick -- never `dashboard/src/lib/scheduleWords.ts
+ * #nextScheduleWindow`, which is explicitly documented display-only and must never gate a persisted
+ * `nextAt`. Resolved from `platformRoot` for the same reason `createPythonScheduleClaimRenderer` is
+ * (the VM's coordination-only `repoRoot` carries no `scripts/`).
+ */
+export function createPythonScheduleNextOccurrenceResolver(
+  repoRoot: string,
+  platformRoot: string = defaultPlatformRoot(),
+): NonNullable<ControlStoreOptions['resolveScheduleNextOccurrenceBatch']> {
+  const script = join(platformRoot, 'scripts', 'dispatch.py');
+  return async (rows, after) => {
+    if (rows.length === 0) return new Map();
+    const command = process.platform === 'win32' ? 'py' : 'python3';
+    const args = process.platform === 'win32'
+      ? ['-3', script, '--schedule-backfill-next-at']
+      : [script, '--schedule-backfill-next-at'];
+    const result = spawnSync(command, args, {
+      cwd: repoRoot,
+      input: JSON.stringify({
+        after: after.toISOString(),
+        rows: rows.map((row) => ({ scheduleId: row.scheduleId, source: row.source })),
+      }),
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024,
+      windowsHide: true,
+    });
+    if (result.error || result.status !== 0 || !result.stdout) {
+      console.warn(`[control-store] schedule-next-occurrence-resolver-failed: script=${script} status=${result.status ?? 'null'} error=${result.error?.message ?? ''} stderr=${(result.stderr ?? '').toString().slice(0, 500)}`);
+      return new Map();
+    }
+    let parsed: unknown;
+    try { parsed = JSON.parse(result.stdout); } catch {
+      console.warn(`[control-store] schedule-next-occurrence-resolver-invalid: script=${script} stdout=${result.stdout.slice(0, 500)}`);
+      return new Map();
+    }
+    const results = typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as { results?: unknown }).results : undefined;
+    const out = new Map<string, string | null>();
+    if (!Array.isArray(results)) return out;
+    for (const entry of results) {
+      if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) continue;
+      const row = entry as { scheduleId?: unknown; nextAt?: unknown };
+      if (typeof row.scheduleId !== 'string') continue;
+      out.set(row.scheduleId, typeof row.nextAt === 'string' ? row.nextAt : null);
+    }
+    return out;
   };
 }
 
@@ -2755,6 +2811,52 @@ function makeStore(
         }
         commit(document);
         return claimReceipt(claim);
+      });
+    },
+
+    // F11 boot backfill (2026-09-23 ruling): `advanceScheduleOccurrence` above only fires the FIRST
+    // time an occurrence's claim reaches `card-saved`. A row whose latest claim reached that phase
+    // under the pre-F7 code (before the advance existed at all) never gets a second chance -- its
+    // `schedule.nextAt` is left pinned at exactly that claim's own `scheduledFor` forever (the claim
+    // record itself always carried the CORRECT forward `nextAt`, computed by the caller at claim time
+    // regardless of the F7 bug; only the copy onto `schedule.nextAt` never happened). This repairs
+    // that class of row once, at boot, by recomputing a fresh `nextAt` strictly after "now" through
+    // the injected cron resolver (`options.resolveScheduleNextOccurrenceBatch`, production-wired to
+    // `scripts/dispatch.py --schedule-backfill-next-at` -- see `index.ts`), never by trusting the
+    // stale claim value, since by boot time even that value may itself already be in the past.
+    backfillStaleScheduleNextAt(now: Date) {
+      return scheduleTransaction(async () => {
+        const document = load();
+        const stuck = document.schedules.filter((schedule) => {
+          if (!schedule.armed || schedule.nextAt === null) return false;
+          const nextAtMs = Date.parse(schedule.nextAt);
+          if (Number.isNaN(nextAtMs) || nextAtMs >= now.getTime()) return false;
+          return document.scheduleOccurrenceClaims.some((claim) =>
+            claim.scheduleId === schedule.id
+            && claim.scheduledFor === schedule.nextAt
+            && (claim.phase === 'card-saved' || claim.phase === 'ledger-appended'));
+        });
+        if (stuck.length === 0 || !options.resolveScheduleNextOccurrenceBatch) return [];
+        const resolved = await options.resolveScheduleNextOccurrenceBatch(
+          stuck.map((schedule) => ({ scheduleId: schedule.id, source: schedule.cadence.source })),
+          now,
+        );
+        const repairs: ScheduleNextAtBackfillRepair[] = [];
+        for (const schedule of stuck) {
+          const nextAt = resolved.get(schedule.id);
+          // A missing/null entry means `cadence.source` did not parse as cron (never expected for an
+          // armed row that already dispatched once, but fail-safe: leave it exactly as found rather
+          // than guess). Re-running the backfill is a no-op once `nextAt` no longer matches a stuck
+          // claim's `scheduledFor` above -- idempotent by construction, not by comparing values here.
+          if (typeof nextAt !== 'string' || nextAt === '') continue;
+          const from = schedule.nextAt;
+          schedule.nextAt = nextAt;
+          schedule.version += 1;
+          document.scheduleCollectionRevision += 1;
+          repairs.push({ scheduleId: schedule.id, from, to: nextAt });
+        }
+        if (repairs.length > 0) commit(document);
+        return repairs;
       });
     },
 
