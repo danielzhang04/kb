@@ -88,7 +88,12 @@ const ARCHIVE_SCRIPT_PATH = process.env.KB_ARCHIVE_SCRIPT_PATH || ARCHIVE_SCRIPT
 // them (dashboard/server/control/store.ts#archiveRun). No behavior in this script changed — same
 // argv shape, same client-side pre-check/re-read, no -Force plumbed through — so this is a
 // content-pin bump only.
-const ARCHIVE_SCRIPT_SHA256 = '93c5b36e5002e6fd8cbc85aca85e42055b686c288cd08c11afead1a415809588';
+//
+// D1 (adversarial review of claude/c2-cadence-gates, 2026-09-23 boss ruling): prod-archive-run.ps1
+// gained a real `[switch]$Force` (sends `force: true`) and `-Approval <file>` (forwards a signed
+// approval verbatim) — the C17 windowed shape below finally matches a script that actually has the
+// flag it gates, instead of a dormant grammar branch with nothing on the other end. Content-pin bump.
+const ARCHIVE_SCRIPT_SHA256 = 'e1501f56f94a72c095ea518a54a8ec9e336b6a19fe88283e0e97c7b1b81a424a';
 
 const MAX_STDIN = 1024 * 1024;
 
@@ -374,10 +379,18 @@ const O4 = new RegExp(PRE + PS + '-file\\s+' + PKB('scripts/prod/prod-archive-ru
 // C17 targets the exact same script file, not a different one. Refused outside a prod window like
 // every other windowed shape -- this does not weaken O4's own no-window posture, it only ever adds
 // a NARROWER, MORE gated path (window required) for a flag O4's own grammar has no branch for.
+//
+// D1 (adversarial review of claude/c2-cadence-gates, 2026-09-23 boss ruling): the daemon's archive
+// route now escalates force:true exactly like a gate resolution on a fail-closed/tagged run, so
+// prod-archive-run.ps1 gained an -Approval <file> that forwards a signed approval. Same optional
+// slot C16 gives -Approval -- right before the terminal flag, after the (optional) rehearsal -URL
+// marker -- matching the script's own pinned invocation order (-Run -Reason [-Actor] [-URL]
+// [-Approval] -Force).
 const C17 = new RegExp(PRE + PS + '-file\\s+' + PKB('scripts/prod/prod-archive-run.ps1')
   + '\\s+-run\\s+([a-z0-9-]{1,80})\\s+-reason\\s+' + REASON
   + '(?:\\s+-actor\\s+' + ACTOR_ARG + ')?'
   + URL_REHEARSAL_ARG_GROUP
+  + '(?:\\s+-approval\\s+' + SAFE_T_OR_BACKUPS + ')?'
   + '\\s+-force$');
 
 /**

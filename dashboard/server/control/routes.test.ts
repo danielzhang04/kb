@@ -3416,8 +3416,18 @@ function buildApp(overrides: Record<string, unknown> = {}) {
   return { app, ctx, store, audit, token: mintSession('operator', SESSION).token };
 }
 
-/** Seed one approved run in the store so a route reaches its execution-posture check. */
-function seedRun(store: ReturnType<typeof createInMemoryControlPlaneStore>, key: string): string {
+/**
+ * Seed one approved run in the store so a route reaches its execution-posture check.
+ *
+ * D1 (adversarial review of claude/c2-cadence-gates, 2026-09-23 boss ruling): `workflowTags`
+ * defaults to `[]` (untagged, unaffected by the archive escalation) but a caller can pass
+ * `'legacy'` (omits the field entirely -- fails closed, `WORKFLOW_TAGS_UNRESOLVABLE`) or an
+ * explicit tag list (e.g. `['publish']`) to exercise the force-archive authority ladder.
+ */
+function seedRun(
+  store: ReturnType<typeof createInMemoryControlPlaneStore>, key: string,
+  workflowTags: readonly string[] | 'legacy' = [],
+): string {
   const created = store.createProposalRevision('operator', {
     sourceComposerRef: 'composer-1', sourceTurnId: 'video-run', title: `Run ${key}`,
     snapshot: proposal as unknown as JsonObject,
@@ -3428,7 +3438,7 @@ function seedRun(store: ReturnType<typeof createInMemoryControlPlaneStore>, key:
   }).ok) throw new Error('approval failed');
   const run = store.createRun('operator', {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
-      workflowTags: [],
+      ...(workflowTags === 'legacy' ? {} : { workflowTags }),
       executionHost: 'desktop',
     title: `Run ${key}`, proposalRef: created.value.proposalRef, proposalRevision: 1,
     expectedProposalHash: created.value.hash, managerRuntime: 'claude', managerModel: 'claude-fable-5',
@@ -4047,6 +4057,111 @@ describe('control run archive route', () => {
     } finally {
       await app.close();
     }
+  });
+
+  /**
+   * D1 (adversarial review of claude/c2-cadence-gates, 2026-09-23 boss ruling): `force: true`
+   * force-resolves every open human request for the run -- on a fail-closed (legacy-untagged, or
+   * publish/spend-tagged) run, that includes requests a signed approval would otherwise be required
+   * to answer. The archive route now escalates exactly like the two iteration-gate/human-request
+   * routes: same fail-closed-on-legacy rule, same tagged-needs-signature rule, same
+   * untagged-stays-open rule (already exercised above by every other archive test, which all use an
+   * explicitly-untagged `seedRun`).
+   */
+  describe('D1: force-archive escalates on a fail-closed run', () => {
+    const ARCHIVE_ROUTE = 'POST /api/control/runs/:runRef/archive';
+
+    it('refuses (403, no mutation, no forced-open-requests row) on a LEGACY run (no workflowTags field) with no signature', async () => {
+      const { app, token, store, audit } = buildApp();
+      try {
+        const runRef = seedRun(store, 'archive-legacy', 'legacy');
+        const requestRef = parkRun(store, runRef, 'archive-legacy');
+        const response = await app.inject({
+          method: 'POST', url: `/api/control/runs/${runRef}/archive`, headers: headers(token),
+          payload: { idempotencyKey: `archive:${runRef}:1`, reason: 'legacy run, forcing', force: true },
+        });
+        expect(response.statusCode, response.body).toBe(403);
+        expect(response.json()).toEqual({ error: 'approval-required' });
+        const detail = store.getRun('operator', runRef);
+        if (!detail.ok) throw new Error(detail.detail);
+        expect(detail.value.run.lifecycle).toMatchObject({ kind: 'waiting-human' });
+        expect(detail.value.humanRequests.find((item) => item.requestRef === requestRef)?.state).toBe('open');
+        expect(audit.filter((event) => event.action === 'run-archive-forced-open-requests')).toHaveLength(0);
+        expect(audit.filter((event) => event.action === 'control-run-archive-authorize')).toHaveLength(0);
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('refuses unsigned (403) and accepts a validly signed approval (200 + forced-open-requests row) on a TAGGED (publish) run', async () => {
+      const { app, token, store, audit } = buildApp();
+      try {
+        const unsignedRunRef = seedRun(store, 'archive-tagged-unsigned', ['publish']);
+        parkRun(store, unsignedRunRef, 'archive-tagged-unsigned');
+        const unsigned = await app.inject({
+          method: 'POST', url: `/api/control/runs/${unsignedRunRef}/archive`, headers: headers(token),
+          payload: { idempotencyKey: `archive:${unsignedRunRef}:1`, reason: 'tagged run, no signature', force: true },
+        });
+        expect(unsigned.statusCode, unsigned.body).toBe(403);
+        expect(unsigned.json()).toEqual({ error: 'approval-required' });
+        expect(audit.filter((event) => event.action === 'run-archive-forced-open-requests')).toHaveLength(0);
+
+        const signedRunRef = seedRun(store, 'archive-tagged-signed', ['publish']);
+        const signedRequestRef = parkRun(store, signedRunRef, 'archive-tagged-signed');
+        const signed = await app.inject({
+          method: 'POST', url: `/api/control/runs/${signedRunRef}/archive`, headers: headers(token),
+          payload: {
+            idempotencyKey: `archive:${signedRunRef}:1`, reason: 'tagged run, signed', force: true,
+            approval: signedApproval(ARCHIVE_ROUTE, signedRunRef),
+          },
+        });
+        expect(signed.statusCode, signed.body).toBe(200);
+        expect(signed.json()).toMatchObject({ ok: true, value: { run: { runRef: signedRunRef, state: 'archived' } } });
+        const forcedRow = audit.find((event) => event.action === 'run-archive-forced-open-requests' && event.target === signedRunRef);
+        expect(forcedRow).toMatchObject({
+          owner: 'operator', target: signedRunRef, riskTier: 'T3',
+          detail: { runRef: signedRunRef, openHumanRequestRefs: [signedRequestRef] },
+        });
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('proceeds unsigned (200 + forced-open-requests row) on an explicitly UNTAGGED run', async () => {
+      const { app, token, store, audit } = buildApp();
+      try {
+        const runRef = seedRun(store, 'archive-untagged-force', []);
+        const requestRef = parkRun(store, runRef, 'archive-untagged-force');
+        const response = await app.inject({
+          method: 'POST', url: `/api/control/runs/${runRef}/archive`, headers: headers(token),
+          payload: { idempotencyKey: `archive:${runRef}:1`, reason: 'untagged, no signature needed', force: true },
+        });
+        expect(response.statusCode, response.body).toBe(200);
+        expect(response.json()).toMatchObject({ ok: true, value: { run: { runRef, state: 'archived' } } });
+        const forcedRow = audit.find((event) => event.action === 'run-archive-forced-open-requests');
+        expect(forcedRow).toMatchObject({ detail: { openHumanRequestRefs: [requestRef] } });
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('a non-force archive on a tagged run needs no signature at all -- the escalation never runs', async () => {
+      const { app, token, store, audit } = buildApp();
+      try {
+        const runRef = seedRun(store, 'archive-tagged-noforce', ['publish']);
+        const run = store.getRun('operator', runRef);
+        if (!run.ok) throw new Error(run.detail);
+        if (!store.transitionRun('operator', runRef, run.value.run.version, 'failed').ok) throw new Error('transition failed');
+        const response = await app.inject({
+          method: 'POST', url: `/api/control/runs/${runRef}/archive`, headers: headers(token),
+          payload: { idempotencyKey: `archive:${runRef}:1`, reason: 'plain archive, tagged run' },
+        });
+        expect(response.statusCode, response.body).toBe(200);
+        expect(audit.filter((event) => event.action === 'authority-approval-refused')).toHaveLength(0);
+      } finally {
+        await app.close();
+      }
+    });
   });
 
   it('B-2: archives normally, with no force needed and no forced-open-requests row, when nothing is open', async () => {

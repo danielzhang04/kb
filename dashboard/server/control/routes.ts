@@ -1685,6 +1685,30 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     // store.ts#archiveRun's refusal when any request is open and this is absent/false.
     const force = body.force === true;
     const runScope = readScope(req);
+    // D1 (adversarial review of claude/c2-cadence-gates, 2026-09-23 boss ruling): `force: true`
+    // force-resolves every OPEN human request for this run — on a fail-closed (publish/spend-tagged, or
+    // legacy-untagged) run, that includes requests that would otherwise cost a signed approval to
+    // answer at all. Escalating exactly like the two iteration-gate/human-request routes
+    // (`escalate: 'workflow-tag'`, policy.ts) closes that gap at the SERVER boundary, not only in the
+    // C17 shell hook that gates one operator machine's `-Force` invocation. Verified BEFORE any audit
+    // row or mutation, same fail-closed-tags-required-signature rule, same untagged-stays-open rule —
+    // reusing `createIterationGateAuthorityService` verbatim rather than re-implementing the ladder.
+    // Non-force archive is completely untouched: this block never runs.
+    if (force) {
+      const actorLabel = parseActor(req.headers[ACTOR_HEADER] as string | string[] | undefined);
+      const archiveAuthority = createIterationGateAuthorityService({
+        workflowTags: (actorSubject, forRunRef) => resolveRunWorkflowTags(ctx, actorSubject, forRunRef, runScope),
+        verifyApproval: bindVerifyApproval(ctx, 'POST', req.routeOptions?.url ?? req.url, runRef),
+        audit: {
+          async append(event) {
+            await auditFn(ctx)(ctx.repoRoot, event, { runGit: ctx.opsGit, now: ctx.now });
+          },
+        },
+        escalationBinding: { route: escalationRouteKey('POST', req.routeOptions?.url ?? req.url), entityRef: runRef },
+      });
+      const authority = await archiveAuthority.verify({ actorSubject: sub, runRef, approval: body.approval, actorLabel });
+      if (!authority.ok) return reply.code(authority.status).send({ error: authority.error });
+    }
     // Keyed by the RUN's owner, like every other lifecycle control here — see the stop route.
     const owned = ctx.controlStore.getRun(sub, runRef, runScope);
     if (!owned.ok) return sendResult(reply, owned);

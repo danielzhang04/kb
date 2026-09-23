@@ -356,8 +356,19 @@ const CASES = [
     `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok" -Force -Yes`, 2],
   ['C17 -Force before -Reason (wrong order) blocked', 'open', 'Bash',
     `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Force -Reason "ok"`, 2],
-  ['C17 any -Approval token blocked (never O4/C17, mirrors the C16 guard)', 'open', 'Bash',
+  // D1 (adversarial review of claude/c2-cadence-gates, 2026-09-23 boss ruling): the daemon's
+  // archive route now escalates force:true exactly like a gate resolution on a fail-closed run, so
+  // C17 gained an -Approval slot (same position C16 gives it: right before the terminal flag, after
+  // the optional rehearsal -URL). -Approval in the PINNED order (before -Force) is now a genuine,
+  // admitted C17 shape -- the old blanket "-Approval anywhere is always blocked" is no longer true.
+  ['C17 -Approval before -Force (pinned order), window open -> allowed', 'open', 'Bash',
+    `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok" -Approval ${T}\\approval.json -Force`, 0],
+  ['C17 -Approval before -Force, window closed -> blocked (windowed like every other C-shape)', 'closed', 'Bash',
     `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok" -Approval ${T}\\approval.json -Force`, 2],
+  ['C17 -Approval AFTER -Force (wrong order) blocked -- never falls back to O4/C17 unmatched', 'open', 'Bash',
+    `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok" -Force -Approval ${T}\\approval.json`, 2],
+  ['C17 -Approval with no -Force at all still blocked (never O4, mirrors the C16/O4 guard)', 'open', 'Bash',
+    `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok" -Approval ${T}\\approval.json`, 2],
   // Plain O4 (no -Force) stays open-class after C17 exists — regression check right next to the
   // new windowed shape.
   ['O4 (no -Force) still open-class after C17, window closed', 'closed', 'Bash',

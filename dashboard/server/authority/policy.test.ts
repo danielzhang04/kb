@@ -23,10 +23,15 @@ describe('route authority table', () => {
     }
   });
 
-  it('escalates only the three respond routes', () => {
+  // D1 (adversarial review of claude/c2-cadence-gates, 2026-09-23 boss ruling): the force-archive
+  // route joins the escalated set — force-resolving an open human request is the same signed-class
+  // action on a fail-closed run whether it happens through the gate/respond routes or through
+  // `archive`'s `force: true`.
+  it('escalates the three respond routes and the force-archive route', () => {
     expect(ROUTE_AUTHORITY.filter((e) => e.escalate === 'workflow-tag').map(routeKey).sort()).toEqual([
       'POST /api/control/human-requests/:requestRef/respond',
       'POST /api/control/iteration-gates/:requestRef/resolve',
+      'POST /api/control/runs/:runRef/archive',
       'POST /api/v1/runs/:runRef/human-requests/:requestRef/respond',
     ]);
   });

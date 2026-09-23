@@ -42,7 +42,16 @@ export const ROUTE_AUTHORITY: readonly RouteAuthority[] = Object.freeze([
   open('POST', '/api/control/runs/:runRef/agents/:agentId/messages'),
   open('POST', '/api/control/runs/:runRef/activate'),
   open('POST', '/api/control/runs/:runRef/stages/:stageRef/reroute'),
-  open('POST', '/api/control/runs/:runRef/archive'),
+  // D1 (adversarial review of claude/c2-cadence-gates, 2026-09-23 boss ruling): `force: true`
+  // force-resolves every open human request for the run — including ones a fail-closed/tagged run
+  // would otherwise require a signed approval to answer — so it carries the SAME `escalate:
+  // 'workflow-tag'` semantics as the two iteration-gate/human-request routes above. The generic
+  // `requireAuthority` preHandler still treats `cls: 'open'` as a pass-through for every call (it has
+  // no run or `force` flag to inspect); the route itself (`routes.ts`, the archive handler) reads this
+  // field's intent and, ONLY when `force === true`, verifies the run's workflow tags and a signed
+  // approval bound to this exact route + `runRef` before touching anything. A non-force archive is
+  // completely unaffected.
+  { method: 'POST', path: '/api/control/runs/:runRef/archive', cls: 'open', entityParam: 'runRef', escalate: 'workflow-tag' },
   open('POST', '/api/write/stop'),
   open('POST', '/api/schedules'),
   open('POST', '/api/schedules/:id/arm'),
