@@ -974,3 +974,21 @@
 - Action-required carried: figment T3 GATE A eye-gate 65d8f246 (open since 09-03); atlas
   remediation diff >400 lines on codex/atlas-enhancements-20260820 awaiting Daniel review.
 - Push path: see final summary (DIRECT-PUSH vs PR-AWAITING-HUMAN-MERGE determined at push time).
+
+## 2026-09-23 nightly cloud run
+- Clean core run: preamble OK, pyyaml OK (6.0.1), sync_skills --check OK (exit 0). Dispatched +
+  executed nightly-review card 6ab36ee4-e6312b80; dashboards regenerated in full. Cost $0.00 vs $30.
+- sync_daemon_dirs recurring (unchanged): script is main-only, absent on ops, so the literal
+  step-2b command fails [Errno 2]. Ran the refs-fallback (git show origin/main:scripts/
+  sync_daemon_dirs.py > tmp; python tmp --check --repo-root .) -> exit 1, SAME single ops-only
+  drift orgs/kb-ops/workflows/acceptance-run.md. Filed wake-daniel-2026-09-23-sync-daemon-dirs-
+  drift (12 open on this issue now). Owed DESKTOP fix: re-add script to ops + --sync --prune or
+  reconcile the file to main + amend step 2b so it stops re-filing.
+- Queue snapshot: inbox 114, working 3, approvals 1, done 1608, archived 10. Clone mtimes all
+  06:15 (fresh clone) — judged working/ staleness from git last-commit, not fs mtime.
+- Anomalies (none mine to sweep): d126c410 figment track1:replicate idle in working since
+  2026-09-07 (~16d) AND its action carries an unquoted colon (guard cards.parse when iterating
+  working/); 6a6bc3dd kb-ops iter-smoke state:halted stranded in working since 2026-07-30.
+- Action-required carried: figment T3 GATE A eye-gate 65d8f246; atlas remediation diff >400 lines
+  on codex/atlas-enhancements-20260820 awaiting Daniel review (+ remote push blocked pending origin).
+- Push path: see final summary (DIRECT-PUSH vs PR-AWAITING-HUMAN-MERGE determined at push time).
