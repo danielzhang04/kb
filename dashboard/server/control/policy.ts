@@ -154,6 +154,15 @@ const ALLOWED_ACTION_TIERS = new Map<string, 'T1' | 'T2' | 'T3'>([
   ['merge', 'T3'],
   ['release', 'T3'],
   ['purge', 'T3'],
+  // F8 (2026-09-22, p13 rehearsal finding): an armed agent-owner cadence (e.g. `hygiene`) is rendered
+  // by `scripts/cards.py#schedule_occurrence_claim` as a bare trigger card with
+  // `stages[0].action: 'cadence:<agent-id>'`. Before this line, that namespace was never registered, so
+  // `classifyActionRisk` refused every such card with `action-not-in-server-owned-registry` and the
+  // bridge re-dispatched it forever (it is never reconciled out of inbox on a refusal). `T1` is the
+  // floor cards.py always stamps for a cadence card; `queueBridge.ts#cardToWorkflowRequest` layers the
+  // additional agent-declared / AGENT_CADENCE_PROFILE_ALLOWLIST / T1-T2-only checks this floor alone
+  // cannot express (a floor can only raise a tier, never cap one).
+  ['cadence', 'T1'],
 ]);
 
 const FORBIDDEN_ACTION_NAMESPACES = new Set([

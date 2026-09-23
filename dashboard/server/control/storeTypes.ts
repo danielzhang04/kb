@@ -567,6 +567,14 @@ export interface ArchiveRunInput {
   idempotencyKey: string;
   /** Why the operator dismissed this run. Recorded on the resolved requests and in the audit row. */
   reason?: string | null;
+  /**
+   * B-2 (review finding): without this, `archiveRun` silently force-resolved every open human request on
+   * the run as a side effect of archiving it — a run genuinely waiting on a human decision could be
+   * dismissed without that decision ever being made or recorded as skipped. `false`/absent (the default)
+   * REFUSES the archive (`conflict`, detail lists the open requestRefs) whenever the run has any open
+   * request; only an explicit `true` here authorizes the pre-existing force-resolve behavior.
+   */
+  force?: boolean;
 }
 
 export interface ArchiveRunResult {

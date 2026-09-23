@@ -3738,23 +3738,30 @@ describe('control run archive route', () => {
     return request.value.requestRef;
   }
 
-  it('audits at T3 with the operator reason, archives, resolves the open ask, and replays', async () => {
+  it('audits at T3 with the operator reason, force-archives, resolves the open ask, and replays', async () => {
     const { app, token, store, audit } = buildApp();
     try {
       const runRef = seedRun(store, 'archive');
       const requestRef = parkRun(store, runRef, 'archive');
-      const payload = { idempotencyKey: `archive:${runRef}:1`, reason: 'obsolete thin-slice validation run' };
+      // B-2: this run has one open human request, so the archive must be explicitly forced through.
+      const payload = { idempotencyKey: `archive:${runRef}:1`, reason: 'obsolete thin-slice validation run', force: true };
 
       const archived = await app.inject({
         method: 'POST', url: `/api/control/runs/${runRef}/archive`, headers: headers(token), payload,
       });
-      expect(archived.statusCode).toBe(200);
+      expect(archived.statusCode, archived.body).toBe(200);
       expect(archived.json()).toMatchObject({ ok: true, value: { run: { runRef, state: 'archived' } } });
 
       const row = audit.find((event) => event.action === 'control-run-archive-authorize');
       expect(row).toMatchObject({
         owner: 'operator', target: runRef, riskTier: 'T3',
-        detail: { runRef, runState: 'waiting-human', openHumanRequestCount: 1, reason: payload.reason },
+        detail: { runRef, runState: 'waiting-human', openHumanRequestCount: 1, reason: payload.reason, force: true },
+      });
+      // B-2: a second, distinctly-named row records that this archive actually forced through an open ask.
+      const forcedRow = audit.find((event) => event.action === 'run-archive-forced-open-requests');
+      expect(forcedRow).toMatchObject({
+        owner: 'operator', target: runRef, riskTier: 'T3',
+        detail: { runRef, openHumanRequestRefs: [requestRef], reason: payload.reason },
       });
 
       // The ask is resolved by the same commit — nothing is left waiting on a dismissed run.
@@ -3764,13 +3771,70 @@ describe('control run archive route', () => {
         state: 'resolved', response: { decision: 'responded', response: payload.reason },
       });
 
-      // A replay is idempotent AND does not write a second audit row.
+      // A replay is idempotent AND does not write a second pair of audit rows.
       const replay = await app.inject({
         method: 'POST', url: `/api/control/runs/${runRef}/archive`, headers: headers(token), payload,
       });
       expect(replay.statusCode).toBe(200);
       expect(replay.json()).toMatchObject({ replayed: true });
       expect(audit.filter((event) => event.action === 'control-run-archive-authorize')).toHaveLength(1);
+      expect(audit.filter((event) => event.action === 'run-archive-forced-open-requests')).toHaveLength(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('B-2: refuses to archive a run with an open human request unless force:true is passed', async () => {
+    const { app, token, store, audit } = buildApp();
+    try {
+      const runRef = seedRun(store, 'archive-open');
+      const requestRef = parkRun(store, runRef, 'archive-open');
+      const payload = { idempotencyKey: `archive:${runRef}:1`, reason: 'trying without force' };
+
+      const refused = await app.inject({
+        method: 'POST', url: `/api/control/runs/${runRef}/archive`, headers: headers(token), payload,
+      });
+      expect(refused.statusCode).toBe(409);
+      expect(refused.json()).toMatchObject({
+        error: 'conflict', detail: expect.stringContaining('run-archive-open-requests'),
+      });
+      expect((refused.json() as { detail: string }).detail).toContain(requestRef);
+      // Never forced: the request is still open, the run is still waiting-human, no forced-open-requests row.
+      const detail = store.getRun('operator', runRef);
+      if (!detail.ok) throw new Error(detail.detail);
+      expect(detail.value.run.lifecycle).toMatchObject({ kind: 'waiting-human' });
+      expect(detail.value.humanRequests.find((item) => item.requestRef === requestRef)?.state).toBe('open');
+      expect(audit.filter((event) => event.action === 'run-archive-forced-open-requests')).toHaveLength(0);
+
+      // The SAME idempotencyKey with force:true now succeeds (force is part of the idempotency
+      // fingerprint, so this is a distinct write, not a replay of the refused attempt).
+      const forced = await app.inject({
+        method: 'POST', url: `/api/control/runs/${runRef}/archive`, headers: headers(token),
+        payload: { ...payload, force: true },
+      });
+      expect(forced.statusCode, forced.body).toBe(200);
+      expect(forced.json()).toMatchObject({ ok: true, value: { run: { runRef, state: 'archived' } } });
+      expect(audit.filter((event) => event.action === 'run-archive-forced-open-requests')).toHaveLength(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('B-2: archives normally, with no force needed and no forced-open-requests row, when nothing is open', async () => {
+    const { app, token, store, audit } = buildApp();
+    try {
+      const runRef = seedRun(store, 'archive-clean');
+      const run = store.getRun('operator', runRef);
+      if (!run.ok) throw new Error(run.detail);
+      if (!store.transitionRun('operator', runRef, run.value.run.version, 'failed').ok) throw new Error('transition failed');
+      const payload = { idempotencyKey: `archive:${runRef}:1`, reason: 'no open asks' };
+
+      const archived = await app.inject({
+        method: 'POST', url: `/api/control/runs/${runRef}/archive`, headers: headers(token), payload,
+      });
+      expect(archived.statusCode, archived.body).toBe(200);
+      expect(archived.json()).toMatchObject({ ok: true, value: { run: { runRef, state: 'archived' } } });
+      expect(audit.filter((event) => event.action === 'run-archive-forced-open-requests')).toHaveLength(0);
     } finally {
       await app.close();
     }
@@ -3846,7 +3910,7 @@ describe('control run archive route', () => {
       parkRun(store, archivedRef, 'archive-list-a');
       const done = await app.inject({
         method: 'POST', url: `/api/control/runs/${archivedRef}/archive`, headers: headers(token),
-        payload: { idempotencyKey: 'archive-list-1', reason: 'stale' },
+        payload: { idempotencyKey: 'archive-list-1', reason: 'stale', force: true },
       });
       expect(done.statusCode).toBe(200);
 
@@ -4184,7 +4248,8 @@ describe('operator cross-subject authority', () => {
     try {
       const engineRun = seedRunFor(store, 'dashboard-engine', 'engine', 'daily-news');
       const { requestRef } = parkEngineRunWithGate(store, engineRun);
-      const payload = { idempotencyKey: `archive:${engineRun}:1`, reason: 'obsolete validation run' };
+      // B-2: this run has an open gate request, so the archive must be explicitly forced through.
+      const payload = { idempotencyKey: `archive:${engineRun}:1`, reason: 'obsolete validation run', force: true };
 
       const archived = await app.inject({
         method: 'POST', url: `/api/control/runs/${engineRun}/archive`, headers: headers(token), payload,

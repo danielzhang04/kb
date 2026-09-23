@@ -239,6 +239,85 @@ describe('control-store schedule authority', () => {
     };
     expect(document.scheduleOccurrenceClaims.filter((row) => row.runRef === launched.run.runRef && row.completionReceipt !== null)).toHaveLength(1);
   });
+
+  it('F7: nextAt advances once the occurrence reaches card-saved, without waiting for its run to terminate', async () => {
+    // Root cause (p13 rehearsal finding F7): the ONLY pre-existing place `schedule.nextAt` was written
+    // was `completeStoredScheduleOccurrence`, reached only via a RUN reaching a terminal lifecycle
+    // (`transitionRun`, exercised above). `scripts/dispatch.py#dispatch_claimed_occurrence` never calls
+    // that path at all (its own state machine stops at `ledger-appended`), and even when a run IS
+    // eventually launched from the card, that run can sit non-terminal indefinitely (e.g. parked behind
+    // an unrelated activation gate — p13 finding F6). Either way, `nextAt` never advanced, so
+    // `dispatch_stored_schedules`'s `covered_next_at` gate
+    // (see tests/test_schedule_store.py::test_later_same_window_tick_skips_an_occurrence_already_covered_by_next_at,
+    // which independently proves that gate honors a correctly-advanced nextAt) never received an
+    // advanced value to honor, and every tick re-reported the same occurrence due=1 forever. The fix
+    // advances `schedule.nextAt` the first time the occurrence reaches `card-saved` — the card is
+    // durably on disk at that point, so the schedule's due pointer can move on regardless of what
+    // happens to any run later minted from it.
+    const root = mkdtempSync(join(tmpdir(), 'control-store-schedule-nextat-'));
+    roots.push(root);
+    const scheduledFor = '2026-09-22T07:18:00.000Z';
+    const nextFire = '2026-09-23T07:18:00.000Z'; // the true next daily cron occurrence after scheduledFor
+    const renderScheduleClaim = vi.fn(async (input: { scheduleId: string; scheduledFor: string; owner: { id: string } }) => {
+      const cardIdHash = createHash('sha256').update(`schedule-card\0${input.scheduleId}\0${input.scheduledFor}`).digest('hex');
+      return { card: {
+        meta: {
+          'schema-version': 1, id: `${cardIdHash.slice(0, 8)}-${cardIdHash.slice(8, 16)}`,
+          project: 'kb', action: `cadence:${input.owner.id}`, target: `agents/${input.owner.id}.md`,
+          'risk-tier': 'T1', owner: input.owner.id, 'claim-token': null, state: 'inbox', approval: null,
+          workflow: null, 'depends-on': [], 'variant-group': null, role: 'work', 'session-id': null,
+          runtime: null, model: null, 'execution-controller': 'dashboard', scheduled_for: input.scheduledFor,
+        },
+        body: '## Work order\n\nRun the scheduled hygiene agent.\n',
+      }, cardBytesSha256: 'c'.repeat(64) };
+    });
+    const store = createFileControlPlaneStore(root, { renderScheduleClaim });
+    const owner = { type: 'agent' as const, id: 'hygiene', sourcePath: 'agents/hygiene.md' as const };
+    const api = new ScheduleService({
+      store, resolveOwner: async () => owner, mirrorPathForOwner: () => 'orgs/kb-ops/HEARTBEAT.md', seedAuthorization: async () => true,
+    });
+    const created = await api.create({
+      owner: { type: 'agent' as const, id: 'hygiene' },
+      cadence: { kind: 'cron' as const, minute: '18', hour: '7', dayOfMonth: '*', month: '*', dayOfWeek: '*' },
+      expectedCollectionRevision: 0, idempotencyKey: 'nextat-create', workflowProfile: 'cadence',
+    });
+    await api.setArmed(created.schedule.id, { expectedVersion: created.schedule.version, idempotencyKey: 'nextat-arm', armed: true });
+    const before = store.getScheduleSnapshot().schedules[0];
+
+    await api.claimScheduleOccurrence({
+      occurrence: { scheduleId: before.id, scheduledFor, nextAt: nextFire },
+      expectedVersion: before.version, idempotencyKey: 'nextat-claim-1',
+    });
+    // A bare CLAIM alone does not advance nextAt (the brief's "phase >= card-saved" boundary).
+    expect(store.getScheduleSnapshot().schedules[0].nextAt).toBe(before.nextAt);
+
+    await store.advanceScheduleOccurrence({
+      scheduleId: before.id, scheduledFor, nextAt: nextFire,
+      phase: 'card-saved', idempotencyKey: 'nextat-claim-1:card-saved',
+    });
+    const afterCardSaved = store.getScheduleSnapshot().schedules[0];
+    expect(afterCardSaved.nextAt).toBe(nextFire); // advanced to the true next cron occurrence
+    expect(afterCardSaved.version).toBe(before.version + 1);
+    // The exact invariant dispatch.py's `covered_next_at` gate needs to report due=0 on a second tick for
+    // this SAME occurrence: nextAt must now be strictly after the occurrence just claimed.
+    expect(new Date(afterCardSaved.nextAt!).getTime()).toBeGreaterThan(new Date(scheduledFor).getTime());
+
+    // A dispatch.py replay (crash-then-retry) re-sends the identical idempotencyKey for the same phase.
+    // That must return the same receipt and must NOT re-mutate the schedule a second time.
+    const replay = await store.advanceScheduleOccurrence({
+      scheduleId: before.id, scheduledFor, nextAt: nextFire,
+      phase: 'card-saved', idempotencyKey: 'nextat-claim-1:card-saved',
+    });
+    expect(replay.phase).toBe('card-saved');
+    expect(store.getScheduleSnapshot().schedules[0]).toMatchObject({ nextAt: nextFire, version: afterCardSaved.version });
+
+    // The ledger-appended step (a later phase, not 'card-saved') must not advance nextAt again.
+    await store.advanceScheduleOccurrence({
+      scheduleId: before.id, scheduledFor, nextAt: nextFire,
+      phase: 'ledger-appended', idempotencyKey: 'nextat-claim-1:ledger-appended',
+    });
+    expect(store.getScheduleSnapshot().schedules[0]).toMatchObject({ nextAt: nextFire, version: afterCardSaved.version });
+  });
 });
 
 // Production migrations are up-only (rollback is restore-from-backup, never down-migrate), so this
@@ -4758,7 +4837,7 @@ describe('run archival', () => {
     const { run, requestRef } = parkedRunWithOpenRequest(store);
 
     const archived = store.archiveRun('alice', run.runRef, {
-      idempotencyKey: `archive:${run.runRef}:1`, reason: 'obsolete thin-slice validation run',
+      idempotencyKey: `archive:${run.runRef}:1`, reason: 'obsolete thin-slice validation run', force: true,
     });
     if (!archived.ok) throw new Error(archived.detail);
     expect(archived.value.run.lifecycle.kind).toBe('archived');
@@ -4779,7 +4858,7 @@ describe('run archival', () => {
   it('replays an identical archive and refuses a reused key with a different reason', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
     const { run } = parkedRunWithOpenRequest(store);
-    const input = { idempotencyKey: 'archive-key-1', reason: 'stale validation run' };
+    const input = { idempotencyKey: 'archive-key-1', reason: 'stale validation run', force: true };
 
     const first = store.archiveRun('alice', run.runRef, input);
     if (!first.ok) throw new Error(first.detail);
@@ -4816,7 +4895,7 @@ describe('run archival', () => {
     expect(store.transitionRun('alice', run.runRef, run.version, 'archived'))
       .toMatchObject({ ok: false, reason: 'invalid' });
 
-    const archived = store.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-absorbing' });
+    const archived = store.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-absorbing', force: true });
     if (!archived.ok) throw new Error(archived.detail);
     for (const state of ['running', 'waiting-human', 'failed', 'stopped'] as const) {
       expect(store.transitionRun('alice', run.runRef, archived.value.run.version, state))
@@ -4829,7 +4908,7 @@ describe('run archival', () => {
     roots.push(root);
     const store = createFileControlPlaneStore(root, deterministicOptions());
     const { run } = parkedRunWithOpenRequest(store);
-    const archived = store.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-persisted', reason: 'dead' });
+    const archived = store.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-persisted', reason: 'dead', force: true });
     if (!archived.ok) throw new Error(archived.detail);
     expect(Object.keys(archived.value.run)).not.toContain('archiveOperationKey');
     expect(Object.keys(archived.value.run)).not.toContain('archiveOperationFingerprint');
@@ -4839,8 +4918,43 @@ describe('run archival', () => {
     if (!detail.ok) throw new Error(detail.detail);
     expect(detail.value.run.lifecycle.kind).toBe('archived');
     // The idempotency record survived the restart too, so a retried request still replays.
-    expect(reopened.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-persisted', reason: 'dead' }))
+    expect(reopened.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-persisted', reason: 'dead', force: true }))
       .toMatchObject({ ok: true, replayed: true });
+  });
+
+  it('B-2: refuses an open-request run unless force is true, and force is part of the idempotency fingerprint', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const { run, requestRef } = parkedRunWithOpenRequest(store);
+
+    const refused = store.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-b2-1', reason: 'try without force' });
+    expect(refused).toMatchObject({ ok: false, reason: 'conflict' });
+    expect(refused.ok ? '' : refused.detail).toContain('run-archive-open-requests');
+    expect(refused.ok ? '' : refused.detail).toContain(requestRef);
+    // Never forced: the run is untouched, the request is still open.
+    const untouched = store.getRun('alice', run.runRef);
+    if (!untouched.ok) throw new Error(untouched.detail);
+    expect(untouched.value.run.lifecycle.kind).toBe('waiting-human');
+    expect(untouched.value.humanRequests.find((item) => item.requestRef === requestRef)?.state).toBe('open');
+
+    // The identical idempotencyKey WITHOUT force is a pure replay of the refusal (fail-fast, not a retry
+    // loophole) -- but this store returns a fresh `fail()` on every call rather than persisting refusals,
+    // so calling it again just refuses again, identically.
+    expect(store.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-b2-1', reason: 'try without force' }))
+      .toMatchObject({ ok: false, reason: 'conflict' });
+
+    // The SAME idempotencyKey with force:true flipped is NOT a replay of the refused attempt (force is
+    // part of the fingerprint) -- it is authorized and archives normally.
+    const forced = store.archiveRun('alice', run.runRef, { idempotencyKey: 'archive-b2-1', reason: 'try without force', force: true });
+    if (!forced.ok) throw new Error(forced.detail);
+    expect(forced.value.run.lifecycle.kind).toBe('archived');
+    expect(forced.value.resolvedRequests.map((item) => item.requestRef)).toEqual([requestRef]);
+  });
+
+  it('B-2: archives a run with no open requests without needing force', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const settled = settleRetryPredecessor(store);
+    expect(store.archiveRun('alice', settled.run.runRef, { idempotencyKey: 'archive-b2-clean' }))
+      .toMatchObject({ ok: true, value: { run: { lifecycle: { kind: 'archived', deployPause: null } } } });
   });
 });
 
@@ -5273,7 +5387,7 @@ describe('read scope', () => {
     if (!ask.ok) throw new Error(ask.detail);
 
     const archived = store.archiveRun('operator', engineRun.runRef, {
-      idempotencyKey: 'operator-archives', reason: 'obsolete validation run',
+      idempotencyKey: 'operator-archives', reason: 'obsolete validation run', force: true,
     }, 'all-subjects');
     if (!archived.ok) throw new Error(archived.detail);
     // Existing archive semantics, unchanged: terminal `archived` run, every answerable ask resolved in
@@ -5292,9 +5406,10 @@ describe('read scope', () => {
     });
     expect(store.listRuns('operator', 'all-subjects').map((run) => run.ownerSubject)).toEqual(['dashboard-engine']);
 
-    // A replay on the same key is still a replay, and a second, different archive still conflicts.
+    // A replay on the same key (including the same force flag) is still a replay, and a second,
+    // different archive still conflicts.
     expect(store.archiveRun('operator', engineRun.runRef, {
-      idempotencyKey: 'operator-archives', reason: 'obsolete validation run',
+      idempotencyKey: 'operator-archives', reason: 'obsolete validation run', force: true,
     }, 'all-subjects')).toMatchObject({ ok: true, replayed: true });
     expect(store.archiveRun('operator', engineRun.runRef, {
       idempotencyKey: 'operator-archives-again', reason: 'again',

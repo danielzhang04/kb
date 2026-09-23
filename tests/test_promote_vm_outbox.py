@@ -888,6 +888,101 @@ def test_receipted_spool_auto_detects_and_resumes_reconciliation(
     assert calls["upload"] == ("vm.example.test", COMMIT, target)
 
 
+def test_resume_reconciliation_failure_on_vm_apply_leaves_receipts_intact(
+    tmp_path, monkeypatch, capsys,
+):
+    """A resume that reaches upload_and_apply_reconciliation but fails there (e.g. the VM's
+    apply_ops_reconciliation.py refuses the reconciled range) must fail closed: main() raises
+    (a non-zero process exit under `raise SystemExit(main())`), and the desktop-side receipts
+    already on disk -- the only record that the promotion half of the drain succeeded -- are
+    never touched by this leg, so the next run can resume from the same all-receipted state
+    instead of losing track of completed promotions."""
+    operator = tmp_path / "operator"
+    operator.mkdir()
+    bundle_bytes = b"bundle"
+    manifest = {
+        "schema": "kb.ops-outbox/v1",
+        "id": COMMIT,
+        "parent": BASE,
+        "commit": COMMIT,
+        "paths": ["ledgers/already.jsonl"],
+        "createdAt": "2026-08-11T12:00:00.000Z",
+        "bundleSha256": hashlib.sha256(bundle_bytes).hexdigest(),
+    }
+    receipt = {
+        "schema": "kb.ops-promotion/v1",
+        "id": COMMIT,
+        "sourceCommit": COMMIT,
+        "promotedCommit": "c" * 40,
+        "promotedAt": "2026-08-11T12:00:01.000Z",
+    }
+    receipt_bytes = canonical(receipt)
+
+    def fetch_receipted(_vm_host: str, snapshot: Path) -> Path:
+        (snapshot / "ready").mkdir(parents=True)
+        (snapshot / "receipts").mkdir()
+        (snapshot / "ready" / f"{COMMIT}.bundle").write_bytes(bundle_bytes)
+        (snapshot / "ready" / f"{COMMIT}.json").write_bytes(canonical(manifest))
+        (snapshot / "receipts" / f"{COMMIT}.json").write_bytes(receipt_bytes)
+        (snapshot / "SOURCE_HEAD").write_text(COMMIT + "\n", encoding="ascii")
+        return snapshot
+
+    def must_not_run(*_args, **_kwargs):
+        raise AssertionError("resume-failure test re-promoted an already-receipted spool")
+
+    calls: dict = {}
+    target = "d" * 40
+
+    def fake_return_bundle(operator_repo, work_root, expected_target):
+        calls["return_bundle"] = expected_target
+        return tmp_path / "return.bundle", tmp_path / "return-repo"
+
+    def fake_run_git(_repo, args, check=True):
+        if args[:2] == ["diff", "--name-only"]:
+            return completed(args, b"")
+        if args[:2] == ["diff", "--raw"]:
+            return completed(args, b"")
+        assert args == ["rev-parse", "refs/kb-reconciled/ops^{commit}"]
+        return completed(args, target + "\n")
+
+    def fake_upload_fails(vm_host, bundle, receipts, source_head, target_head):
+        calls["upload"] = (vm_host, source_head, target_head)
+        raise RuntimeError("reconciled ref contains a non-coordination path")
+
+    snapshot_dir = tmp_path / "snapshots"
+    monkeypatch.setattr(promote_module, "fetch_vm_outbox", fetch_receipted)
+    monkeypatch.setattr(promote_module, "promote_pending", must_not_run)
+    monkeypatch.setattr(promote_module, "create_return_bundle", fake_return_bundle)
+    monkeypatch.setattr(promote_module, "run_git", fake_run_git)
+    monkeypatch.setattr(promote_module, "upload_and_apply_reconciliation", fake_upload_fails)
+    monkeypatch.setattr(
+        promote_module.sys,
+        "argv",
+        [
+            "promote_vm_outbox.py",
+            "--spool", str(snapshot_dir),
+            "--repo", str(operator),
+            "--work-root", str(tmp_path / "work"),
+            "--vm-host", "vm.example.test",
+            "--trusted-ops-head", BASE,
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="non-coordination path"):
+        promote_module.main()
+
+    assert calls["return_bundle"] == "c" * 40
+    assert calls["upload"] == ("vm.example.test", COMMIT, target)
+    # The one snapshot directory created by this run still has its receipt exactly as fetched --
+    # nothing in the resume leg deletes or mutates spool/receipts, so a retry sees the identical
+    # all-receipted state and can resume again.
+    snapshots = list(snapshot_dir.iterdir())
+    assert len(snapshots) == 1
+    receipt_path = snapshots[0] / "receipts" / f"{COMMIT}.json"
+    assert receipt_path.exists()
+    assert receipt_path.read_bytes() == receipt_bytes
+
+
 def test_reconcile_only_flag_refuses_when_spool_is_not_fully_receipted(
     tmp_path, monkeypatch,
 ):

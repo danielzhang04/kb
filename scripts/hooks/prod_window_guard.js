@@ -80,7 +80,12 @@ const BROKER_DIGEST = '4586d91930a1b4f00f350a2b5324a9347073b10d67c9cf0edfd47abe4
 // fleet runs never set it, so the real KBDIR path below is always what actually executes.
 const ARCHIVE_SCRIPT_REAL_PATH = 'C:\\Users\\danie\\kb\\scripts\\prod\\prod-archive-run.ps1';
 const ARCHIVE_SCRIPT_PATH = process.env.KB_ARCHIVE_SCRIPT_PATH || ARCHIVE_SCRIPT_REAL_PATH;
-const ARCHIVE_SCRIPT_SHA256 = 'bb3c056a3ce476cac59f3a70991d893d75d7c87721b01ca82442b041f3a6b958';
+// B-2 (review finding, 2026-09-22): prod-archive-run.ps1's header/Step-B.1 comments were updated to
+// say the daemon now REFUSES an archive with open human requests instead of silently force-resolving
+// them (dashboard/server/control/store.ts#archiveRun). No behavior in this script changed — same
+// argv shape, same client-side pre-check/re-read, no -Force plumbed through — so this is a
+// content-pin bump only.
+const ARCHIVE_SCRIPT_SHA256 = '93c5b36e5002e6fd8cbc85aca85e42055b686c288cd08c11afead1a415809588';
 
 const MAX_STDIN = 1024 * 1024;
 
@@ -177,6 +182,31 @@ const SAFE_T = '["\']?' + T + B + NO_TRAVERSAL + '["\']?';
 const SAFE_T_REHEARSAL = '["\']?' + T + B + 'rehearsal' + B + NO_TRAVERSAL + '["\']?';
 const SAFE_T_OR_BACKUPS = '["\']?(?:' + T + '|' + BACKUPS + ')' + B + NO_TRAVERSAL + '["\']?';
 
+// F3 (p13, 2026-09-22): drain-step1-v2.ps1/drain-step2-v2.ps1 route promote_vm_outbox.py's own
+// ssh/scp subprocess calls through WSL (Invoke-Promote/Invoke-PromoteWsl, _drain-common.ps1) ONLY
+// when -WslDistro is non-empty; -SshShimDir alone does not fix this because it only affects
+// Invoke-Remote (a different function) -- without -WslDistro, a rehearsal invocation's bare
+// ssh/scp calls go straight to real Windows OpenSSH on port 22, not the rehearsal sshd's port
+// 2222 (evidence.md p13 F3). ops-refresh.ps1 never calls Invoke-Promote at all (it only uses
+// Invoke-Remote, already reachable via -SshShimDir), and its param block declares no -WslDistro
+// and no -CurlHeader -- so it must not be offered either group; see the empty extras list on its
+// cmdShape() call below.
+const WSLDISTRO_ARG_GROUP = '(?:\\s+-wsldistro\\s+[a-z0-9-]{1,40})?';
+// $CurlHeader is [string[]] on the scripts (repeatable via multiple -CurlHeader occurrences), but
+// the reviewed rehearsal shape only ever needs the one tailscale-serve-shaped header Invoke-Curl
+// adds, so the grammar admits exactly one occurrence carrying one SAFE_ARG token, not an
+// arbitrary-length repeated group.
+const CURLHEADER_ARG_GROUP = '(?:\\s+-curlheader\\s+' + SAFE_ARG + ')?';
+// -Spool/-Work/-ApprovalDir/-Signers all default to paths under kb-backups on both prod and
+// rehearsal (outbox-snapshots/outbox-work/outbox-approval-current/kb-ops-approver.allowed-signers);
+// a rehearsal run may point them at a throwaway rehearsal copy under the tooling tree instead, so
+// both roots are accepted via the shared SAFE_T_OR_BACKUPS class (no traversal, same discipline as
+// every other T-or-backups-anchored path argument).
+const SPOOL_ARG_GROUP = '(?:\\s+-spool\\s+' + SAFE_T_OR_BACKUPS + ')?';
+const WORK_ARG_GROUP = '(?:\\s+-work\\s+' + SAFE_T_OR_BACKUPS + ')?';
+const APPROVALDIR_ARG_GROUP = '(?:\\s+-approvaldir\\s+' + SAFE_T_OR_BACKUPS + ')?';
+const SIGNERS_ARG_GROUP = '(?:\\s+-signers\\s+' + SAFE_T_OR_BACKUPS + ')?';
+
 /* --------------------------------------------------------- allowlist shapes */
 
 // C1 — preflight. `-SignersFile` belongs to the explicit-only `-Step approver-signers` action
@@ -202,15 +232,30 @@ const C2 = new RegExp(PRE + PS + '-file\\s+' + P('kb-deploy.ps1')
 // C3/C5 — the three `-Command "& '<script>'"` drain shapes. A-1: each of these scripts' own
 // header documents a "REHEARSAL: add -VM/-URL/.../-SshShimDir" override set; those are now
 // anchored, optional groups INSIDE the quoted command string (the only place PowerShell -Command
-// accepts them here), not a classifier bypass.
-function cmdShape(rel) {
+// accepts them here), not a classifier bypass. F3 (p13): drain-step1/drain-step2 additionally
+// declare -Spool/-Work/-ApprovalDir(or -Signers)/-WslDistro/-CurlHeader for rehearsal, per their
+// own header comments; ops-refresh.ps1 declares none of these (it never routes through
+// Invoke-Promote/WSL), so its extras list is empty and it is unaffected by this fix. Every extra
+// group is built inline here (not via vmRehearsalGroup(), which C2/kb-deploy.ps1 also shares and
+// must not gain these params) and nests INSIDE the `-vm root@localhost` group, in the fixed order
+// below, same discipline as every other C-shape — a prod-targeting invocation (no genuine
+// `-vm root@localhost` marker) can never carry any of them.
+function cmdShape(rel, extraRehearsalGroups) {
   const body = rel.split('/').map(function (s) { return s.replace(/\./g, '\\.'); }).join(B);
+  const extra = (extraRehearsalGroups || []).join('');
   return new RegExp(PRE + PS + '-command\\s+"\\s*&\\s*\'' + T + B + body + '\''
-    + vmRehearsalGroup(true) + '\\s*"$');
+    + '(?:\\s+-vm\\s+["\']?root@localhost["\']?'
+    + URL_REHEARSAL_ARG_GROUP
+    + SSHSHIMDIR_ARG_GROUP
+    + extra
+    + ')?'
+    + '\\s*"$');
 }
-const C3 = cmdShape('drain-v2/drain-step1-v2.ps1');
-const C5A = cmdShape('drain-v2/drain-step2-v2.ps1');
-const C5B = cmdShape('drain-v2/ops-refresh.ps1');
+const C3 = cmdShape('drain-v2/drain-step1-v2.ps1',
+  [SPOOL_ARG_GROUP, WORK_ARG_GROUP, APPROVALDIR_ARG_GROUP, WSLDISTRO_ARG_GROUP, CURLHEADER_ARG_GROUP]);
+const C5A = cmdShape('drain-v2/drain-step2-v2.ps1',
+  [SPOOL_ARG_GROUP, WORK_ARG_GROUP, SIGNERS_ARG_GROUP, WSLDISTRO_ARG_GROUP, CURLHEADER_ARG_GROUP]);
+const C5B = cmdShape('drain-v2/ops-refresh.ps1', []);
 
 // C4 — Daniel's one signature of the morning
 const C4 = new RegExp('^ssh-keygen\\s+-y\\s+sign\\s+-f\\s+' + PATHARG
@@ -591,7 +636,7 @@ function standingBlock(text, prodTargeting) {
   if (URL_TARGET_SCRIPTS.test(text) || WINDOWED_SCRIPTS.test(text)) {
     const preMatch = text.match(new RegExp(PRE));
     let rest = preMatch ? text.slice(preMatch[0].length) : text;
-    rest = rest.replace(/&\s+'/g, " '");
+    rest = rest.replace(/&\s*'/g, " '");
     if (/[`$;&|%(){}<>]/.test(rest)) {
       return ['D10', 'a shell/PowerShell metacharacter (backtick $ ; & | % ( ) < > { }) appears in '
         + 'a command naming a prod-mutating script — refused regardless of rehearsal marker or '

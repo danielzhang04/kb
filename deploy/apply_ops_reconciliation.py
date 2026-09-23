@@ -1,3 +1,20 @@
+"""Apply a trusted desktop's ops reconciliation bundle to the VM's ops checkout.
+
+Operator note -- what a failed apply leaves behind (see `apply_reconciliation` below):
+
+Returned receipts are installed into `spool / "receipts"` durably (`write_receipt_durably`)
+BEFORE the reconciled-range checks run. If this function then raises for any reason -- an
+unsafe object mode, or the RECONCILED-allowlist check ("reconciled ref contains a
+non-coordination path") -- those receipts stay on disk, `spool / "ready"` is untouched, and the
+ops checkout is never reset. Only a *successful* apply (past every check, through the final
+`git reset --hard target`) moves each chain item's `ready/*.json` + `ready/*.bundle` and
+`receipts/*.json` into `spool / "promoted"` (see the loop just before `_prune_promoted_archive`
+below). So a failed apply leaves the spool in exactly the state
+`scripts/promote_vm_outbox.py` needs to resume: every chain item still receipted, `ready/`
+still holding the same bundles, source head unchanged -- see that module's docstring and
+`docs/runbooks/outbox-drain-resume.md` for the resume path this enables.
+"""
+
 from __future__ import annotations
 
 import argparse
