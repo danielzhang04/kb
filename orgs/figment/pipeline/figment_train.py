@@ -6562,7 +6562,26 @@ def _revalidate_planned_gen_authority(plan: dict[str, Any], *, reads=None) -> No
     if (persona.get("id") != plan.get("creator")
             or _sha256(persona_path, reads=reads) != planned_persona_sha256):
         raise FigmentTrainError("current persona changed after gen planning; create a fresh gen plan")
-    if training != planned_training:
+    # 2026-09-23 fix: `training` here is re-loaded fresh from the persona's own
+    # training.yaml/persona.yaml (`_current_persona_training`) and so never carries a
+    # plan-time-only flag override (`--style-lora`/`--style-lora-strength`, now also
+    # `--gen-prompt-style`) -- those are recorded on `plan["training"]`
+    # (`planned_training`) by `_resolve_gen_style_lora`/`_resolve_gen_prompt_style`
+    # but deliberately never written back to the persona (M3's own precedent: a style
+    # LoRA, and now a gen prompt style, is a gen-PLAN argument, never a persona fork).
+    # A raw `training != planned_training` compare therefore raised "current training
+    # ... changed" for EVERY flagged gen plan, even an untouched persona -- live bug,
+    # reproduced for `--style-lora` too, not only the new `--gen-prompt-style`.
+    # `lineage.training_input_projection` already excludes exactly these gen-time-only
+    # keys (`GEN_TIME_ONLY_KEYS`) for this same reason elsewhere (accepted-checkpoint
+    # freshness); comparing projections here is the same fix, reused rather than
+    # reimplemented. `SELECTION_KEYS`/`dataset_dir` are also excluded by that
+    # projection, but a genuinely different checkpoint selection is still caught below
+    # by the checkpoint-provenance-snapshot comparison, so nothing is silently missed.
+    lineage = _lineage_module()
+    if lineage.training_input_projection(training) != lineage.training_input_projection(
+        planned_training
+    ):
         raise FigmentTrainError(
             "current training or checkpoint selection changed after gen planning; create a fresh gen plan"
         )

@@ -1171,6 +1171,55 @@ def test_resolve_gen_prompt_style_validates_the_value(command):
     assert command._resolve_gen_prompt_style(training, gen_prompt_style=None) is training
 
 
+def test_revalidate_planned_gen_authority_survives_a_gen_prompt_style_flag(command, tmp_path):
+    """2026-09-23 fix: `_revalidate_planned_gen_authority` compared the freshly reloaded
+    persona training (which never carries a plan-time-only flag override) against
+    `plan["training"]` (which DOES carry it) with raw dict equality -- so ANY
+    `--gen-prompt-style`-flagged gen plan refused to launch at all, even against a
+    completely untouched persona, with "current training or checkpoint selection
+    changed after gen planning". Reproduced for `--style-lora` too (the same class of
+    bug, pre-existing, not introduced by `--gen-prompt-style`). Fixed by comparing
+    `lineage.training_input_projection(...)` (already excludes `GEN_TIME_ONLY_KEYS`)
+    instead of the raw dicts -- this must now pass for an untouched persona, and still
+    fail closed when the persona's training genuinely changes."""
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    _prepare_accepted_checkpoint(
+        command, personas, tmp_path, dop_class="woman", gen_prompt_style="trigger-scene",
+    )
+    out = tmp_path / "gen-prompt-style-authority"
+    plan = command.build_plan(
+        "creator-002", "gen", out, personas_root=personas, skip_pin_verify=True,
+        gen_prompt_style="trigger-scene",
+    )
+    # Must not raise: the persona is untouched since planning, only the plan-time flag
+    # differs from the persona's own (default) training.gen_prompt_style.
+    command._revalidate_planned_gen_authority(plan)
+
+    # A genuinely changed persona training must still fail closed. `_set_training`
+    # rewrites persona.yaml itself (training has no separate sidecar in this fixture),
+    # so this trips the earlier persona-sha256 check rather than the training-
+    # projection compare fixed above -- both are `_revalidate_planned_gen_authority`
+    # failing closed "after gen planning", which is what matters here.
+    _set_training(personas / "creator-002", dop_multiplier=2.0)
+    with pytest.raises(command.FigmentTrainError, match="after gen planning"):
+        command._revalidate_planned_gen_authority(plan)
+
+
+def test_revalidate_planned_gen_authority_survives_a_style_lora_flag(command, tmp_path):
+    """Same pre-existing bug/fix as above, proven directly for `--style-lora` (M3),
+    which this fix ALSO repairs (not just the new `--gen-prompt-style`)."""
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    _prepare_accepted_checkpoint(command, personas, tmp_path, dop_class="woman")
+    out = tmp_path / "style-lora-authority"
+    plan = command.build_plan(
+        "creator-002", "gen", out, personas_root=personas, skip_pin_verify=True,
+        style_lora="gokay-realism", style_lora_strength=0.5,
+    )
+    command._revalidate_planned_gen_authority(plan)
+
+
 def test_verify_pins_preflight_includes_style_loras_for_gen_and_detail_when_set(
     command, monkeypatch,
 ):
