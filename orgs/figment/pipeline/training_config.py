@@ -21,9 +21,9 @@ TRAINING_KEYS = {
     "style_lora", "style_lora_strength", "chosen_checkpoint_step",
     "chosen_checkpoint_sha256", "chosen_checkpoint_approval",
     "dop_enabled", "dop_multiplier", "dop_class", "dataset_source",
-    "dataset_replicates", "gen_prompt_style",
+    "dataset_replicates", "gen_prompt_style", "gen_refine_denoise", "gen_detailer_denoise",
 }
-ALLOWED_GEN_PROMPT_STYLES = {"look-clause", "trigger-scene"}
+ALLOWED_GEN_PROMPT_STYLES = {"look-clause", "trigger-scene", "look-clause-close"}
 DEFAULT_TRAINING = {
     "trigger": None,
     "base_arch": "krea2",
@@ -88,6 +88,16 @@ DEFAULT_TRAINING = {
     # close-framed scene, no look-feature words at all, so the LoRA's own learned
     # identity is never fought by a contradicting text description.
     "gen_prompt_style": "look-clause",
+    # 2026-09-23 (live evidence, orgs/figment/runs/creator-001 tester-vs-gen A/B):
+    # `_gen_workflow`'s node 15 (KSampler, latent refine pass off the 4x-upscaled
+    # base) at its shipped denoise 0.35. 0.0 removes the pass entirely (nodes 14/15/16
+    # deleted, the detailer reads the upscaled/scaled image straight off node 13) --
+    # every existing persona/plan keeps behaving exactly as before this key existed.
+    "gen_refine_denoise": 0.35,
+    # `_gen_workflow`'s node 33 (DetailerForEach, face-region re-render) at its shipped
+    # denoise 0.15. 0.0 removes the detailer entirely (SaveImage reads node 33's own
+    # image input directly) -- default reproduces today's workflow byte-for-byte.
+    "gen_detailer_denoise": 0.15,
 }
 ALLOWED_ARCHES = {"krea2"}
 ALLOWED_DATASET_SOURCES = {"qwen-edit", "klein-multiref"}
@@ -215,6 +225,14 @@ def validate_training(raw: Any, creator_id: str) -> dict[str, Any]:
             f"persona.training.gen_prompt_style must be one of "
             f"{sorted(ALLOWED_GEN_PROMPT_STYLES)}"
         )
+    for denoise_key in ("gen_refine_denoise", "gen_detailer_denoise"):
+        denoise_value = config[denoise_key]
+        if (isinstance(denoise_value, bool) or not isinstance(denoise_value, (int, float))
+                or not (0.0 <= denoise_value <= 1.0)):
+            raise TrainingConfigError(
+                f"persona.training.{denoise_key} must be a number between 0.0 and 1.0"
+            )
+        config[denoise_key] = float(denoise_value)
     chosen_step = config["chosen_checkpoint_step"]
     if chosen_step is not None and (
         isinstance(chosen_step, bool) or not isinstance(chosen_step, int) or chosen_step <= 0

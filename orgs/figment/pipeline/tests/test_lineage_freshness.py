@@ -421,3 +421,20 @@ def test_gen_prompt_style_is_gen_time_only_like_style_lora(command):
     changed = dict(base, gen_prompt_style="trigger-scene")
     assert lineage.training_input_projection(base) == lineage.training_input_projection(changed)
     assert "gen_prompt_style" not in lineage.training_input_projection(base)
+
+
+def test_gen_refine_and_detailer_denoise_are_gen_time_only_like_gen_prompt_style(command):
+    """2026-09-23: `gen_refine_denoise`/`gen_detailer_denoise` join `GEN_TIME_ONLY_KEYS`
+    on the same footing as `gen_prompt_style` -- gen-plan-time-only knobs on
+    `_gen_workflow`'s refine/detailer passes, never training inputs."""
+    lineage = command._lineage_module()
+    assert "gen_refine_denoise" in lineage.GEN_TIME_ONLY_KEYS
+    assert "gen_detailer_denoise" in lineage.GEN_TIME_ONLY_KEYS
+    base = {
+        "steps": 600, "save_every": 200, "trigger": "t", "base_arch": "krea2",
+        "gen_refine_denoise": 0.35, "gen_detailer_denoise": 0.15,
+    }
+    changed = dict(base, gen_refine_denoise=0.0, gen_detailer_denoise=0.0)
+    assert lineage.training_input_projection(base) == lineage.training_input_projection(changed)
+    assert "gen_refine_denoise" not in lineage.training_input_projection(base)
+    assert "gen_detailer_denoise" not in lineage.training_input_projection(base)

@@ -131,3 +131,33 @@ def test_gen_prompt_style_accepts_trigger_scene():
 def test_gen_prompt_style_rejects_anything_outside_the_allowed_set(bad):
     with pytest.raises(tc.TrainingConfigError, match="gen_prompt_style"):
         tc.validate_training({"gen_prompt_style": bad}, "creator-002")
+
+
+def test_gen_prompt_style_accepts_look_clause_close():
+    config = tc.validate_training({"gen_prompt_style": "look-clause-close"}, "creator-002")
+    assert config["gen_prompt_style"] == "look-clause-close"
+
+
+# 2026-09-23: `gen_refine_denoise`/`gen_detailer_denoise` -- gen-time-only knobs on
+# `_gen_workflow`'s refine (node 15) and detailer (node 33) passes. Defaults reproduce
+# today's shipped denoise values (0.35/0.15) byte-for-byte.
+
+
+def test_gen_refine_and_detailer_denoise_default_to_todays_shipped_values():
+    config = tc.validate_training(None, "creator-002")
+    assert config["gen_refine_denoise"] == 0.35
+    assert config["gen_detailer_denoise"] == 0.15
+
+
+@pytest.mark.parametrize("key", ["gen_refine_denoise", "gen_detailer_denoise"])
+def test_gen_denoise_keys_accept_the_full_0_to_1_range(key):
+    for value in (0, 0.0, 1, 1.0, 0.2):
+        config = tc.validate_training({key: value}, "creator-002")
+        assert config[key] == float(value)
+
+
+@pytest.mark.parametrize("key", ["gen_refine_denoise", "gen_detailer_denoise"])
+@pytest.mark.parametrize("bad", [-0.01, 1.01, "0.1", None, True, False])
+def test_gen_denoise_keys_reject_out_of_range_or_non_numeric(key, bad):
+    with pytest.raises(tc.TrainingConfigError, match=key):
+        tc.validate_training({key: bad}, "creator-002")

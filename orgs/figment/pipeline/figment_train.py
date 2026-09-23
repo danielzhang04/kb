@@ -398,6 +398,49 @@ def _resolve_gen_prompt_style(
     return {**training, "gen_prompt_style": gen_prompt_style}
 
 
+def _resolve_gen_denoise(
+    training: dict[str, Any], *, flag_name: str, key: str, value: float | None,
+) -> dict[str, Any]:
+    """Shared body for `_resolve_gen_refine_denoise`/`_resolve_gen_detailer_denoise` --
+    both are a `plan --stage gen <flag> <0..1>` override for this one plan, mirroring
+    `_resolve_gen_prompt_style`'s shape exactly: a no-op when the flag is omitted (the
+    persona's own `training.<key>`, defaulting to today's shipped value per
+    `training_config.DEFAULT_TRAINING`, passes through unchanged so `_gen_workflow`
+    behaves exactly as before this key existed), never a persona fork (the flag is
+    transient, never written back to `training.yaml`)."""
+    if value is None:
+        return training
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not (0.0 <= value <= 1.0):
+        raise FigmentTrainError(f"{flag_name} must be a number between 0.0 and 1.0")
+    return {**training, key: float(value)}
+
+
+def _resolve_gen_refine_denoise(
+    training: dict[str, Any], *, gen_refine_denoise: float | None,
+) -> dict[str, Any]:
+    """2026-09-23 fix (live evidence, orgs/figment/runs/creator-001 tester-vs-gen A/B):
+    the gen stage's refine pass (`_gen_workflow` node 15, KSampler off the 4x-upscaled
+    base) runs at denoise 0.35 by default -- an operator override to 0.0 removes the
+    pass entirely (see `_gen_workflow`), letting a gen plan skip the post-processing
+    that the tester's own proven prompt shape never goes through."""
+    return _resolve_gen_denoise(
+        training, flag_name="--gen-refine-denoise", key="gen_refine_denoise",
+        value=gen_refine_denoise,
+    )
+
+
+def _resolve_gen_detailer_denoise(
+    training: dict[str, Any], *, gen_detailer_denoise: float | None,
+) -> dict[str, Any]:
+    """2026-09-23 fix: the gen stage's face-detail pass (`_gen_workflow` node 33,
+    DetailerForEach) runs at denoise 0.15 by default -- an operator override to 0.0
+    removes the detailer entirely (see `_gen_workflow`)."""
+    return _resolve_gen_denoise(
+        training, flag_name="--gen-detailer-denoise", key="gen_detailer_denoise",
+        value=gen_detailer_denoise,
+    )
+
+
 def _read_json(path: Path, *, reads=None) -> Any:
     try:
         if reads is not None:
@@ -2228,7 +2271,11 @@ def _generalized_gen_prompts(persona: dict, training: dict) -> dict[str, Any]:
     row opening with the persona's own trigger (`_compose_triggered_prompt`) so the LoRA
     is always explicitly invoked. `training["gen_prompt_style"] == "trigger-scene"`
     (default "look-clause") switches to the tester-proven shape instead -- see the
-    module comment above `_GEN_TRIGGER_SCENE_BASE_SENTENCE`."""
+    module comment above `_GEN_TRIGGER_SCENE_BASE_SENTENCE`. "look-clause-close"
+    (2026-09-23) keeps today's look-clause composition but against the close-framed
+    `scenes_close` rows instead of `scenes` -- a cheaper diagnostic than switching all
+    the way to "trigger-scene": does closer framing alone (without dropping the
+    identity.look feature words) already help the same_person/face_px floors."""
     prompts = _read_json(GEN_PROMPTS_PATH)
     prompts["persona"] = persona["id"]
     if training.get("gen_prompt_style") == "trigger-scene":
@@ -2246,20 +2293,50 @@ def _generalized_gen_prompts(persona: dict, training: dict) -> dict[str, Any]:
             "persona.identity.look is required to compose the gen-stage prompts"
         )
     clause = _compose_look_clause(look)
+    scenes = (
+        prompts["scenes_close"] if training.get("gen_prompt_style") == "look-clause-close"
+        else prompts["scenes"]
+    )
     prompts["rows"] = [
         _compose_triggered_prompt(
             training, prompts["base_clause"].format(look=clause, scene=scene),
         )
-        for scene in prompts["scenes"]
+        for scene in scenes
     ]
     return prompts
+
+
+def _rewire_gen_workflow_references(
+    workflow: dict[str, Any], old_ref: list, new_ref: list,
+) -> None:
+    """Every input across every remaining node that points at `old_ref` (a `[node_id,
+    output_index]` link) now points at `new_ref` instead -- used by `_gen_workflow`
+    when a node is deleted so no remaining node ever links to a node that no longer
+    exists ("every remaining link resolves")."""
+    for node in workflow.values():
+        inputs = node.get("inputs")
+        if not isinstance(inputs, dict):
+            continue
+        for field, value in inputs.items():
+            if value == old_ref:
+                inputs[field] = list(new_ref)
 
 
 def _gen_workflow(training: dict, pins: dict) -> dict[str, Any]:
     """Load `krea2_gen_api.json` and, when `training.style_lora` is unset, delete node
     `40` (the style `LoraLoaderModelOnly`) and rewire nodes `8`/`15`/`33`'s `model` input
     back to the identity LoRA (node `4`) -- no bypassed node ever ships in a manifest
-    (Track-2 Task D2)."""
+    (Track-2 Task D2).
+
+    2026-09-23: `training.gen_refine_denoise`/`gen_detailer_denoise` (default 0.35/0.15,
+    today's shipped values) then apply to the refine pass (node 15's KSampler, fed by
+    node 14's VAEEncode of the upscaled/scaled node-13 image, decoded back by node 16)
+    and the detail pass (node 33's DetailerForEach) respectively. A denoise of 0.0
+    removes that pass's own node(s) entirely and rewires every remaining reference to
+    the deleted node's output onto the image it would otherwise have refined/detailed
+    -- never a bypassed node left dangling in the shipped manifest, the same discipline
+    the style-LoRA branch above already follows. Any other value just sets that node's
+    `denoise` field, reproducing today's workflow byte-for-byte at the defaults."""
     workflow = _read_json(GEN_WORKFLOW_PATH)
     style_key = training.get("style_lora")
     if style_key is None:
@@ -2275,6 +2352,31 @@ def _gen_workflow(training: dict, pins: dict) -> dict[str, Any]:
                 f"unknown training.style_lora key {style_key!r}"
             ) from exc
         workflow["40"]["inputs"]["strength_model"] = training["style_lora_strength"]
+
+    refine_denoise = training.get("gen_refine_denoise", 0.35)
+    if refine_denoise == 0.0:
+        # Node 14 (VAEEncode) feeds only node 15's latent_image -- delete both, then
+        # node 16 (VAEDecode of 15) and rewire every remaining ["16", 0] reference
+        # (node 33's detailer image, node 35's face-landmark image, node 20's SaveImage)
+        # onto node 13's own upscaled/scaled image directly.
+        del workflow["15"]
+        del workflow["14"]
+        del workflow["16"]
+        _rewire_gen_workflow_references(workflow, ["16", 0], ["13", 0])
+    else:
+        workflow["15"]["inputs"]["denoise"] = refine_denoise
+
+    detailer_denoise = training.get("gen_detailer_denoise", 0.15)
+    if detailer_denoise == 0.0:
+        # Node 34 (SaveImage) is node 33's only consumer -- rewire it (and any other
+        # remaining reference to node 33's output) onto whatever node 33 itself was
+        # reading as its own `image` input, then delete node 33.
+        detailer_image_source = workflow["33"]["inputs"]["image"]
+        _rewire_gen_workflow_references(workflow, ["33", 0], detailer_image_source)
+        del workflow["33"]
+    else:
+        workflow["33"]["inputs"]["denoise"] = detailer_denoise
+
     return workflow
 
 
@@ -2309,13 +2411,18 @@ def _gen_manifest(
         substitutions = [
             {"node_id": "5", "field": "text", "value": row},
             {"node_id": "4", "field": "lora_name", "value": checkpoint_name},
-            # seed_fields sweeps every "seed" input (including nodes 15/33) to the job's
-            # own seed for base-image diversity; pin the refine and detail passes back to
-            # a fixed seed the same way the hand-written manifest pinned node 15 (module
-            # 09's own convention -- only the base render varies per job).
-            {"node_id": "15", "field": "seed", "value": 40},
-            {"node_id": "33", "field": "seed", "value": 40},
         ]
+        # seed_fields sweeps every "seed" input (including nodes 15/33, when present) to
+        # the job's own seed for base-image diversity; pin the refine and detail passes
+        # back to a fixed seed the same way the hand-written manifest pinned node 15
+        # (module 09's own convention -- only the base render varies per job). A
+        # gen_refine_denoise/gen_detailer_denoise of 0.0 (2026-09-23) deletes that node
+        # from the workflow entirely (`_gen_workflow`), so its seed substitution must
+        # not reference a node id the manifest no longer ships.
+        if "15" in workflow:
+            substitutions.append({"node_id": "15", "field": "seed", "value": 40})
+        if "33" in workflow:
+            substitutions.append({"node_id": "33", "field": "seed", "value": 40})
         if style_key is not None:
             substitutions.append({
                 "node_id": "40", "field": "lora_name",
@@ -3047,6 +3154,8 @@ def build_plan(
     style_lora: str | None = None,
     style_lora_strength: float | None = None,
     gen_prompt_style: str | None = None,
+    gen_refine_denoise: float | None = None,
+    gen_detailer_denoise: float | None = None,
     import_checkpoints: Path | None = None,
     import_training_config: Path | None = None,
 ) -> dict[str, Any]:
@@ -3083,6 +3192,11 @@ def build_plan(
     `training.style_lora` in the persona's own `training.yaml` stays the default when
     neither flag is given.
 
+    `gen_refine_denoise`/`gen_detailer_denoise` (2026-09-23) are the same shape of
+    `"gen"`-only override for `_gen_workflow`'s refine (node 15) and detailer (node 33)
+    passes -- see `_resolve_gen_refine_denoise`/`_resolve_gen_detailer_denoise`. A 0.0
+    removes the corresponding pass from the emitted workflow entirely.
+
     `approved_gen_plan` is also required for `"video"` (F6a), where it names the ruled
     `gen` plan whose kept still becomes the I2V first frame: `approved_gen_image_id`
     selects one (default: the first kept id in sorted order) and `video_action` overrides
@@ -3113,6 +3227,10 @@ def build_plan(
         )
     if gen_prompt_style is not None and stage != "gen":
         raise FigmentTrainError("--gen-prompt-style is only meaningful for --stage gen")
+    if gen_refine_denoise is not None and stage != "gen":
+        raise FigmentTrainError("--gen-refine-denoise is only meaningful for --stage gen")
+    if gen_detailer_denoise is not None and stage != "gen":
+        raise FigmentTrainError("--gen-detailer-denoise is only meaningful for --stage gen")
     if approved_gen_image_id is not None and stage != "video":
         raise FigmentTrainError("--approved-gen-image-id is only meaningful for --stage video")
     if video_action is not None and stage != "video":
@@ -3166,6 +3284,11 @@ def build_plan(
     # 2026-09-22: same shape, one plan-time override, for the gen prompt-composition
     # style (a no-op when the flag is omitted).
     training = _resolve_gen_prompt_style(training, gen_prompt_style=gen_prompt_style)
+    # 2026-09-23: same shape again, for the gen-only refine/detailer denoise overrides.
+    training = _resolve_gen_refine_denoise(training, gen_refine_denoise=gen_refine_denoise)
+    training = _resolve_gen_detailer_denoise(
+        training, gen_detailer_denoise=gen_detailer_denoise,
+    )
     # m8: `detail` doesn't consume a style LoRA itself (it re-details gen's already-
     # rendered pixels -- the style LoRA's effect is already baked into them), but its
     # own pin preflight still verifies the upstream gen plan's choice, and its
@@ -3430,6 +3553,14 @@ def build_plan(
         if current == "gen" and gen_prompt_style is not None:
             plan_stages[current]["gen_prompt_style"] = {
                 "value": training["gen_prompt_style"], "source": "flag",
+            }
+        if current == "gen" and gen_refine_denoise is not None:
+            plan_stages[current]["gen_refine_denoise"] = {
+                "value": training["gen_refine_denoise"], "source": "flag",
+            }
+        if current == "gen" and gen_detailer_denoise is not None:
+            plan_stages[current]["gen_detailer_denoise"] = {
+                "value": training["gen_detailer_denoise"], "source": "flag",
             }
 
     budget_preflight = _budget_preflight(
@@ -7190,6 +7321,8 @@ def command_pipeline(
     style_lora: str | None = None,
     style_lora_strength: float | None = None,
     gen_prompt_style: str | None = None,
+    gen_refine_denoise: float | None = None,
+    gen_detailer_denoise: float | None = None,
     import_checkpoints: Path | None = None,
     import_training_config: Path | None = None,
     retry_failed: bool = False,
@@ -7350,6 +7483,8 @@ def command_pipeline(
                     accept_budget=accept_budget, style_lora=style_lora,
                     style_lora_strength=style_lora_strength,
                     gen_prompt_style=gen_prompt_style,
+                    gen_refine_denoise=gen_refine_denoise,
+                    gen_detailer_denoise=gen_detailer_denoise,
                 )
                 active_root = gen_root
             active_plan_path = gen_root / "plan.json"
@@ -7557,6 +7692,20 @@ def build_parser() -> argparse.ArgumentParser:
              "reproduces today's gen prompts byte-for-byte",
     )
     plan.add_argument(
+        "--gen-refine-denoise", default=None, type=float,
+        help="gen-only override of persona.training.gen_refine_denoise (0.0-1.0) for "
+             "this one plan -- never a persona fork; 0.0 removes _gen_workflow's refine "
+             "pass (node 15) entirely; default (persona value, itself defaulting to "
+             "0.35) reproduces today's gen workflow byte-for-byte",
+    )
+    plan.add_argument(
+        "--gen-detailer-denoise", default=None, type=float,
+        help="gen-only override of persona.training.gen_detailer_denoise (0.0-1.0) for "
+             "this one plan -- never a persona fork; 0.0 removes _gen_workflow's "
+             "detailer pass (node 33) entirely; default (persona value, itself "
+             "defaulting to 0.15) reproduces today's gen workflow byte-for-byte",
+    )
+    plan.add_argument(
         "--import-checkpoints", default=None, type=Path,
         help="only meaningful with --stage tester: a directory of loose, operator-"
              "trained *.safetensors checkpoint ladder files (MANDATE.md's tier "
@@ -7622,6 +7771,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         help="applied only when pipeline plans its own downstream gen stage -- "
              "see `plan --gen-prompt-style`",
+    )
+    pipeline.add_argument(
+        "--gen-refine-denoise", default=None, type=float,
+        help="applied only when pipeline plans its own downstream gen stage -- "
+             "see `plan --gen-refine-denoise`",
+    )
+    pipeline.add_argument(
+        "--gen-detailer-denoise", default=None, type=float,
+        help="applied only when pipeline plans its own downstream gen stage -- "
+             "see `plan --gen-detailer-denoise`",
     )
     pipeline.add_argument(
         "--import-checkpoints", default=None, type=Path,
@@ -7803,6 +7962,8 @@ def main(argv: list[str] | None = None) -> int:
                 accept_budget=args.accept_budget,
                 style_lora=args.style_lora, style_lora_strength=args.style_lora_strength,
                 gen_prompt_style=args.gen_prompt_style,
+                gen_refine_denoise=args.gen_refine_denoise,
+                gen_detailer_denoise=args.gen_detailer_denoise,
                 import_checkpoints=args.import_checkpoints,
                 import_training_config=args.import_training_config,
             )
@@ -7823,6 +7984,8 @@ def main(argv: list[str] | None = None) -> int:
                 ledger_dir=args.ledger_dir, accept_budget=args.accept_budget,
                 style_lora=args.style_lora, style_lora_strength=args.style_lora_strength,
                 gen_prompt_style=args.gen_prompt_style,
+                gen_refine_denoise=args.gen_refine_denoise,
+                gen_detailer_denoise=args.gen_detailer_denoise,
                 import_checkpoints=args.import_checkpoints,
                 import_training_config=args.import_training_config,
                 retry_failed=args.retry_failed,

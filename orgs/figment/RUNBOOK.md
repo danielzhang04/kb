@@ -191,12 +191,21 @@ formality. `pipeline`'s own automatic `gen` planning also accepts `--style-lora`
 
 ## `--gen-prompt-style` A/B
 
-`gen` also accepts `--gen-prompt-style {look-clause,trigger-scene}` as the same kind of
-per-plan flag, not a persona fork: the default `look-clause` reproduces today's prompt
-(trigger + the full `identity.look` clause + scene) byte-for-byte, while `trigger-scene`
-drops every look feature word and reuses the tester's own proven adult-framing/clothing/
-skin sentence plus a close-framed scene — plan both and compare `same_person`/`face_px`
-in the gate table before choosing one, the same way the `--style-lora` A/B above does.
+`gen` also accepts `--gen-prompt-style {look-clause,trigger-scene,look-clause-close}` as
+the same kind of per-plan flag, not a persona fork: the default `look-clause` reproduces
+today's prompt (trigger + the full `identity.look` clause + scene) byte-for-byte,
+`trigger-scene` drops every look feature word and reuses the tester's own proven
+adult-framing/clothing/skin sentence plus a close-framed scene, and `look-clause-close`
+keeps the full look clause but swaps in that same close-framed scene set — plan all
+three and compare `same_person`/`face_px` in the gate table before choosing one, the
+same way the `--style-lora` A/B above does. `gen` also accepts
+`--gen-refine-denoise`/`--gen-detailer-denoise` (0.0–1.0, default 0.35/0.15) as the same
+kind of per-plan override for the refine (node 15) and detailer (node 33) passes in
+`_gen_workflow`; 0.0 removes that pass from the emitted workflow entirely rather than
+just lowering its denoise. Live evidence (2026-09-22/23): the tester's single 4-step
+pass scores judge `same_person` 88 on the accepted step-2000 checkpoint, while the same
+checkpoint's full gen chain (upscale → refine → detail) scores 45–68 — these two flags
+isolate how much of that gap is the post-processing rather than the prompt.
 
 ## The deliverable
 

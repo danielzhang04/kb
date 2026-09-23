@@ -58,7 +58,15 @@ SELECTION_KEYS = frozenset({
 # choice, never a training input the accepted checkpoint's snapshot pins, and a
 # `plan --stage gen --gen-prompt-style` override is likewise transient (never
 # written back to the persona).
-GEN_TIME_ONLY_KEYS = frozenset({"style_lora", "style_lora_strength", "gen_prompt_style"})
+# 2026-09-23: `gen_refine_denoise`/`gen_detailer_denoise` (training_config.py) join the
+# same set for the same reason -- gen-plan-time-only knobs on `_gen_workflow`'s refine/
+# detailer passes, never training inputs, and `plan --stage gen --gen-refine-denoise`/
+# `--gen-detailer-denoise` overrides are likewise transient (never written back to the
+# persona).
+GEN_TIME_ONLY_KEYS = frozenset({
+    "style_lora", "style_lora_strength", "gen_prompt_style",
+    "gen_refine_denoise", "gen_detailer_denoise",
+})
 # P4i: an imported checkpoint ladder (`plan --stage tester --import-checkpoints`) has no
 # in-plan `train` receipt -- its provenance IS the training config named by
 # `plan["imported_training_config"]` at tester-plan time, never the persona's current
