@@ -34,7 +34,7 @@ import { compileWorkflowDef } from '../workflows/compile.ts';
 import { loadRuntimeSkillRegistry, workflowProfileIds, type RuntimeSkillRegistry } from './environment.ts';
 import { AGENT_CADENCE_PROFILE_ALLOWLIST } from './workflowProfiles.ts';
 import { validateServerCompiledPlanProposal, type ProposalRiskTier } from './proposal.ts';
-import { proposalSnapshotHash, type ControlPlaneStore } from './store.ts';
+import { deriveAgentCadenceProject, proposalSnapshotHash, type ControlPlaneStore } from './store.ts';
 import { executeApprovedLaunch, type LaunchOutcome } from './launch.ts';
 import type { JsonObject, RunDetail } from './types.ts';
 import type { RunnableRef } from './p2Contracts.ts';
@@ -496,12 +496,25 @@ function parseCadenceActionAgentId(action: string): string | null {
  * server-owned action registry (`policy.ts#ALLOWED_ACTION_TIERS`) only admits the namespace with a T1
  * FLOOR — a floor can raise a stage's effective tier but never cap one, so the T1/T2-only ceiling has to
  * live here, not there.
+ *
+ * A1 (adversarial review of claude/c2-cadence-gates, 2026-09-23): the three checks above never verified
+ * `card.meta.project`/`card.meta.target` against the agent's own declared project -- the exact value
+ * `deriveAgentCadenceProject` computes for the TRUSTED claim path (`store.ts#createSchedule` /
+ * `cards.py#schedule_occurrence_claim`). A hand-placed or corrupted `cadence:*` card naming a declared
+ * agent, an allowlisted profile, and T1/T2 tier -- but a DIFFERENT `meta.project` and a `target` inside
+ * that other project's `output/cadence/<agent-id>/` -- passed every check here and landed the agent's
+ * Write-only cadence run inside a project it doesn't own (org containment, `defs.ts`, only ties the
+ * write scope to whatever `target` the card claims; it has no opinion on whether that target is the
+ * RIGHT project for this agent). Cross-checking both fields against the one trusted derivation closes
+ * that gap the same way the other three checks close theirs.
  */
 function validateCadenceCardShape(
   id: string,
   agentId: string,
   profile: string,
   riskTier: string | null,
+  project: string,
+  target: string,
   options: CardToWorkflowOptions,
 ): void {
   if (typeof options.repoRoot !== 'string' || options.repoRoot.trim() === '') {
@@ -516,6 +529,14 @@ function validateCadenceCardShape(
   }
   if (riskTier !== 'T1' && riskTier !== 'T2') {
     throw new QueueBridgeError(`card '${id}' cadence risk-tier must be T1 or T2, got '${riskTier ?? '(none)'}'`);
+  }
+  const expectedProject = deriveAgentCadenceProject(options.repoRoot, agentId);
+  const expectedTarget = `orgs/${expectedProject}/output/cadence/${agentId}`;
+  if (project !== expectedProject || target !== expectedTarget) {
+    throw new QueueBridgeError(
+      `card '${id}' cadence agent '${agentId}' project/target ('${project}'/'${target}') does not match its `
+      + `derived project/target ('${expectedProject}'/'${expectedTarget}')`,
+    );
   }
 }
 
@@ -543,7 +564,7 @@ export function cardToWorkflowRequest(card: ParsedCard, options: CardToWorkflowO
 
   const cadenceAgentId = parseCadenceActionAgentId(action);
   if (cadenceAgentId !== null) {
-    validateCadenceCardShape(id, cadenceAgentId, profile, riskTier, options);
+    validateCadenceCardShape(id, cadenceAgentId, profile, riskTier, project, target, options);
   }
 
   const sections = parseCardSections(card.body);
