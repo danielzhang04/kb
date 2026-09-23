@@ -1990,7 +1990,10 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       ? null
       : loop.lastReceiptRef === undefined ? null
         : run.value.iterationReceipts.find((candidate) => candidate.receiptRef === loop.lastReceiptRef) ?? null;
-    if (parkGate && !['exhausted', 'no-progress', 'parked'].includes(loop.parkReason ?? '')) {
+    // F14: 'rejected' (a park created by a rejected/changes-requested completion gate,
+    // store.ts#resolveIterationGate's `!parkGate` branch) is a fourth legal park reason, alongside the
+    // three the no-progress/exhausted/explicit-park turn-outcome path produces.
+    if (parkGate && !['exhausted', 'no-progress', 'parked', 'rejected'].includes(loop.parkReason ?? '')) {
       reply.code(409).send({ error: 'iteration-gate-reason-mismatch' });
       return null;
     }

@@ -1903,7 +1903,12 @@ function validateIterationDurability(
     }
     if (loop.parkReason !== undefined && loop.state === 'passed'
       && (!iterationParkGate || iterationParkGate.gateKind !== 'iteration-park' || iterationParkGate.state !== 'resolved'
-        || iterationParkGate.response?.decision !== 'approved' || loop.unresolvedResidue === undefined)) {
+        || iterationParkGate.response?.decision !== 'approved'
+        // F14: a 'rejected' park (a rejected/changes-requested completion gate) never computes
+        // unresolvedResidue -- that field describes work remaining for ANOTHER iteration cycle, which
+        // has no meaning for a park whose trigger was a completion decision, not a turn outcome. Every
+        // OTHER park reason still requires it (unchanged).
+        || (loop.parkReason !== 'rejected' && loop.unresolvedResidue === undefined))) {
       throw new Error('invalid control-plane approved iteration park gate');
     }
     if (loop.unresolvedResidue && (loop.unresolvedResidue.cyclesUsed !== loop.cyclesUsed
@@ -4844,10 +4849,16 @@ function makeStore(
           gate: publicRequest(gate), interventionRequest: existingIntervention ? publicRequest(existingIntervention) : null }, true);
       }
       const parkGate = gate.gateKind === 'iteration-park';
+      // F14: a rejected/changes-requested completion gate parks its loop at bare 'parked' (below,
+      // the `!parkGate` branch), never 'awaiting-park-gate' -- the state every OTHER park path uses.
+      // Both are legal "this park gate is still open" states for a parkGate resolution; 'parked' is
+      // kept exactly as the pre-existing (already-shipped-to-prod) code always set it, rather than
+      // changed to 'awaiting-park-gate', so an ALREADY-STUCK production loop (parked before this fix
+      // existed) resolves without a data migration.
       if ((!parkGate && gate.kind !== 'approval') || gate.state !== 'open' || gate.revision !== input.expectedRequestRevision
         || loop.version !== input.expectedLoopVersion || (input.expectedReceiptVersion === null
           ? receipt !== undefined : receipt?.version !== input.expectedReceiptVersion)
-        || (parkGate ? loop.state !== 'awaiting-park-gate' || loop.interventionRef !== requestRef
+        || (parkGate ? !['awaiting-park-gate', 'parked'].includes(loop.state) || loop.interventionRef !== requestRef
           : loop.state !== 'awaiting-completion-gate' || loop.completionGateRef !== requestRef)) {
         return fail('conflict', 'iteration gate resolution changed');
       }
@@ -4866,6 +4877,13 @@ function makeStore(
           title: cleanText(`Iteration intervention: ${loop.iterationGroupId}`, MAX_TITLE),
           prompt: cleanText(`Completion gate ${input.decision}: ${receipt.summary}`, MAX_LONG_TEXT), response: null,
           resolutionOperationFingerprint: null, createdAt, updatedAt: createdAt,
+          // F14 (2026-09-23 ruling): before this, a rejection-created intervention carried no
+          // `gateKind` at all, so `routes.ts#iterationGateBinding` could never recognize it as a park
+          // gate -- `POST /api/control/iteration-gates/:ref/resolve` always 409'd
+          // `iteration-gate-linkage-ambiguous` for it (the route expected `kind: 'approval'`, this
+          // request's `kind` is `'intervention'`). Stamping it here gives it the same identity every
+          // OTHER park gate already carries, so the resolve route accepts it.
+          gateKind: 'iteration-park',
         };
       }
       return transitionIterationState(document, {
@@ -4892,6 +4910,11 @@ function makeStore(
           currentLoop.acceptedGenerationRefs = approved ? [...currentLoop.activeGenerationRefs] : [];
           if (intervention) {
             currentLoop.interventionRef = intervention.requestRef;
+            // F14: give the park a recognized reason (widened alongside 'exhausted'/'no-progress'/
+            // 'parked' in IterationParkReason and iterationGateBinding's allowlist) so the SAME
+            // resolve route this gate's own `gateKind` now points at does not also 409 on
+            // `iteration-gate-reason-mismatch`.
+            currentLoop.parkReason = 'rejected';
             document.humanRequests.push(intervention);
           } else {
             delete currentLoop.interventionRef;

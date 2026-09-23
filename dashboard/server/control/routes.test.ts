@@ -396,7 +396,7 @@ describe('control proposal routes', () => {
   });
 
 
-  function iterationGateFixture(reason: 'exhausted' | 'no-progress' | 'parked', suffix = reason) {
+  function iterationGateFixture(reason: 'exhausted' | 'no-progress' | 'parked' | 'rejected', suffix = reason) {
     const requestRef = `request-iteration-${suffix}`;
     const loopRef = `loop-iteration-${suffix}`;
     const iterationRequest = {
@@ -478,6 +478,50 @@ describe('control proposal routes', () => {
       run: { runRef: 'run-iteration', predecessorRunRef: null, title: 'Iteration run', proposalRef: 'proposal-iteration', proposalRevision: 1,
         proposalHash: '9'.repeat(64), publicationState: 'published', lifecycle: { kind: 'waiting-human', deployPause: null }, version: 11, managerSessionRef: null,
         managerGeneration: 1, managerAssignment: null, createdAt: '', updatedAt: '', owner, workflowTags },
+      stages: [], attempts: [], sessions: [], humanRequests: [fixture.request], stageGenerations: [], generationSupersessions: [],
+      iterationLoops: [fixture.loop], iterationRequests: [fixture.iterationRequest], iterationReceipts: fixture.receipt ? [fixture.receipt] : [],
+    };
+    const getHumanRequest = vi.spyOn(controlStore, 'getHumanRequest').mockReturnValue({ ok: true, value: fixture.request } as never);
+    const getRun = vi.spyOn(controlStore, 'getRun').mockReturnValue({ ok: true, value: detail } as never);
+    const resolve = vi.spyOn(controlStore, 'resolveIterationGate').mockImplementation((_subject, _requestRef, input) => ({
+      ok: true, value: {
+        loop: { ...fixture.loop, state: input.decision === 'approved' ? 'passed' : 'declined', acceptedGenerationRefs: input.decision === 'approved' ? [...fixture.loop.activeGenerationRefs] : [] },
+        receipt: fixture.receipt, receiptVersion: fixture.receipt?.version ?? null,
+        gate: { ...fixture.request, state: 'resolved', response: { decision: input.decision === 'approved' ? 'approved' : 'rejected' } }, interventionRequest: null,
+      },
+    } as never));
+    const failRun = vi.spyOn(controlStore, 'transitionRun').mockReturnValue({
+      ok: true,
+      value: { ...detail.run, lifecycle: { kind: 'failed', deployPause: null }, version: 12 },
+    } as never);
+    return { ...fixture, detail, getHumanRequest, getRun, resolve, failRun };
+  }
+
+  /**
+   * F14 (2026-09-23 ruling): the SAME T5 authority mock as {@link mockIterationGate}, reshaped for a
+   * REJECTED-completion-gate-created park -- `request.kind: 'intervention'` (never `'approval'`,
+   * unlike every other park gate) and `loop.state: 'parked'` (never `'awaiting-park-gate'`), the exact
+   * shape `store.ts#resolveIterationGate`'s `!parkGate` branch produces. `legacy: true` omits
+   * `workflowTags` entirely (a pre-tags run) rather than stating `[]`, which `resolveRunWorkflowTags`
+   * reads as UNRESOLVABLE and fails closed on -- distinct from `tagged: false`'s explicit "no tags".
+   */
+  function mockRejectedInterventionGate(tagged = false, legacy = false) {
+    const fixture = iterationGateFixture('parked', 'rejected');
+    fixture.request.kind = 'intervention';
+    fixture.loop.state = 'parked';
+    fixture.loop.parkReason = 'rejected';
+    const owner = tagged
+      ? { type: 'workflow' as const, id: 'no-such-workflow', project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/no-such-workflow.md' as const }
+      : { type: 'agent' as const, id: 'grader', sourcePath: 'agents/grader.md' as const };
+    const workflowTags = tagged ? ['publish'] : [];
+    const run: Record<string, unknown> = {
+      runRef: 'run-iteration', predecessorRunRef: null, title: 'Iteration run', proposalRef: 'proposal-iteration', proposalRevision: 1,
+      proposalHash: '9'.repeat(64), publicationState: 'published', lifecycle: { kind: 'waiting-human', deployPause: null }, version: 11, managerSessionRef: null,
+      managerGeneration: 1, managerAssignment: null, createdAt: '', updatedAt: '', owner,
+    };
+    if (!legacy) run.workflowTags = workflowTags;
+    const detail = {
+      ownerSubject: 'operator', run,
       stages: [], attempts: [], sessions: [], humanRequests: [fixture.request], stageGenerations: [], generationSupersessions: [],
       iterationLoops: [fixture.loop], iterationRequests: [fixture.iterationRequest], iterationReceipts: fixture.receipt ? [fixture.receipt] : [],
     };
@@ -1198,6 +1242,165 @@ describe('control proposal routes', () => {
         headers: headers(token), payload: { decision: 'approved' },
       });
       expect(minted.statusCode, minted.body).toBe(404);
+    });
+  });
+
+  /**
+   * F14 (2026-09-23 ruling, prod run-cdae7121): rejecting a completion gate minted an intervention
+   * with NO `gateKind` at all, so `POST /api/control/iteration-gates/:requestRef/resolve` always
+   * 409'd `iteration-gate-linkage-ambiguous` for it (the route bound `parkGate` off `gateKind`, and an
+   * unset one is treated as "this must be a completion gate", which this `kind: 'intervention'`
+   * request is not) -- the run was left stuck `waiting-human` with no route able to move it. The fix
+   * stamps `gateKind: 'iteration-park'` + `parkReason: 'rejected'` on the minted intervention, and
+   * widens the resolve route's park-reason allowlist and loop-state CAS to recognize it -- giving it
+   * the SAME resolution path every other park gate already has, rather than inventing a new one.
+   *
+   * Deliberate scope note (see the dispatch brief / worker report): 'approved'/'declined' reuse the
+   * EXISTING generic park-gate outcomes verbatim (approved -> loop 'passed' + the run resumes;
+   * declined -> loop 'declined' + the run transitions 'failed') rather than new "retry a fresh cycle
+   * in place" / "abandon" loop-state machinery, which does not exist anywhere in this codebase today
+   * (there is no loop state for it, and building one is a materially bigger, riskier change than this
+   * T2 card's scope). 'failed' is itself a member of the same run-lifecycle vocabulary the brief's
+   * "abandoned/stopped" language pointed at (`RunOutcome` includes both today).
+   */
+  describe('F14: rejected-completion-gate intervention resolution', () => {
+    const resolveGate = (requestRef: string, payload: Record<string, unknown>) => app.inject({
+      method: 'POST', url: `/api/control/iteration-gates/${requestRef}/resolve`, headers: headers(token), payload,
+    });
+    const authorizeRows = () => auditRows.filter((row) => row.action === 'control-iteration-gate-authorize');
+
+    it('rejecting a real completion gate mints an intervention carrying gateKind: iteration-park', async () => {
+      const { gate, loop } = seedGenericCompletionGate();
+      const rejected = await resolveGate(gate.requestRef, {
+        expectedGateRef: gate.requestRef, expectedGateKind: null, expectedParkReason: null,
+        expectedRequestRevision: gate.revision, expectedLoopVersion: loop.version,
+        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'rejected',
+        reason: 'reviewed the gate and decided', idempotencyKey: 'f14-reject-mints-gatekind',
+      });
+      expect(rejected.statusCode, rejected.body).toBe(200);
+      const intervention = rejected.json().value.interventionRequest;
+      expect(intervention).toMatchObject({ kind: 'intervention', gateKind: 'iteration-park', state: 'open' });
+      // The exact field `prod-respond.ps1`'s routing rule keys on (loop.completionGateRef ===
+      // Request || loop.interventionRef === Request) -- still set, so the script still picks the
+      // iteration-gates route for this request without any tooling change.
+      expect(rejected.json().value.loop).toMatchObject({ interventionRef: intervention.requestRef });
+    });
+
+    it('resolves the rejection-minted intervention through /iteration-gates/resolve with approved -> loop passed, run resumes', async () => {
+      const { runRef, gate, loop } = seedGenericCompletionGate();
+      const rejected = await resolveGate(gate.requestRef, {
+        expectedGateRef: gate.requestRef, expectedGateKind: null, expectedParkReason: null,
+        expectedRequestRevision: gate.revision, expectedLoopVersion: loop.version,
+        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'rejected',
+        reason: 'reviewed the gate and decided', idempotencyKey: 'f14-reject-then-approve',
+      });
+      expect(rejected.statusCode, rejected.body).toBe(200);
+      const intervention = rejected.json().value.interventionRequest;
+      const parkedLoop = rejected.json().value.loop;
+
+      const resolved = await resolveGate(intervention.requestRef, {
+        expectedGateRef: intervention.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'rejected',
+        expectedRequestRevision: intervention.revision, expectedLoopVersion: parkedLoop.version, expectedReceiptVersion: null,
+        expectedGenerationRefs: [...parkedLoop.activeGenerationRefs], decision: 'approved',
+        reason: 'accepting the rejected draft as-is', idempotencyKey: 'f14-approve-park',
+      });
+      expect(resolved.statusCode, resolved.body).toBe(200);
+      expect(resolved.json()).toMatchObject({ ok: true, value: {
+        loop: { iterationLoopRef: loop.iterationLoopRef, state: 'passed' },
+        gate: { requestRef: intervention.requestRef, state: 'resolved' },
+      } });
+      const after = controlStore.getRun('operator', runRef);
+      expect(after).toMatchObject({ ok: true, value: {
+        iterationLoops: [{ iterationLoopRef: loop.iterationLoopRef, state: 'passed' }],
+        run: { lifecycle: { kind: expect.not.stringMatching(/^waiting-human$/) } },
+      } });
+      // Two authorize rows: one for the initial reject-the-completion-gate resolve above, one for
+      // this park-gate resolve.
+      expect(authorizeRows()).toHaveLength(2);
+      expect(authorizeRows().at(-1)).toMatchObject({
+        riskTier: 'T3', result: 'authorized:approved',
+        detail: expect.objectContaining({ gateKind: 'iteration-park', parkReason: 'rejected', decision: 'approved' }),
+      });
+    });
+
+    it('resolves the rejection-minted intervention through /iteration-gates/resolve with declined -> loop declined, run terminal', async () => {
+      const { runRef, gate, loop } = seedGenericCompletionGate();
+      const rejected = await resolveGate(gate.requestRef, {
+        expectedGateRef: gate.requestRef, expectedGateKind: null, expectedParkReason: null,
+        expectedRequestRevision: gate.revision, expectedLoopVersion: loop.version,
+        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'rejected',
+        reason: 'reviewed the gate and decided', idempotencyKey: 'f14-reject-then-decline',
+      });
+      const intervention = rejected.json().value.interventionRequest;
+      const parkedLoop = rejected.json().value.loop;
+
+      const resolved = await resolveGate(intervention.requestRef, {
+        expectedGateRef: intervention.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'rejected',
+        expectedRequestRevision: intervention.revision, expectedLoopVersion: parkedLoop.version, expectedReceiptVersion: null,
+        expectedGenerationRefs: [...parkedLoop.activeGenerationRefs], decision: 'declined',
+        reason: 'abandoning this draft', idempotencyKey: 'f14-decline-park',
+      });
+      expect(resolved.statusCode, resolved.body).toBe(200);
+      expect(resolved.json()).toMatchObject({ ok: true, value: {
+        loop: { iterationLoopRef: loop.iterationLoopRef, state: 'declined' },
+        gate: { requestRef: intervention.requestRef, state: 'resolved' },
+      } });
+      const after = controlStore.getRun('operator', runRef);
+      expect(after).toMatchObject({ ok: true, value: {
+        iterationLoops: [{ iterationLoopRef: loop.iterationLoopRef, state: 'declined' }],
+        run: { lifecycle: { kind: 'failed' } },
+      } });
+      // Two authorize rows: one for the initial reject-the-completion-gate resolve above, one for
+      // this park-gate resolve.
+      expect(authorizeRows()).toHaveLength(2);
+      expect(authorizeRows().at(-1)).toMatchObject({
+        riskTier: 'T3', result: 'authorized:declined',
+        detail: expect.objectContaining({ gateKind: 'iteration-park', parkReason: 'rejected', decision: 'declined' }),
+      });
+    });
+
+    const parkPayload = (
+      request: { requestRef: string; revision: number },
+      loop: { version: number; activeGenerationRefs: readonly string[] },
+      decision: string, key: string,
+    ) => ({
+      expectedGateRef: request.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'rejected',
+      expectedRequestRevision: request.revision, expectedLoopVersion: loop.version, expectedReceiptVersion: null,
+      expectedGenerationRefs: [...loop.activeGenerationRefs], decision, reason: 'reviewed the gate and decided', idempotencyKey: key,
+    });
+
+    it('proceeds unsigned on the open class for an untagged (agent-owned) run', async () => {
+      const { request, loop, resolve } = mockRejectedInterventionGate();
+      const response = await resolveGate(request.requestRef, parkPayload(request, loop, 'approved', 'f14-untagged'));
+      expect(response.statusCode, response.body).toBe(200);
+      expect(resolve).toHaveBeenCalledTimes(1);
+      expect(authorizeRows()).toHaveLength(1);
+    });
+
+    it('fails closed (403, no signature) on a legacy run with no workflowTags field at all', async () => {
+      const { request, loop, resolve } = mockRejectedInterventionGate(false, true);
+      const response = await resolveGate(request.requestRef, parkPayload(request, loop, 'approved', 'f14-legacy'));
+      expect(response.statusCode, response.body).toBe(403);
+      expect(response.json()).toEqual({ error: 'approval-required' });
+      expect(resolve).not.toHaveBeenCalled();
+      expect(authorizeRows()).toEqual([]);
+    });
+
+    it('refuses a tagged run\'s unsigned resolve, and accepts a validly signed one', async () => {
+      const RESOLVE_ROUTE = 'POST /api/control/iteration-gates/:requestRef/resolve';
+      const unsigned = mockRejectedInterventionGate(true);
+      const unsignedResponse = await resolveGate(unsigned.request.requestRef, parkPayload(unsigned.request, unsigned.loop, 'approved', 'f14-tagged-unsigned'));
+      expect(unsignedResponse.statusCode, unsignedResponse.body).toBe(403);
+      expect(unsigned.resolve).not.toHaveBeenCalled();
+
+      const signed = mockRejectedInterventionGate(true);
+      const signedResponse = await resolveGate(signed.request.requestRef, {
+        ...parkPayload(signed.request, signed.loop, 'approved', 'f14-tagged-signed'),
+        approval: signedApproval(RESOLVE_ROUTE, signed.request.requestRef),
+      });
+      expect(signedResponse.statusCode, signedResponse.body).toBe(200);
+      expect(signed.resolve).toHaveBeenCalledTimes(1);
+      expect(authorizeRows()).toHaveLength(1);
     });
   });
 
