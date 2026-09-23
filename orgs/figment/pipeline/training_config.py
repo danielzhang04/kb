@@ -21,8 +21,9 @@ TRAINING_KEYS = {
     "style_lora", "style_lora_strength", "chosen_checkpoint_step",
     "chosen_checkpoint_sha256", "chosen_checkpoint_approval",
     "dop_enabled", "dop_multiplier", "dop_class", "dataset_source",
-    "dataset_replicates",
+    "dataset_replicates", "gen_prompt_style",
 }
+ALLOWED_GEN_PROMPT_STYLES = {"look-clause", "trigger-scene"}
 DEFAULT_TRAINING = {
     "trigger": None,
     "base_arch": "krea2",
@@ -79,6 +80,14 @@ DEFAULT_TRAINING = {
     # it. 1 (default) reproduces today's job counts and manifests byte-for-byte -- every
     # existing test and persona keeps behaving exactly as it did before this key existed.
     "dataset_replicates": 1,
+    # 2026-09-22 fix (live evidence, orgs/figment/runs/creator-001/live-20260916b):
+    # "look-clause" reproduces today's gen-stage prompt composition byte-for-byte --
+    # the full identity.look clause (hair/eyes/brows/lips/makeup/build/clothing)
+    # prepended ahead of the scene. "trigger-scene" is the 10sorlabs-doctrine
+    # alternative (r15b-generation.md "Prompt-and-LoRA-must-agree"): trigger + a
+    # close-framed scene, no look-feature words at all, so the LoRA's own learned
+    # identity is never fought by a contradicting text description.
+    "gen_prompt_style": "look-clause",
 }
 ALLOWED_ARCHES = {"krea2"}
 ALLOWED_DATASET_SOURCES = {"qwen-edit", "klein-multiref"}
@@ -201,6 +210,11 @@ def validate_training(raw: Any, creator_id: str) -> dict[str, Any]:
             "persona.training.style_lora_strength must be a positive number"
         )
     config["style_lora_strength"] = float(strength)
+    if config["gen_prompt_style"] not in ALLOWED_GEN_PROMPT_STYLES:
+        raise TrainingConfigError(
+            f"persona.training.gen_prompt_style must be one of "
+            f"{sorted(ALLOWED_GEN_PROMPT_STYLES)}"
+        )
     chosen_step = config["chosen_checkpoint_step"]
     if chosen_step is not None and (
         isinstance(chosen_step, bool) or not isinstance(chosen_step, int) or chosen_step <= 0

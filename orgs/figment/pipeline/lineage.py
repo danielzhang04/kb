@@ -53,7 +53,12 @@ SELECTION_KEYS = frozenset({
 # never refuses a checkpoint over a field the checkpoint itself never trained with.
 # The plan.json file hash (`review_subject`'s own "plan" file_entry) still changes
 # with it, so gen-stage review freshness is unaffected.
-GEN_TIME_ONLY_KEYS = frozenset({"style_lora", "style_lora_strength"})
+# 2026-09-22: `gen_prompt_style` (training_config.py) is classified exactly like
+# `style_lora`/`style_lora_strength` above -- a gen-plan-time prompt-composition
+# choice, never a training input the accepted checkpoint's snapshot pins, and a
+# `plan --stage gen --gen-prompt-style` override is likewise transient (never
+# written back to the persona).
+GEN_TIME_ONLY_KEYS = frozenset({"style_lora", "style_lora_strength", "gen_prompt_style"})
 # P4i: an imported checkpoint ladder (`plan --stage tester --import-checkpoints`) has no
 # in-plan `train` receipt -- its provenance IS the training config named by
 # `plan["imported_training_config"]` at tester-plan time, never the persona's current

@@ -189,6 +189,15 @@ choosing one for `detail`/`video` — the bake-off already found one style LoRA
 formality. `pipeline`'s own automatic `gen` planning also accepts `--style-lora`/
 `--style-lora-strength` when it plans `gen` for you (after tester is ruled).
 
+## `--gen-prompt-style` A/B
+
+`gen` also accepts `--gen-prompt-style {look-clause,trigger-scene}` as the same kind of
+per-plan flag, not a persona fork: the default `look-clause` reproduces today's prompt
+(trigger + the full `identity.look` clause + scene) byte-for-byte, while `trigger-scene`
+drops every look feature word and reuses the tester's own proven adult-framing/clothing/
+skin sentence plus a close-framed scene — plan both and compare `same_person`/`face_px`
+in the gate table before choosing one, the same way the `--style-lora` A/B above does.
+
 ## The deliverable
 
 Once `detail` is ruled, `pipeline` writes `<run-root>/deliverable/`:

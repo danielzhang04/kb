@@ -1049,6 +1049,128 @@ def test_build_plan_gen_with_style_lora_flag_records_and_wires_it(command, tmp_p
     assert persona_training.get("style_lora") is None
 
 
+# ---------------------------------------------------------------------------
+# gen_prompt_style: "look-clause" (default, byte-identical) vs "trigger-scene"
+# (2026-09-22 fix, live evidence orgs/figment/runs/creator-001/live-20260916b)
+# ---------------------------------------------------------------------------
+
+
+def _gen_row_texts(out: Path, plan: dict) -> list[str]:
+    run = plan["stages"]["gen"]["runs"][0]
+    manifest = load_json(out / run["manifest"])
+    texts = []
+    for job in manifest["jobs"]:
+        subs = [
+            sub for sub in job["substitutions"]
+            if sub["node_id"] == "5" and sub["field"] == "text"
+        ]
+        assert len(subs) == 1
+        texts.append(subs[0]["value"])
+    return texts
+
+
+def test_gen_prompt_style_default_matches_todays_look_clause_byte_for_byte(
+    command, tmp_path,
+):
+    """Default plans (no `training.gen_prompt_style`, no `--gen-prompt-style`) must
+    reproduce today's gen prompt composition byte-for-byte: fixture diff between a
+    plan built with the key entirely absent and one with it explicitly set to
+    "look-clause"."""
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    _prepare_accepted_checkpoint(command, personas, tmp_path, dop_class="woman")
+    default_out = tmp_path / "default-gen"
+    default_plan = command.build_plan(
+        "creator-002", "gen", default_out, personas_root=personas, skip_pin_verify=True,
+    )
+    assert default_plan["training"]["gen_prompt_style"] == "look-clause"
+    default_texts = _gen_row_texts(default_out, default_plan)
+    assert len(default_texts) == 12
+    assert default_texts[0].startswith("creator002krea2 woman, Photograph of ")
+
+    explicit_out = tmp_path / "explicit-look-clause-gen"
+    explicit_plan = command.build_plan(
+        "creator-002", "gen", explicit_out, personas_root=personas, skip_pin_verify=True,
+        gen_prompt_style="look-clause",
+    )
+    assert _gen_row_texts(explicit_out, explicit_plan) == default_texts
+
+
+def test_gen_prompt_style_trigger_scene_drops_look_words_and_closes_framing(
+    command, tmp_path,
+):
+    """2026-09-22 fix: gen on the accepted step-2000 checkpoint scored judge
+    same_person 45-68 / face_px 475-695 with the default look-clause prompt (which
+    prepends the entire identity.look clause), while the SAME checkpoint's tester
+    prompt -- no hair/eyes/brows/makeup/skin/build/clothing text, close framing --
+    scored judge 88. "trigger-scene" must emit that shape: 12 rows, each opening with
+    the trigger, each close-framed ("shoulders up"), and NONE carrying any
+    identity.look feature-word value."""
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    _prepare_accepted_checkpoint(
+        command, personas, tmp_path, gen_prompt_style="trigger-scene", dop_class="woman",
+    )
+    out = tmp_path / "trigger-scene-gen"
+    plan = command.build_plan(
+        "creator-002", "gen", out, personas_root=personas, skip_pin_verify=True,
+    )
+    assert plan["training"]["gen_prompt_style"] == "trigger-scene"
+    texts = _gen_row_texts(out, plan)
+    assert len(texts) == 12
+
+    look = load_json(personas / "creator-002" / "persona.yaml")["identity"]["look"]
+    banned_values = [
+        look[key] for key in ("hair", "eyes", "skin", "brows", "makeup", "build", "clothing")
+    ]
+    for text in texts:
+        assert text.startswith("creator002krea2 woman, ")
+        assert "shoulders up" in text
+        assert "Photograph of" not in text
+        for banned in banned_values:
+            assert banned not in text
+
+
+def test_build_plan_gen_prompt_style_flag_refused_off_stage_gen(command, tmp_path):
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    with pytest.raises(command.FigmentTrainError, match="only meaningful for --stage gen"):
+        command.build_plan(
+            "creator-002", "dataset", tmp_path / "d", personas_root=personas,
+            skip_pin_verify=True, gen_prompt_style="trigger-scene",
+        )
+
+
+def test_build_plan_gen_prompt_style_flag_overrides_persona_default(command, tmp_path):
+    """A plan-time flag override, mirroring `--style-lora`'s own precedent: never a
+    persona fork, recorded distinctly on the gen stage's own plan.json entry."""
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    _prepare_accepted_checkpoint(command, personas, tmp_path)
+    out = tmp_path / "flagged-gen-prompt-style"
+    plan = command.build_plan(
+        "creator-002", "gen", out, personas_root=personas, skip_pin_verify=True,
+        gen_prompt_style="trigger-scene",
+    )
+    assert plan["training"]["gen_prompt_style"] == "trigger-scene"
+    assert plan["stages"]["gen"]["gen_prompt_style"] == {
+        "value": "trigger-scene", "source": "flag",
+    }
+    texts = _gen_row_texts(out, plan)
+    assert all("shoulders up" in text for text in texts)
+
+    persona_training = load_json(personas / "creator-002" / "persona.yaml")["training"]
+    assert persona_training.get("gen_prompt_style") is None
+
+
+def test_resolve_gen_prompt_style_validates_the_value(command):
+    with pytest.raises(command.FigmentTrainError, match="--gen-prompt-style must be one of"):
+        command._resolve_gen_prompt_style({}, gen_prompt_style="not-a-real-style")
+    # Omitted flag is a no-op, returning the persona's training dict unchanged.
+    training = {"gen_prompt_style": "trigger-scene"}
+    assert command._resolve_gen_prompt_style(training, gen_prompt_style=None) is training
+
+
 def test_verify_pins_preflight_includes_style_loras_for_gen_and_detail_when_set(
     command, monkeypatch,
 ):

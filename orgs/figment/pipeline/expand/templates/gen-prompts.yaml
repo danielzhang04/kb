@@ -19,5 +19,20 @@
     "standing in a hallway lit by direct on-camera flash at night.",
     "sitting on a living-room sofa, natural window light from one side, waist up.",
     "standing on an apartment balcony at dusk, leaning against the railing, skyline behind her, chest up."
+  ],
+  "scenes_close_note": "2026-09-22 fix (live evidence, orgs/figment/runs/creator-001/live-20260916b): training.gen_prompt_style == \"trigger-scene\" rows use these instead of `scenes` above -- each row is the matching `scenes` entry with its distance/framing phrase replaced by 'close-up portrait, shoulders up' (10sorlabs r15b-generation.md \"Prompt-and-LoRA-must-agree\"), same order, same count (module 09's `expected_images`/job count is unchanged either way).",
+  "scenes_close": [
+    "close-up portrait, shoulders up, plain pale wall behind her, flat overcast daylight, relaxed neutral expression.",
+    "in left profile beside a bright window, close-up portrait, shoulders up, hard directional daylight, plain interior background.",
+    "at a three-quarter angle in a dim living room lit by one warm table lamp, close-up portrait, shoulders up, warm low light with soft shadow.",
+    "close-up portrait, shoulders up, standing on a quiet residential pavement, flat late-afternoon daylight.",
+    "seated at a cafe table, elbows on the table, close-up portrait, shoulders up, mixed window and ceiling light.",
+    "from a slightly low angle outdoors against an overcast sky, close-up portrait, shoulders up, cool diffuse daylight.",
+    "standing in a bright daylight kitchen, one hand resting on the counter, close-up portrait, shoulders up, morning light through a nearby window.",
+    "a mirror selfie in a bedroom, close-up portrait, shoulders up, soft ambient room light.",
+    "sitting on the edge of a bed under a single bedroom lamp, close-up portrait, shoulders up, warm low light.",
+    "standing in a hallway, close-up portrait, shoulders up, lit by direct on-camera flash at night.",
+    "sitting on a living-room sofa, natural window light from one side, close-up portrait, shoulders up.",
+    "standing on an apartment balcony at dusk, leaning against the railing, skyline behind her, close-up portrait, shoulders up."
   ]
 }

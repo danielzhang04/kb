@@ -402,3 +402,22 @@ def test_dataset_source_change_invalidates_training_input_projection_equality(co
     assert "dataset_source" in lineage.TRAIN_TIME_KEYS  # the precedent this follows
     assert "skin_lora" in lineage.TRAIN_TIME_KEYS  # the precedent this follows
     assert "caption_mode" not in lineage.TRAIN_TIME_KEYS  # deliberately excluded
+
+
+def test_gen_prompt_style_is_gen_time_only_like_style_lora(command):
+    """2026-09-22: `training.gen_prompt_style` (training_config.py) is a gen-plan-time
+    prompt-composition choice, never a training input -- classified exactly like
+    `style_lora`/`style_lora_strength` (M3's own module comment above
+    `GEN_TIME_ONLY_KEYS`). `training_input_projection` must drop it entirely so a gen
+    plan whose `--gen-prompt-style` differs from the tester plan the checkpoint was
+    promoted from never fails the accepted-checkpoint freshness comparison over a field
+    the checkpoint itself never trained with."""
+    lineage = command._lineage_module()
+    assert "gen_prompt_style" in lineage.GEN_TIME_ONLY_KEYS
+    base = {
+        "steps": 600, "save_every": 200, "trigger": "t", "base_arch": "krea2",
+        "gen_prompt_style": "look-clause",
+    }
+    changed = dict(base, gen_prompt_style="trigger-scene")
+    assert lineage.training_input_projection(base) == lineage.training_input_projection(changed)
+    assert "gen_prompt_style" not in lineage.training_input_projection(base)

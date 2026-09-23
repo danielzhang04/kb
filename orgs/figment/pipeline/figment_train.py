@@ -372,6 +372,32 @@ def _resolve_gen_style_lora(
     return {**training, "style_lora": effective_key, "style_lora_strength": float(strength)}
 
 
+def _resolve_gen_prompt_style(
+    training: dict[str, Any], *, gen_prompt_style: str | None,
+) -> dict[str, Any]:
+    """`plan --stage gen --gen-prompt-style <look-clause|trigger-scene>` override for
+    this one plan -- mirrors `_resolve_gen_style_lora`'s shape exactly: a no-op when the
+    flag is omitted (the persona's own `training.gen_prompt_style`, default
+    "look-clause" per `training_config.DEFAULT_TRAINING`, passes through unchanged so
+    `_generalized_gen_prompts` behaves exactly as before this key existed), never a
+    persona fork (the flag is transient, never written back to `training.yaml`).
+
+    2026-09-22 fix (live evidence, orgs/figment/runs/creator-001/live-20260916b): "gen
+    on the accepted step-2000 checkpoint scored 0/12 -- judge same_person 45-68 (floor
+    70.2) and face_px 475-695 (floor 600) -- while the SAME checkpoint's tester prompt
+    (no identity.look feature words, close framing) scored judge 88. "trigger-scene"
+    lets an operator plan a gen run with the tester's proven prompt shape instead of
+    the default look-clause one, without touching the persona or any gate threshold."""
+    if gen_prompt_style is None:
+        return training
+    allowed = _training_config_module().ALLOWED_GEN_PROMPT_STYLES
+    if gen_prompt_style not in allowed:
+        raise FigmentTrainError(
+            f"--gen-prompt-style must be one of {sorted(allowed)}"
+        )
+    return {**training, "gen_prompt_style": gen_prompt_style}
+
+
 def _read_json(path: Path, *, reads=None) -> Any:
     try:
         if reads is not None:
@@ -2178,14 +2204,42 @@ GEN_ROW_SEED_BASE = 269789944143426
 DETAIL_SEED_BASE = 100200300
 
 
+# 2026-09-22 fix (live evidence, orgs/figment/runs/creator-001/live-20260916b): the
+# default "look-clause" gen prompt prepends the ENTIRE identity.look clause (hair/
+# eyes/brows/lips/makeup/build/clothing) ahead of the scene -- the SAME checkpoint's
+# tester prompt carries none of that text (only the age_stage sentence, a fixed
+# clothed/skin-texture clause, and a close framing) and scored judge same_person 88
+# against the look-clause gen prompt's 45-68. "trigger-scene" reuses that proven
+# shape: the tester's own adult-framing/clothing/skin base sentence (age_stage is
+# kept -- it is age-safety wording, not a drifting facial feature; hair/eyes/skin/
+# brows/makeup/build/clothing are never composed in) plus a close-framed scene
+# clause (`gen-prompts.yaml`'s `scenes_close`, same order/count as `scenes`).
+_GEN_TRIGGER_SCENE_BASE_SENTENCE = (
+    "She is an adult woman, fully clothed in a plain fitted black crew-neck top, "
+    "facing the camera, neutral relaxed expression with a faint smile. Natural skin "
+    "texture with visible pores and fine flyaway hairs, no retouching."
+)
+
+
 def _generalized_gen_prompts(persona: dict, training: dict) -> dict[str, Any]:
     """Build the gen-stage's rows entirely from `gen-prompts.yaml`'s generic photography
     vocabulary plus the persona's own `identity.look` (same discipline as
     `_generalized_anchor_prompts` -- never a template-hardcoded face/body clause), each
     row opening with the persona's own trigger (`_compose_triggered_prompt`) so the LoRA
-    is always explicitly invoked."""
+    is always explicitly invoked. `training["gen_prompt_style"] == "trigger-scene"`
+    (default "look-clause") switches to the tester-proven shape instead -- see the
+    module comment above `_GEN_TRIGGER_SCENE_BASE_SENTENCE`."""
     prompts = _read_json(GEN_PROMPTS_PATH)
     prompts["persona"] = persona["id"]
+    if training.get("gen_prompt_style") == "trigger-scene":
+        age_stage = _tester_age_stage(persona)
+        prompts["rows"] = [
+            _compose_triggered_prompt(
+                training, f"{age_stage}. {_GEN_TRIGGER_SCENE_BASE_SENTENCE} {scene}",
+            )
+            for scene in prompts["scenes_close"]
+        ]
+        return prompts
     look = persona.get("identity", {}).get("look")
     if not isinstance(look, dict):
         raise FigmentTrainError(
@@ -2992,6 +3046,7 @@ def build_plan(
     accept_budget: bool = False,
     style_lora: str | None = None,
     style_lora_strength: float | None = None,
+    gen_prompt_style: str | None = None,
     import_checkpoints: Path | None = None,
     import_training_config: Path | None = None,
 ) -> dict[str, Any]:
@@ -3056,6 +3111,8 @@ def build_plan(
         raise FigmentTrainError(
             "--style-lora/--style-lora-strength is only meaningful for --stage gen"
         )
+    if gen_prompt_style is not None and stage != "gen":
+        raise FigmentTrainError("--gen-prompt-style is only meaningful for --stage gen")
     if approved_gen_image_id is not None and stage != "video":
         raise FigmentTrainError("--approved-gen-image-id is only meaningful for --stage video")
     if video_action is not None and stage != "video":
@@ -3106,6 +3163,9 @@ def build_plan(
     training = _resolve_gen_style_lora(
         training, pins, style_lora=style_lora, style_lora_strength=style_lora_strength,
     )
+    # 2026-09-22: same shape, one plan-time override, for the gen prompt-composition
+    # style (a no-op when the flag is omitted).
+    training = _resolve_gen_prompt_style(training, gen_prompt_style=gen_prompt_style)
     # m8: `detail` doesn't consume a style LoRA itself (it re-details gen's already-
     # rendered pixels -- the style LoRA's effect is already baked into them), but its
     # own pin preflight still verifies the upstream gen plan's choice, and its
@@ -3366,6 +3426,10 @@ def build_plan(
             plan_stages[current]["style_lora"] = {
                 "key": training["style_lora"], "strength": training["style_lora_strength"],
                 "source": "flag",
+            }
+        if current == "gen" and gen_prompt_style is not None:
+            plan_stages[current]["gen_prompt_style"] = {
+                "value": training["gen_prompt_style"], "source": "flag",
             }
 
     budget_preflight = _budget_preflight(
@@ -7106,6 +7170,7 @@ def command_pipeline(
     accept_budget: bool = False,
     style_lora: str | None = None,
     style_lora_strength: float | None = None,
+    gen_prompt_style: str | None = None,
     import_checkpoints: Path | None = None,
     import_training_config: Path | None = None,
     retry_failed: bool = False,
@@ -7265,6 +7330,7 @@ def command_pipeline(
                     skip_pin_verify=skip_pin_verify, ledger_dir=ledger_dir,
                     accept_budget=accept_budget, style_lora=style_lora,
                     style_lora_strength=style_lora_strength,
+                    gen_prompt_style=gen_prompt_style,
                 )
                 active_root = gen_root
             active_plan_path = gen_root / "plan.json"
@@ -7463,6 +7529,15 @@ def build_parser() -> argparse.ArgumentParser:
              "defaults to persona.training.style_lora_strength (0.8) when omitted",
     )
     plan.add_argument(
+        "--gen-prompt-style", default=None, choices=sorted(
+            _training_config_module().ALLOWED_GEN_PROMPT_STYLES
+        ),
+        help="gen-only prompt-composition style -- overrides "
+             "persona.training.gen_prompt_style for this one plan -- never a persona "
+             "fork; default (persona value, itself defaulting to look-clause) "
+             "reproduces today's gen prompts byte-for-byte",
+    )
+    plan.add_argument(
         "--import-checkpoints", default=None, type=Path,
         help="only meaningful with --stage tester: a directory of loose, operator-"
              "trained *.safetensors checkpoint ladder files (MANDATE.md's tier "
@@ -7521,6 +7596,13 @@ def build_parser() -> argparse.ArgumentParser:
     pipeline.add_argument(
         "--style-lora-strength", default=None, type=float,
         help="see `plan --style-lora-strength`",
+    )
+    pipeline.add_argument(
+        "--gen-prompt-style", default=None, choices=sorted(
+            _training_config_module().ALLOWED_GEN_PROMPT_STYLES
+        ),
+        help="applied only when pipeline plans its own downstream gen stage -- "
+             "see `plan --gen-prompt-style`",
     )
     pipeline.add_argument(
         "--import-checkpoints", default=None, type=Path,
@@ -7701,6 +7783,7 @@ def main(argv: list[str] | None = None) -> int:
                 video_action=args.video_action, ledger_dir=args.ledger_dir,
                 accept_budget=args.accept_budget,
                 style_lora=args.style_lora, style_lora_strength=args.style_lora_strength,
+                gen_prompt_style=args.gen_prompt_style,
                 import_checkpoints=args.import_checkpoints,
                 import_training_config=args.import_training_config,
             )
@@ -7720,6 +7803,7 @@ def main(argv: list[str] | None = None) -> int:
                 dry_run=args.dry_run, from_stage=args.from_stage,
                 ledger_dir=args.ledger_dir, accept_budget=args.accept_budget,
                 style_lora=args.style_lora, style_lora_strength=args.style_lora_strength,
+                gen_prompt_style=args.gen_prompt_style,
                 import_checkpoints=args.import_checkpoints,
                 import_training_config=args.import_training_config,
                 retry_failed=args.retry_failed,

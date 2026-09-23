@@ -109,3 +109,25 @@ def test_dataset_replicates_accepts_a_larger_integer():
 def test_dataset_replicates_rejects_anything_outside_a_positive_integer(bad):
     with pytest.raises(tc.TrainingConfigError, match="dataset_replicates"):
         tc.validate_training({"dataset_replicates": bad}, "creator-002")
+
+
+# 2026-09-22 fix (live evidence, orgs/figment/runs/creator-001/live-20260916b): the
+# gen-stage prompt composer's default ("look-clause") reproduces today's behaviour
+# byte-for-byte; "trigger-scene" is the tester-proven alternative (10sorlabs
+# r15b-generation.md "Prompt-and-LoRA-must-agree").
+
+
+def test_gen_prompt_style_defaults_to_look_clause():
+    config = tc.validate_training(None, "creator-002")
+    assert config["gen_prompt_style"] == "look-clause"
+
+
+def test_gen_prompt_style_accepts_trigger_scene():
+    config = tc.validate_training({"gen_prompt_style": "trigger-scene"}, "creator-002")
+    assert config["gen_prompt_style"] == "trigger-scene"
+
+
+@pytest.mark.parametrize("bad", ["", "   ", "look_clause", "trigger-scene ", 5, None, True])
+def test_gen_prompt_style_rejects_anything_outside_the_allowed_set(bad):
+    with pytest.raises(tc.TrainingConfigError, match="gen_prompt_style"):
+        tc.validate_training({"gen_prompt_style": bad}, "creator-002")
