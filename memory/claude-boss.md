@@ -538,3 +538,27 @@
   takes one word.
 - **Worktree sweep:** unlink the node_modules junction BEFORE `git worktree remove`; Git Bash `cmd //c rmdir`
   needs a forward-slash or properly escaped path or it silently misses.
+
+## 2026-09-23 — figment: gen/detail/video live, first passing stills, arc close (boss session, Fable 5.1)
+- **Same checkpoint, three prompts/graphs, three verdicts — always A/B the pipeline, not the model.** Tester 88 / gen 45–68 /
+  trigger-scene 30–60 / refine-off 72 on ONE checkpoint. The LoRA was fine; the gen graph's extra denoise passes and
+  the prompt shape were the variables. Each A/B cost $0.40 and settled an argument that reading would not.
+- **Removing text from the prompt made identity WORSE.** My hypothesis (text overrides the LoRA) was wrong for gen;
+  10sorlabs' doctrine ("prompt and LoRA must agree") was right. Hypotheses about generative behaviour are cheap to
+  test and expensive to believe.
+- **Look at the training data before blaming training.** Four approved dataset cells already carried the edit
+  model's beautification; the LoRA learned it faithfully. A 40-second haiku read of thumbnails found what the
+  calibrated judge passed.
+- **The gate instrument can be the bug.** Video 0/11 "no face detected" while the frames plainly contain her: the
+  detector's min-face on a 704 px frame. Check "unavailable" rows before reading a 0/N as a content result.
+- **Suspend-proof everything that bills.** Proven by the Windows power log: Modern Standby stretched a relative wait
+  through a 185-min ceiling ($4.58). Relative waits must be sliced against monotonic AND wall clocks; the process
+  that owns the pod must hold its own keep-awake lease (launcher binds it to the harness pid); the pod carries a
+  dead-man switch. Keep-awake leases bound to a Claude session die with it.
+- **Placement failures need their own vocabulary.** DNS blip, capacity 500, dead host (ReadinessTimeout), job
+  failure, pre-launch refusal: five classes, five retry semantics; a single "failed → replan" wastes money.
+- **Do not hard-reset the ops coordination checkout while pods run** — it clobbered a settled ledger row and blocked
+  gen for a day.
+- **Prod-window hooks block the boss's subagents too**; small fixes (3 lines + a test) are faster by hand than waiting.
+- **`requests` timeouts do not bound what you think** (per-read, not whole-send), and `session.close()` does not
+  interrupt an in-flight POST — capture the socket at connect and `shutdown()` it.
