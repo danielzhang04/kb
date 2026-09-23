@@ -762,6 +762,43 @@ def test_dry_run_accepts_shipped_training_manifests_without_local_payloads(
     ]) == 0
 
 
+def test_readiness_timeout_learns_the_host_that_never_started(tmp_path, monkeypatch):
+    """LIVE 2026-09-23 (detail pod w20n3wtn30cceg, host 41actztivcth): 2400 s in
+    desiredStatus=RUNNING with proxy 404 and no runtime status -- the container never
+    started. That is machine-class evidence like a host-class bootstrap failure, so the
+    host is learned bad (run-local + session files) and the receipt says so."""
+    def timeout(*_args, **_kwargs):
+        raise rr.ReadinessTimeout(
+            "pod readiness timed out after 2400s: stuck in desiredStatus=RUNNING while "
+            "proxy /system_stats returned 404",
+            {"id": "pod-dead", "desiredStatus": "RUNNING"},
+        )
+
+    monkeypatch.setattr(rr, "wait_ready", timeout)
+    local_appdata = tmp_path / "local-appdata"
+    monkeypatch.setenv("LOCALAPPDATA", str(local_appdata))
+    api = PlacementAPI(["never-started-host"])
+
+    with pytest.raises(rr.ReadinessTimeout, match="never|RUNNING"):
+        rr.run_harness(
+            manifest(), tmp_path / "m.yaml", tmp_path / "out",
+            max_usd=1, max_minutes=1, dry_run=False, api=api,
+            logger=logger_and_stream()[0], comfy_factory=FakeComfy,
+            sleep=lambda _seconds: None, ledger_dir=tmp_path / "ledger",
+            allow_empty_ledger=True,
+        )
+
+    for path in (
+            tmp_path / "out" / "_harness" / "bad_hosts.json",
+            local_appdata / "kb-figment-pod" / "bad_hosts.json"):
+        entry = json.loads(path.read_text(encoding="utf-8"))["hosts"][0]
+        assert entry["host"] == "never-started-host"
+        assert "readiness timeout" in entry["reason"]
+    record = json.loads((tmp_path / "out" / "run.json").read_text(encoding="utf-8"))
+    assert record["host_learned"] is True
+    assert record["bootstrap_failure_class"] == "machine"
+
+
 def test_manifest_readiness_timeout_defaults_to_900_seconds():
     assert rr.manifest_readiness_timeout_seconds(manifest()) == 900
 

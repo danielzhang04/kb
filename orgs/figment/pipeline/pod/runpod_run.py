@@ -4953,15 +4953,26 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
         result["error"] = f"{type(exc).__name__}: {exc}"
         if isinstance(exc, ReadinessTimeout):
             result["last_pod_state"] = exc.last_pod_state
-        if isinstance(exc, BootstrapFailed):
-            result["bootstrap_log_tail"] = exc.bootstrap_log_tail
-            host_class_reason = bootstrap_host_class_failure_reason(exc)
-            network_reason = bootstrap_network_failure_reason(exc)
+        # LIVE 2026-09-23 (detail pod w20n3wtn30cceg, host 41actztivcth): a host that
+        # never starts the container (2400 s in desiredStatus=RUNNING, proxy 404, no
+        # runtime status) is a machine-class failure exactly like a host-class bootstrap
+        # failure -- learn it so the next placement avoids it, instead of only learning
+        # hosts whose bootstrap ran far enough to write a marker.
+        if isinstance(exc, (BootstrapFailed, ReadinessTimeout)):
+            if isinstance(exc, BootstrapFailed):
+                result["bootstrap_log_tail"] = exc.bootstrap_log_tail
+                host_class_reason = bootstrap_host_class_failure_reason(exc)
+                network_reason = bootstrap_network_failure_reason(exc)
+                dependency_reason = bootstrap_dependency_failure_reason(exc)
+            else:
+                host_class_reason = "readiness timeout: container never started (no runtime status)"
+                network_reason = None
+                dependency_reason = None
             learned_reason = host_class_reason or network_reason
             reason_class = (
                 "machine" if host_class_reason
                 else "network" if network_reason
-                else "dependency" if bootstrap_dependency_failure_reason(exc)
+                else "dependency" if dependency_reason
                 else "unclassified"
             )
             if learned_reason and active_machine_host:
