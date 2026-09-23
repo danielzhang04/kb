@@ -1255,13 +1255,24 @@ describe('control proposal routes', () => {
    * widens the resolve route's park-reason allowlist and loop-state CAS to recognize it -- giving it
    * the SAME resolution path every other park gate already has, rather than inventing a new one.
    *
-   * Deliberate scope note (see the dispatch brief / worker report): 'approved'/'declined' reuse the
-   * EXISTING generic park-gate outcomes verbatim (approved -> loop 'passed' + the run resumes;
-   * declined -> loop 'declined' + the run transitions 'failed') rather than new "retry a fresh cycle
-   * in place" / "abandon" loop-state machinery, which does not exist anywhere in this codebase today
-   * (there is no loop state for it, and building one is a materially bigger, riskier change than this
-   * T2 card's scope). 'failed' is itself a member of the same run-lifecycle vocabulary the brief's
-   * "abandoned/stopped" language pointed at (`RunOutcome` includes both today).
+   * Deliberate scope note, superseded by the C1 boss ruling below: 'declined' reuses the EXISTING
+   * generic park-gate outcome verbatim (loop 'declined' + the run transitions 'failed') rather than a
+   * new "abandon" loop-state machine, which does not exist anywhere in this codebase today (there is
+   * no loop state for it). 'failed' is itself a member of the same run-lifecycle vocabulary the
+   * brief's "abandoned/stopped" language pointed at (`RunOutcome` includes both today).
+   *
+   * C1 (adversarial review of claude/c2-cadence-gates, 2026-09-23 boss ruling): the original version of
+   * this fix also let 'approved' reuse the generic park-approve outcome (loop 'passed', run resumes) —
+   * but for a REJECTED completion gate, that silently overturns the human's rejection and republishes
+   * the exact content they refused, while the event summary/`continuation` text sent by the resolve
+   * route unconditionally claimed "a separate relaunch is the only continuation path" (the opposite of
+   * what happened). There is no loop re-open/rework path anywhere in this codebase to give 'approved' an
+   * honest "retry a fresh cycle" meaning here, and building one (reopening the loop to its pre-gate
+   * cycle state, minting a fresh rework request to the producer participant, respecting the cycle
+   * budget) is a materially bigger, riskier change than this T2 card's scope — so `routes.ts
+   * #iterationGateDecision` now refuses 'approved' outright for `parkReason: 'rejected'` (409
+   * `iteration-park-rejected-needs-retry-or-decline`), before authority is even checked. Decline (loop
+   * declined, run failed) or a separate operator relaunch remain the only truthful continuations.
    */
   describe('F14: rejected-completion-gate intervention resolution', () => {
     const resolveGate = (requestRef: string, payload: Record<string, unknown>) => app.inject({
@@ -1286,7 +1297,7 @@ describe('control proposal routes', () => {
       expect(rejected.json().value.loop).toMatchObject({ interventionRef: intervention.requestRef });
     });
 
-    it('resolves the rejection-minted intervention through /iteration-gates/resolve with approved -> loop passed, run resumes', async () => {
+    it('C1: refuses to resolve the rejection-minted intervention with approved -- 409, no state change, no authorize row', async () => {
       const { runRef, gate, loop } = seedGenericCompletionGate();
       const rejected = await resolveGate(gate.requestRef, {
         expectedGateRef: gate.requestRef, expectedGateKind: null, expectedParkReason: null,
@@ -1297,6 +1308,10 @@ describe('control proposal routes', () => {
       expect(rejected.statusCode, rejected.body).toBe(200);
       const intervention = rejected.json().value.interventionRequest;
       const parkedLoop = rejected.json().value.loop;
+      // State right after the (legitimate) rejection, BEFORE the refused approve attempt below --
+      // the baseline the refused attempt must leave completely untouched.
+      const before = controlStore.getRun('operator', runRef);
+      if (!before.ok) throw new Error(before.detail);
 
       const resolved = await resolveGate(intervention.requestRef, {
         expectedGateRef: intervention.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'rejected',
@@ -1304,23 +1319,16 @@ describe('control proposal routes', () => {
         expectedGenerationRefs: [...parkedLoop.activeGenerationRefs], decision: 'approved',
         reason: 'accepting the rejected draft as-is', idempotencyKey: 'f14-approve-park',
       });
-      expect(resolved.statusCode, resolved.body).toBe(200);
-      expect(resolved.json()).toMatchObject({ ok: true, value: {
-        loop: { iterationLoopRef: loop.iterationLoopRef, state: 'passed' },
-        gate: { requestRef: intervention.requestRef, state: 'resolved' },
-      } });
+      expect(resolved.statusCode, resolved.body).toBe(409);
+      expect(resolved.json()).toEqual({ error: 'iteration-park-rejected-needs-retry-or-decline', detail: expect.any(String) });
       const after = controlStore.getRun('operator', runRef);
       expect(after).toMatchObject({ ok: true, value: {
-        iterationLoops: [{ iterationLoopRef: loop.iterationLoopRef, state: 'passed' }],
-        run: { lifecycle: { kind: expect.not.stringMatching(/^waiting-human$/) } },
+        iterationLoops: [{ iterationLoopRef: loop.iterationLoopRef, state: 'parked', parkReason: 'rejected' }],
+        run: { lifecycle: before.value.run.lifecycle, version: before.value.run.version },
       } });
-      // Two authorize rows: one for the initial reject-the-completion-gate resolve above, one for
-      // this park-gate resolve.
-      expect(authorizeRows()).toHaveLength(2);
-      expect(authorizeRows().at(-1)).toMatchObject({
-        riskTier: 'T3', result: 'authorized:approved',
-        detail: expect.objectContaining({ gateKind: 'iteration-park', parkReason: 'rejected', decision: 'approved' }),
-      });
+      // Only ONE authorize row -- for the initial reject-the-completion-gate resolve. The refused
+      // approve never reaches authority (blocked by decision vocabulary first), so no second row.
+      expect(authorizeRows()).toHaveLength(1);
     });
 
     it('resolves the rejection-minted intervention through /iteration-gates/resolve with declined -> loop declined, run terminal', async () => {
@@ -1369,9 +1377,14 @@ describe('control proposal routes', () => {
       expectedGenerationRefs: [...loop.activeGenerationRefs], decision, reason: 'reviewed the gate and decided', idempotencyKey: key,
     });
 
+    // C1: 'approved' is refused pre-authority for every parkReason: 'rejected' gate (see the dedicated
+    // 409 test above), so these three authority-ladder tests now decide with 'declined' -- the one
+    // decision still reachable on this gate -- to keep proving the authority ladder itself (legacy
+    // 403 / tagged needs signature / untagged proceeds unsigned) is unchanged by the C1 fix.
+
     it('proceeds unsigned on the open class for an untagged (agent-owned) run', async () => {
       const { request, loop, resolve } = mockRejectedInterventionGate();
-      const response = await resolveGate(request.requestRef, parkPayload(request, loop, 'approved', 'f14-untagged'));
+      const response = await resolveGate(request.requestRef, parkPayload(request, loop, 'declined', 'f14-untagged'));
       expect(response.statusCode, response.body).toBe(200);
       expect(resolve).toHaveBeenCalledTimes(1);
       expect(authorizeRows()).toHaveLength(1);
@@ -1379,7 +1392,7 @@ describe('control proposal routes', () => {
 
     it('fails closed (403, no signature) on a legacy run with no workflowTags field at all', async () => {
       const { request, loop, resolve } = mockRejectedInterventionGate(false, true);
-      const response = await resolveGate(request.requestRef, parkPayload(request, loop, 'approved', 'f14-legacy'));
+      const response = await resolveGate(request.requestRef, parkPayload(request, loop, 'declined', 'f14-legacy'));
       expect(response.statusCode, response.body).toBe(403);
       expect(response.json()).toEqual({ error: 'approval-required' });
       expect(resolve).not.toHaveBeenCalled();
@@ -1389,18 +1402,31 @@ describe('control proposal routes', () => {
     it('refuses a tagged run\'s unsigned resolve, and accepts a validly signed one', async () => {
       const RESOLVE_ROUTE = 'POST /api/control/iteration-gates/:requestRef/resolve';
       const unsigned = mockRejectedInterventionGate(true);
-      const unsignedResponse = await resolveGate(unsigned.request.requestRef, parkPayload(unsigned.request, unsigned.loop, 'approved', 'f14-tagged-unsigned'));
+      const unsignedResponse = await resolveGate(unsigned.request.requestRef, parkPayload(unsigned.request, unsigned.loop, 'declined', 'f14-tagged-unsigned'));
       expect(unsignedResponse.statusCode, unsignedResponse.body).toBe(403);
       expect(unsigned.resolve).not.toHaveBeenCalled();
 
       const signed = mockRejectedInterventionGate(true);
       const signedResponse = await resolveGate(signed.request.requestRef, {
-        ...parkPayload(signed.request, signed.loop, 'approved', 'f14-tagged-signed'),
+        ...parkPayload(signed.request, signed.loop, 'declined', 'f14-tagged-signed'),
         approval: signedApproval(RESOLVE_ROUTE, signed.request.requestRef),
       });
       expect(signedResponse.statusCode, signedResponse.body).toBe(200);
       expect(signed.resolve).toHaveBeenCalledTimes(1);
       expect(authorizeRows()).toHaveLength(1);
+    });
+
+    it('C1: refuses approved pre-authority even on a tagged run with a valid signature -- the decision itself is invalid, not just unsigned', async () => {
+      const RESOLVE_ROUTE = 'POST /api/control/iteration-gates/:requestRef/resolve';
+      const signed = mockRejectedInterventionGate(true);
+      const response = await resolveGate(signed.request.requestRef, {
+        ...parkPayload(signed.request, signed.loop, 'approved', 'f14-tagged-approved-signed'),
+        approval: signedApproval(RESOLVE_ROUTE, signed.request.requestRef),
+      });
+      expect(response.statusCode, response.body).toBe(409);
+      expect(response.json()).toEqual({ error: 'iteration-park-rejected-needs-retry-or-decline', detail: expect.any(String) });
+      expect(signed.resolve).not.toHaveBeenCalled();
+      expect(authorizeRows()).toEqual([]);
     });
   });
 

@@ -2014,11 +2014,34 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     };
   };
 
-  /** The decision vocabulary each gate kind admits — identical for the mint and the resolve. */
-  const iterationGateDecision = (body: Record<string, unknown>, parkGate: boolean, reply: FastifyReply) => {
+  /**
+   * The decision vocabulary each gate kind admits — identical for the mint and the resolve.
+   *
+   * C1 (adversarial review of claude/c2-cadence-gates, 2026-09-23 boss ruling): a park gate whose
+   * `parkReason` is `'rejected'` (F14 — minted when a human explicitly rejects a completion gate) must
+   * never be resolvable with `'approved'`. The generic park-approve semantics (`store.ts
+   * #resolveIterationGate`'s `parkGate` branch: loop -> `'passed'`, the run resumes) would silently
+   * overturn that rejection and republish the exact content a human just refused, while the event
+   * summary/`continuation` text this route sends (below) claims nothing but "a separate relaunch is
+   * required" — the opposite of what actually happens. There is no loop re-open/rework path in this
+   * codebase today to give "approve" an honest, different meaning here (a fresh cycle back to the
+   * producer, cycle-budget checked) — see the F14 test-suite scope note in routes.test.ts — so the only
+   * truthful contract is to refuse the ambiguous decision outright: decline (loop declined, run failed)
+   * or a separate operator relaunch remain the only paths.
+   */
+  const iterationGateDecision = (
+    body: Record<string, unknown>, parkGate: boolean, parkReason: string | null, reply: FastifyReply,
+  ) => {
     const decision = string(body.decision) as 'approved' | 'declined' | 'rejected' | 'changes-requested';
     if (parkGate && !['approved', 'declined'].includes(decision)) {
       reply.code(400).send({ error: 'invalid-iteration-park-decision', detail: 'Approve or decline; more work requires a separate relaunch.' });
+      return null;
+    }
+    if (parkGate && parkReason === 'rejected' && decision === 'approved') {
+      reply.code(409).send({
+        error: 'iteration-park-rejected-needs-retry-or-decline',
+        detail: 'This park was created by a rejected completion gate; it cannot be approved as-is. Decline it (loop declined, run failed) or relaunch separately.',
+      });
       return null;
     }
     if (!parkGate && !['approved', 'rejected', 'changes-requested'].includes(decision)) {
@@ -2069,7 +2092,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (binding === null) return reply;
     const { runScope, gateRequest, runDetail, loop, gateKind, parkGate, receipt } = binding;
     const { expectedLoopVersion, expectedReceiptVersion } = binding;
-    const decision = iterationGateDecision(body, parkGate, reply);
+    const decision = iterationGateDecision(body, parkGate, loop.parkReason ?? null, reply);
     if (decision === null) return reply;
     const suppliedGenerationRefs = Array.isArray(body.expectedGenerationRefs)
       && body.expectedGenerationRefs.every((value) => typeof value === 'string')
