@@ -18,6 +18,7 @@ import {
   AUTHORIZED_20260801_FAILED_RUN_REF,
   createInMemoryControlPlaneStore,
   createPythonScheduleClaimRenderer,
+  createPythonScheduleNextOccurrenceResolver,
   deriveAgentCadenceProject,
   emptyStoreDocumentForTest,
   exactAuthorized20260801ProposalRevision,
@@ -862,6 +863,55 @@ describe('createPythonScheduleClaimRenderer platform-root resolution (hotfix-3)'
       profile: 'cadence',
     });
   });
+});
+
+// B1 (adversarial review of claude/c2-cadence-gates, 2026-09-23): `createPythonScheduleNextOccurrenceResolver`
+// runs synchronously at SERVER BOOT (`runScheduleBootMigrations` -> `backfillStaleScheduleNextAt`) with no
+// timeout on its `spawnSync` call -- a hung/misbehaving python process would wedge the entire dashboard
+// server startup indefinitely. A REAL sleeping child process proves the fix (not a mocked `spawnSync`,
+// which would only prove the mock): a 300ms bound kills a script sleeping for 30s well under a second,
+// and the failure routes through the already-graceful `result.error` path (empty map, one log line, boot
+// continues) rather than throwing or hanging the test/process.
+describe('createPythonScheduleNextOccurrenceResolver boot-blocking timeout (B1)', () => {
+  function rootWithSleepingDispatchScript(prefix: string, sleepSeconds: number): string {
+    const root = mkdtempSync(join(tmpdir(), prefix));
+    roots.push(root);
+    mkdirSync(join(root, 'scripts'), { recursive: true });
+    // Prints valid output too, so a PASSING (non-timeout) run would look identical to a real
+    // dispatch.py success -- only the timeout race distinguishes this test's two possible worlds.
+    writeFileSync(join(root, 'scripts', 'dispatch.py'), [
+      'import time',
+      `time.sleep(${sleepSeconds})`,
+      'print(\'{"results": []}\')',
+    ].join('\n'));
+    return root;
+  }
+
+  it('kills a hung python subprocess at the bound instead of wedging boot forever', async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'b1-repo-'));
+    roots.push(repoRoot);
+    const platformRoot = rootWithSleepingDispatchScript('b1-platform-', 30);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const resolver = createPythonScheduleNextOccurrenceResolver(repoRoot, platformRoot, 300);
+      const started = Date.now();
+      const out = await resolver([{ scheduleId: 'sched-1', source: '0 0 * * *' }], new Date('2026-09-15T00:00:00.000Z'));
+      const elapsed = Date.now() - started;
+
+      // Row left untouched: an empty map, not a rejected promise -- the exact same shape
+      // `backfillStaleScheduleNextAt` already treats as "nothing to repair this pass, try again later".
+      expect(out).toEqual(new Map());
+      // Proves the 300ms bound was honored, not the 30s sleep (a generous margin for process spawn
+      // overhead on a loaded CI box, while still being orders of magnitude below "hung forever").
+      expect(elapsed).toBeLessThan(5_000);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const [line] = warnSpy.mock.calls[0];
+      expect(line).toContain('[control-store]');
+      expect(line).toContain('schedule-next-occurrence-resolver-failed');
+    } finally {
+      warnSpy.mockRestore();
+    }
+  }, 10_000);
 });
 
 // F8-adjacent (2026-09-23 ruling): the project an agent-owner cadence's stage target/`meta.project`

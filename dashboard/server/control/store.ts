@@ -503,6 +503,11 @@ export function createPythonScheduleClaimRenderer(
 export function createPythonScheduleNextOccurrenceResolver(
   repoRoot: string,
   platformRoot: string = defaultPlatformRoot(),
+  // B1: overridable only so a test can prove the boot-blocking-subprocess failure mode with a REAL
+  // sleeping child process in well under a second, rather than waiting out the real 10s production
+  // bound or mocking `spawnSync` itself (which would only prove the mock, not this code). Every
+  // production caller (`index.ts`) takes the default.
+  timeoutMs = 10_000,
 ): NonNullable<ControlStoreOptions['resolveScheduleNextOccurrenceBatch']> {
   const script = join(platformRoot, 'scripts', 'dispatch.py');
   return async (rows, after) => {
@@ -520,6 +525,16 @@ export function createPythonScheduleNextOccurrenceResolver(
       encoding: 'utf8',
       maxBuffer: 1024 * 1024,
       windowsHide: true,
+      // B1 (adversarial review of claude/c2-cadence-gates, 2026-09-23): this resolver runs from
+      // `runScheduleBootMigrations` -> `backfillStaleScheduleNextAt`, synchronously, on the Node event
+      // loop, at SERVER BOOT -- with no timeout, a hung/misbehaving python process (bad PATH,
+      // interpreter stall) would wedge the entire dashboard server startup indefinitely, with no
+      // recovery. A timeout routes through the exact SAME `result.error` graceful path already handled
+      // below (`spawnSync` sets `result.error` to an ETIMEDOUT and SIGKILLs the child on timeout) --
+      // additive, not a new failure mode: the stuck rows are left untouched, one log line, boot
+      // continues.
+      timeout: timeoutMs,
+      killSignal: 'SIGKILL',
     });
     if (result.error || result.status !== 0 || !result.stdout) {
       console.warn(`[control-store] schedule-next-occurrence-resolver-failed: script=${script} status=${result.status ?? 'null'} error=${result.error?.message ?? ''} stderr=${(result.stderr ?? '').toString().slice(0, 500)}`);
