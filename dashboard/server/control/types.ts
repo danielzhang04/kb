@@ -318,7 +318,10 @@ export interface GenerationSupersession {
 export type IterationRole = ProposalIterationRole;
 export type IterationRequestKind = ProposalIterationRequestKind;
 export type IterationVerdict = ProposalIterationVerdict;
-export type IterationParkReason = 'exhausted' | 'no-progress' | 'parked';
+// F14 (2026-09-23 ruling): 'rejected' names the park a REJECTED (or changes-requested) completion
+// gate produces (`store.ts#resolveIterationGate`'s `!parkGate` branch) — distinct from the other three
+// reasons, which all come from the no-progress/exhausted/explicit-park turn-outcome path.
+export type IterationParkReason = 'exhausted' | 'no-progress' | 'parked' | 'rejected';
 export interface IterationParticipant extends ProposalIterationParticipant {}
 export interface IterationRoute extends ProposalIterationRoute {}
 export interface IterationScheduleStep extends ProposalIterationScheduleStep {}

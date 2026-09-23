@@ -413,6 +413,19 @@ export interface ControlStoreOptions {
      *  so the rendered card can carry it as `meta.profile` and the launched attempt is capped by it. */
     workflowProfile: string | null;
   }) => Promise<{ card: Record<string, unknown>; cardBytesSha256: string }>;
+  /**
+   * F11 boot backfill (2026-09-23 ruling): resolves the next cron occurrence strictly after `after`
+   * for each `(scheduleId, source)` row, via the SAME evaluator `scripts/dispatch.py`'s tick path
+   * uses (`next_occurrence`) -- never `dashboard/src/lib/scheduleWords.ts#nextScheduleWindow`, which
+   * is explicitly display-only and documented to never gate a persisted `nextAt`. A row missing from
+   * the returned map (or resolving to `null`) means `source` did not parse as cron; the caller leaves
+   * that row unrepaired rather than guess. Omitted (e.g. a hermetic test store) means the backfill
+   * finds no stuck rows to repair rather than fail boot.
+   */
+  resolveScheduleNextOccurrenceBatch?: (
+    rows: ReadonlyArray<{ scheduleId: string; source: string }>,
+    after: Date,
+  ) => Promise<Map<string, string | null>>;
   /** @internal Vitest-only seam proving retention-boundary validation independently of load(). */
   beforeIterationBoundaryValidationForTest?: (
     boundary: 'quarantine' | 'restore',
@@ -735,6 +748,13 @@ export type HostAdvertisementUpsertResult =
   | { readonly ok: true; readonly version: number }
   | { readonly ok: false; readonly current: number };
 
+/** One repaired row from the F11 boot backfill, for the boot-time log line. */
+export interface ScheduleNextAtBackfillRepair {
+  scheduleId: string;
+  from: string | null;
+  to: string;
+}
+
 export interface ControlPlaneStore
   extends BrokerStoreBackend, AtomicScheduleStorePort, ScheduleSocketStorePort, ScheduleMirrorStorePort {
   getControlDocumentMetadata(): Pick<StoreDocument, 'version' | 'documentRevision' | 'scheduleCollectionRevision'>;
@@ -748,6 +768,15 @@ export interface ControlPlaneStore
   getScheduleSnapshot(): { collectionRevision: number; schedules: Schedule[] };
   resolveScheduleReceiptOwner(cardId: string): RunnableRef | null;
   bindScheduleOccurrenceRun(cardId: string, runRef: string): Promise<void>;
+  /**
+   * F11 boot backfill: repairs every ARMED schedule row whose `nextAt` is a past timestamp equal to
+   * the `scheduledFor` of its own latest occurrence claim at phase `card-saved`/`ledger-appended` --
+   * the exact signature of a row `advanceScheduleOccurrence` never got to run for, because that claim
+   * reached `card-saved` under the pre-F7 code (before the advance existed). Idempotent: a row already
+   * repaired, or with no such stuck claim, or disarmed, is left untouched and returns no entry. See
+   * `dashboard/server/index.ts#backfillStaleScheduleNextAt` (the boot-time caller) for `now`'s source.
+   */
+  backfillStaleScheduleNextAt(now: Date): Promise<ScheduleNextAtBackfillRepair[]>;
   isScheduleSeedAuthorized(scheduleId: string): boolean;
   getScheduleSeedImportMarker(): ScheduleSeedImportMarker | null;
   commitScheduleSeedImport(plan: ScheduleSeedImportPlan): Promise<void>;

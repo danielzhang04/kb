@@ -396,7 +396,7 @@ describe('control proposal routes', () => {
   });
 
 
-  function iterationGateFixture(reason: 'exhausted' | 'no-progress' | 'parked', suffix = reason) {
+  function iterationGateFixture(reason: 'exhausted' | 'no-progress' | 'parked' | 'rejected', suffix = reason) {
     const requestRef = `request-iteration-${suffix}`;
     const loopRef = `loop-iteration-${suffix}`;
     const iterationRequest = {
@@ -478,6 +478,50 @@ describe('control proposal routes', () => {
       run: { runRef: 'run-iteration', predecessorRunRef: null, title: 'Iteration run', proposalRef: 'proposal-iteration', proposalRevision: 1,
         proposalHash: '9'.repeat(64), publicationState: 'published', lifecycle: { kind: 'waiting-human', deployPause: null }, version: 11, managerSessionRef: null,
         managerGeneration: 1, managerAssignment: null, createdAt: '', updatedAt: '', owner, workflowTags },
+      stages: [], attempts: [], sessions: [], humanRequests: [fixture.request], stageGenerations: [], generationSupersessions: [],
+      iterationLoops: [fixture.loop], iterationRequests: [fixture.iterationRequest], iterationReceipts: fixture.receipt ? [fixture.receipt] : [],
+    };
+    const getHumanRequest = vi.spyOn(controlStore, 'getHumanRequest').mockReturnValue({ ok: true, value: fixture.request } as never);
+    const getRun = vi.spyOn(controlStore, 'getRun').mockReturnValue({ ok: true, value: detail } as never);
+    const resolve = vi.spyOn(controlStore, 'resolveIterationGate').mockImplementation((_subject, _requestRef, input) => ({
+      ok: true, value: {
+        loop: { ...fixture.loop, state: input.decision === 'approved' ? 'passed' : 'declined', acceptedGenerationRefs: input.decision === 'approved' ? [...fixture.loop.activeGenerationRefs] : [] },
+        receipt: fixture.receipt, receiptVersion: fixture.receipt?.version ?? null,
+        gate: { ...fixture.request, state: 'resolved', response: { decision: input.decision === 'approved' ? 'approved' : 'rejected' } }, interventionRequest: null,
+      },
+    } as never));
+    const failRun = vi.spyOn(controlStore, 'transitionRun').mockReturnValue({
+      ok: true,
+      value: { ...detail.run, lifecycle: { kind: 'failed', deployPause: null }, version: 12 },
+    } as never);
+    return { ...fixture, detail, getHumanRequest, getRun, resolve, failRun };
+  }
+
+  /**
+   * F14 (2026-09-23 ruling): the SAME T5 authority mock as {@link mockIterationGate}, reshaped for a
+   * REJECTED-completion-gate-created park -- `request.kind: 'intervention'` (never `'approval'`,
+   * unlike every other park gate) and `loop.state: 'parked'` (never `'awaiting-park-gate'`), the exact
+   * shape `store.ts#resolveIterationGate`'s `!parkGate` branch produces. `legacy: true` omits
+   * `workflowTags` entirely (a pre-tags run) rather than stating `[]`, which `resolveRunWorkflowTags`
+   * reads as UNRESOLVABLE and fails closed on -- distinct from `tagged: false`'s explicit "no tags".
+   */
+  function mockRejectedInterventionGate(tagged = false, legacy = false) {
+    const fixture = iterationGateFixture('parked', 'rejected');
+    fixture.request.kind = 'intervention';
+    fixture.loop.state = 'parked';
+    fixture.loop.parkReason = 'rejected';
+    const owner = tagged
+      ? { type: 'workflow' as const, id: 'no-such-workflow', project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/no-such-workflow.md' as const }
+      : { type: 'agent' as const, id: 'grader', sourcePath: 'agents/grader.md' as const };
+    const workflowTags = tagged ? ['publish'] : [];
+    const run: Record<string, unknown> = {
+      runRef: 'run-iteration', predecessorRunRef: null, title: 'Iteration run', proposalRef: 'proposal-iteration', proposalRevision: 1,
+      proposalHash: '9'.repeat(64), publicationState: 'published', lifecycle: { kind: 'waiting-human', deployPause: null }, version: 11, managerSessionRef: null,
+      managerGeneration: 1, managerAssignment: null, createdAt: '', updatedAt: '', owner,
+    };
+    if (!legacy) run.workflowTags = workflowTags;
+    const detail = {
+      ownerSubject: 'operator', run,
       stages: [], attempts: [], sessions: [], humanRequests: [fixture.request], stageGenerations: [], generationSupersessions: [],
       iterationLoops: [fixture.loop], iterationRequests: [fixture.iterationRequest], iterationReceipts: fixture.receipt ? [fixture.receipt] : [],
     };
@@ -1198,6 +1242,191 @@ describe('control proposal routes', () => {
         headers: headers(token), payload: { decision: 'approved' },
       });
       expect(minted.statusCode, minted.body).toBe(404);
+    });
+  });
+
+  /**
+   * F14 (2026-09-23 ruling, prod run-cdae7121): rejecting a completion gate minted an intervention
+   * with NO `gateKind` at all, so `POST /api/control/iteration-gates/:requestRef/resolve` always
+   * 409'd `iteration-gate-linkage-ambiguous` for it (the route bound `parkGate` off `gateKind`, and an
+   * unset one is treated as "this must be a completion gate", which this `kind: 'intervention'`
+   * request is not) -- the run was left stuck `waiting-human` with no route able to move it. The fix
+   * stamps `gateKind: 'iteration-park'` + `parkReason: 'rejected'` on the minted intervention, and
+   * widens the resolve route's park-reason allowlist and loop-state CAS to recognize it -- giving it
+   * the SAME resolution path every other park gate already has, rather than inventing a new one.
+   *
+   * Deliberate scope note, superseded by the C1 boss ruling below: 'declined' reuses the EXISTING
+   * generic park-gate outcome verbatim (loop 'declined' + the run transitions 'failed') rather than a
+   * new "abandon" loop-state machine, which does not exist anywhere in this codebase today (there is
+   * no loop state for it). 'failed' is itself a member of the same run-lifecycle vocabulary the
+   * brief's "abandoned/stopped" language pointed at (`RunOutcome` includes both today).
+   *
+   * C1 (adversarial review of claude/c2-cadence-gates, 2026-09-23 boss ruling): the original version of
+   * this fix also let 'approved' reuse the generic park-approve outcome (loop 'passed', run resumes) —
+   * but for a REJECTED completion gate, that silently overturns the human's rejection and republishes
+   * the exact content they refused, while the event summary/`continuation` text sent by the resolve
+   * route unconditionally claimed "a separate relaunch is the only continuation path" (the opposite of
+   * what happened). There is no loop re-open/rework path anywhere in this codebase to give 'approved' an
+   * honest "retry a fresh cycle" meaning here, and building one (reopening the loop to its pre-gate
+   * cycle state, minting a fresh rework request to the producer participant, respecting the cycle
+   * budget) is a materially bigger, riskier change than this T2 card's scope — so `routes.ts
+   * #iterationGateDecision` now refuses 'approved' outright for `parkReason: 'rejected'` (409
+   * `iteration-park-rejected-needs-retry-or-decline`), before authority is even checked. Decline (loop
+   * declined, run failed) or a separate operator relaunch remain the only truthful continuations.
+   */
+  describe('F14: rejected-completion-gate intervention resolution', () => {
+    const resolveGate = (requestRef: string, payload: Record<string, unknown>) => app.inject({
+      method: 'POST', url: `/api/control/iteration-gates/${requestRef}/resolve`, headers: headers(token), payload,
+    });
+    const authorizeRows = () => auditRows.filter((row) => row.action === 'control-iteration-gate-authorize');
+
+    it('rejecting a real completion gate mints an intervention carrying gateKind: iteration-park', async () => {
+      const { gate, loop } = seedGenericCompletionGate();
+      const rejected = await resolveGate(gate.requestRef, {
+        expectedGateRef: gate.requestRef, expectedGateKind: null, expectedParkReason: null,
+        expectedRequestRevision: gate.revision, expectedLoopVersion: loop.version,
+        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'rejected',
+        reason: 'reviewed the gate and decided', idempotencyKey: 'f14-reject-mints-gatekind',
+      });
+      expect(rejected.statusCode, rejected.body).toBe(200);
+      const intervention = rejected.json().value.interventionRequest;
+      expect(intervention).toMatchObject({ kind: 'intervention', gateKind: 'iteration-park', state: 'open' });
+      // The exact field `prod-respond.ps1`'s routing rule keys on (loop.completionGateRef ===
+      // Request || loop.interventionRef === Request) -- still set, so the script still picks the
+      // iteration-gates route for this request without any tooling change.
+      expect(rejected.json().value.loop).toMatchObject({ interventionRef: intervention.requestRef });
+    });
+
+    it('C1: refuses to resolve the rejection-minted intervention with approved -- 409, no state change, no authorize row', async () => {
+      const { runRef, gate, loop } = seedGenericCompletionGate();
+      const rejected = await resolveGate(gate.requestRef, {
+        expectedGateRef: gate.requestRef, expectedGateKind: null, expectedParkReason: null,
+        expectedRequestRevision: gate.revision, expectedLoopVersion: loop.version,
+        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'rejected',
+        reason: 'reviewed the gate and decided', idempotencyKey: 'f14-reject-then-approve',
+      });
+      expect(rejected.statusCode, rejected.body).toBe(200);
+      const intervention = rejected.json().value.interventionRequest;
+      const parkedLoop = rejected.json().value.loop;
+      // State right after the (legitimate) rejection, BEFORE the refused approve attempt below --
+      // the baseline the refused attempt must leave completely untouched.
+      const before = controlStore.getRun('operator', runRef);
+      if (!before.ok) throw new Error(before.detail);
+
+      const resolved = await resolveGate(intervention.requestRef, {
+        expectedGateRef: intervention.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'rejected',
+        expectedRequestRevision: intervention.revision, expectedLoopVersion: parkedLoop.version, expectedReceiptVersion: null,
+        expectedGenerationRefs: [...parkedLoop.activeGenerationRefs], decision: 'approved',
+        reason: 'accepting the rejected draft as-is', idempotencyKey: 'f14-approve-park',
+      });
+      expect(resolved.statusCode, resolved.body).toBe(409);
+      expect(resolved.json()).toEqual({ error: 'iteration-park-rejected-needs-retry-or-decline', detail: expect.any(String) });
+      const after = controlStore.getRun('operator', runRef);
+      expect(after).toMatchObject({ ok: true, value: {
+        iterationLoops: [{ iterationLoopRef: loop.iterationLoopRef, state: 'parked', parkReason: 'rejected' }],
+        run: { lifecycle: before.value.run.lifecycle, version: before.value.run.version },
+      } });
+      // Only ONE authorize row -- for the initial reject-the-completion-gate resolve. The refused
+      // approve never reaches authority (blocked by decision vocabulary first), so no second row.
+      expect(authorizeRows()).toHaveLength(1);
+    });
+
+    it('resolves the rejection-minted intervention through /iteration-gates/resolve with declined -> loop declined, run terminal', async () => {
+      const { runRef, gate, loop } = seedGenericCompletionGate();
+      const rejected = await resolveGate(gate.requestRef, {
+        expectedGateRef: gate.requestRef, expectedGateKind: null, expectedParkReason: null,
+        expectedRequestRevision: gate.revision, expectedLoopVersion: loop.version,
+        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'rejected',
+        reason: 'reviewed the gate and decided', idempotencyKey: 'f14-reject-then-decline',
+      });
+      const intervention = rejected.json().value.interventionRequest;
+      const parkedLoop = rejected.json().value.loop;
+
+      const resolved = await resolveGate(intervention.requestRef, {
+        expectedGateRef: intervention.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'rejected',
+        expectedRequestRevision: intervention.revision, expectedLoopVersion: parkedLoop.version, expectedReceiptVersion: null,
+        expectedGenerationRefs: [...parkedLoop.activeGenerationRefs], decision: 'declined',
+        reason: 'abandoning this draft', idempotencyKey: 'f14-decline-park',
+      });
+      expect(resolved.statusCode, resolved.body).toBe(200);
+      expect(resolved.json()).toMatchObject({ ok: true, value: {
+        loop: { iterationLoopRef: loop.iterationLoopRef, state: 'declined' },
+        gate: { requestRef: intervention.requestRef, state: 'resolved' },
+      } });
+      const after = controlStore.getRun('operator', runRef);
+      expect(after).toMatchObject({ ok: true, value: {
+        iterationLoops: [{ iterationLoopRef: loop.iterationLoopRef, state: 'declined' }],
+        run: { lifecycle: { kind: 'failed' } },
+      } });
+      // Two authorize rows: one for the initial reject-the-completion-gate resolve above, one for
+      // this park-gate resolve.
+      expect(authorizeRows()).toHaveLength(2);
+      expect(authorizeRows().at(-1)).toMatchObject({
+        riskTier: 'T3', result: 'authorized:declined',
+        detail: expect.objectContaining({ gateKind: 'iteration-park', parkReason: 'rejected', decision: 'declined' }),
+      });
+    });
+
+    const parkPayload = (
+      request: { requestRef: string; revision: number },
+      loop: { version: number; activeGenerationRefs: readonly string[] },
+      decision: string, key: string,
+    ) => ({
+      expectedGateRef: request.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'rejected',
+      expectedRequestRevision: request.revision, expectedLoopVersion: loop.version, expectedReceiptVersion: null,
+      expectedGenerationRefs: [...loop.activeGenerationRefs], decision, reason: 'reviewed the gate and decided', idempotencyKey: key,
+    });
+
+    // C1: 'approved' is refused pre-authority for every parkReason: 'rejected' gate (see the dedicated
+    // 409 test above), so these three authority-ladder tests now decide with 'declined' -- the one
+    // decision still reachable on this gate -- to keep proving the authority ladder itself (legacy
+    // 403 / tagged needs signature / untagged proceeds unsigned) is unchanged by the C1 fix.
+
+    it('proceeds unsigned on the open class for an untagged (agent-owned) run', async () => {
+      const { request, loop, resolve } = mockRejectedInterventionGate();
+      const response = await resolveGate(request.requestRef, parkPayload(request, loop, 'declined', 'f14-untagged'));
+      expect(response.statusCode, response.body).toBe(200);
+      expect(resolve).toHaveBeenCalledTimes(1);
+      expect(authorizeRows()).toHaveLength(1);
+    });
+
+    it('fails closed (403, no signature) on a legacy run with no workflowTags field at all', async () => {
+      const { request, loop, resolve } = mockRejectedInterventionGate(false, true);
+      const response = await resolveGate(request.requestRef, parkPayload(request, loop, 'declined', 'f14-legacy'));
+      expect(response.statusCode, response.body).toBe(403);
+      expect(response.json()).toEqual({ error: 'approval-required' });
+      expect(resolve).not.toHaveBeenCalled();
+      expect(authorizeRows()).toEqual([]);
+    });
+
+    it('refuses a tagged run\'s unsigned resolve, and accepts a validly signed one', async () => {
+      const RESOLVE_ROUTE = 'POST /api/control/iteration-gates/:requestRef/resolve';
+      const unsigned = mockRejectedInterventionGate(true);
+      const unsignedResponse = await resolveGate(unsigned.request.requestRef, parkPayload(unsigned.request, unsigned.loop, 'declined', 'f14-tagged-unsigned'));
+      expect(unsignedResponse.statusCode, unsignedResponse.body).toBe(403);
+      expect(unsigned.resolve).not.toHaveBeenCalled();
+
+      const signed = mockRejectedInterventionGate(true);
+      const signedResponse = await resolveGate(signed.request.requestRef, {
+        ...parkPayload(signed.request, signed.loop, 'declined', 'f14-tagged-signed'),
+        approval: signedApproval(RESOLVE_ROUTE, signed.request.requestRef),
+      });
+      expect(signedResponse.statusCode, signedResponse.body).toBe(200);
+      expect(signed.resolve).toHaveBeenCalledTimes(1);
+      expect(authorizeRows()).toHaveLength(1);
+    });
+
+    it('C1: refuses approved pre-authority even on a tagged run with a valid signature -- the decision itself is invalid, not just unsigned', async () => {
+      const RESOLVE_ROUTE = 'POST /api/control/iteration-gates/:requestRef/resolve';
+      const signed = mockRejectedInterventionGate(true);
+      const response = await resolveGate(signed.request.requestRef, {
+        ...parkPayload(signed.request, signed.loop, 'approved', 'f14-tagged-approved-signed'),
+        approval: signedApproval(RESOLVE_ROUTE, signed.request.requestRef),
+      });
+      expect(response.statusCode, response.body).toBe(409);
+      expect(response.json()).toEqual({ error: 'iteration-park-rejected-needs-retry-or-decline', detail: expect.any(String) });
+      expect(signed.resolve).not.toHaveBeenCalled();
+      expect(authorizeRows()).toEqual([]);
     });
   });
 
@@ -3187,8 +3416,18 @@ function buildApp(overrides: Record<string, unknown> = {}) {
   return { app, ctx, store, audit, token: mintSession('operator', SESSION).token };
 }
 
-/** Seed one approved run in the store so a route reaches its execution-posture check. */
-function seedRun(store: ReturnType<typeof createInMemoryControlPlaneStore>, key: string): string {
+/**
+ * Seed one approved run in the store so a route reaches its execution-posture check.
+ *
+ * D1 (adversarial review of claude/c2-cadence-gates, 2026-09-23 boss ruling): `workflowTags`
+ * defaults to `[]` (untagged, unaffected by the archive escalation) but a caller can pass
+ * `'legacy'` (omits the field entirely -- fails closed, `WORKFLOW_TAGS_UNRESOLVABLE`) or an
+ * explicit tag list (e.g. `['publish']`) to exercise the force-archive authority ladder.
+ */
+function seedRun(
+  store: ReturnType<typeof createInMemoryControlPlaneStore>, key: string,
+  workflowTags: readonly string[] | 'legacy' = [],
+): string {
   const created = store.createProposalRevision('operator', {
     sourceComposerRef: 'composer-1', sourceTurnId: 'video-run', title: `Run ${key}`,
     snapshot: proposal as unknown as JsonObject,
@@ -3199,7 +3438,7 @@ function seedRun(store: ReturnType<typeof createInMemoryControlPlaneStore>, key:
   }).ok) throw new Error('approval failed');
   const run = store.createRun('operator', {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
-      workflowTags: [],
+      ...(workflowTags === 'legacy' ? {} : { workflowTags }),
       executionHost: 'desktop',
     title: `Run ${key}`, proposalRef: created.value.proposalRef, proposalRevision: 1,
     expectedProposalHash: created.value.hash, managerRuntime: 'claude', managerModel: 'claude-fable-5',
@@ -3818,6 +4057,111 @@ describe('control run archive route', () => {
     } finally {
       await app.close();
     }
+  });
+
+  /**
+   * D1 (adversarial review of claude/c2-cadence-gates, 2026-09-23 boss ruling): `force: true`
+   * force-resolves every open human request for the run -- on a fail-closed (legacy-untagged, or
+   * publish/spend-tagged) run, that includes requests a signed approval would otherwise be required
+   * to answer. The archive route now escalates exactly like the two iteration-gate/human-request
+   * routes: same fail-closed-on-legacy rule, same tagged-needs-signature rule, same
+   * untagged-stays-open rule (already exercised above by every other archive test, which all use an
+   * explicitly-untagged `seedRun`).
+   */
+  describe('D1: force-archive escalates on a fail-closed run', () => {
+    const ARCHIVE_ROUTE = 'POST /api/control/runs/:runRef/archive';
+
+    it('refuses (403, no mutation, no forced-open-requests row) on a LEGACY run (no workflowTags field) with no signature', async () => {
+      const { app, token, store, audit } = buildApp();
+      try {
+        const runRef = seedRun(store, 'archive-legacy', 'legacy');
+        const requestRef = parkRun(store, runRef, 'archive-legacy');
+        const response = await app.inject({
+          method: 'POST', url: `/api/control/runs/${runRef}/archive`, headers: headers(token),
+          payload: { idempotencyKey: `archive:${runRef}:1`, reason: 'legacy run, forcing', force: true },
+        });
+        expect(response.statusCode, response.body).toBe(403);
+        expect(response.json()).toEqual({ error: 'approval-required' });
+        const detail = store.getRun('operator', runRef);
+        if (!detail.ok) throw new Error(detail.detail);
+        expect(detail.value.run.lifecycle).toMatchObject({ kind: 'waiting-human' });
+        expect(detail.value.humanRequests.find((item) => item.requestRef === requestRef)?.state).toBe('open');
+        expect(audit.filter((event) => event.action === 'run-archive-forced-open-requests')).toHaveLength(0);
+        expect(audit.filter((event) => event.action === 'control-run-archive-authorize')).toHaveLength(0);
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('refuses unsigned (403) and accepts a validly signed approval (200 + forced-open-requests row) on a TAGGED (publish) run', async () => {
+      const { app, token, store, audit } = buildApp();
+      try {
+        const unsignedRunRef = seedRun(store, 'archive-tagged-unsigned', ['publish']);
+        parkRun(store, unsignedRunRef, 'archive-tagged-unsigned');
+        const unsigned = await app.inject({
+          method: 'POST', url: `/api/control/runs/${unsignedRunRef}/archive`, headers: headers(token),
+          payload: { idempotencyKey: `archive:${unsignedRunRef}:1`, reason: 'tagged run, no signature', force: true },
+        });
+        expect(unsigned.statusCode, unsigned.body).toBe(403);
+        expect(unsigned.json()).toEqual({ error: 'approval-required' });
+        expect(audit.filter((event) => event.action === 'run-archive-forced-open-requests')).toHaveLength(0);
+
+        const signedRunRef = seedRun(store, 'archive-tagged-signed', ['publish']);
+        const signedRequestRef = parkRun(store, signedRunRef, 'archive-tagged-signed');
+        const signed = await app.inject({
+          method: 'POST', url: `/api/control/runs/${signedRunRef}/archive`, headers: headers(token),
+          payload: {
+            idempotencyKey: `archive:${signedRunRef}:1`, reason: 'tagged run, signed', force: true,
+            approval: signedApproval(ARCHIVE_ROUTE, signedRunRef),
+          },
+        });
+        expect(signed.statusCode, signed.body).toBe(200);
+        expect(signed.json()).toMatchObject({ ok: true, value: { run: { runRef: signedRunRef, state: 'archived' } } });
+        const forcedRow = audit.find((event) => event.action === 'run-archive-forced-open-requests' && event.target === signedRunRef);
+        expect(forcedRow).toMatchObject({
+          owner: 'operator', target: signedRunRef, riskTier: 'T3',
+          detail: { runRef: signedRunRef, openHumanRequestRefs: [signedRequestRef] },
+        });
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('proceeds unsigned (200 + forced-open-requests row) on an explicitly UNTAGGED run', async () => {
+      const { app, token, store, audit } = buildApp();
+      try {
+        const runRef = seedRun(store, 'archive-untagged-force', []);
+        const requestRef = parkRun(store, runRef, 'archive-untagged-force');
+        const response = await app.inject({
+          method: 'POST', url: `/api/control/runs/${runRef}/archive`, headers: headers(token),
+          payload: { idempotencyKey: `archive:${runRef}:1`, reason: 'untagged, no signature needed', force: true },
+        });
+        expect(response.statusCode, response.body).toBe(200);
+        expect(response.json()).toMatchObject({ ok: true, value: { run: { runRef, state: 'archived' } } });
+        const forcedRow = audit.find((event) => event.action === 'run-archive-forced-open-requests');
+        expect(forcedRow).toMatchObject({ detail: { openHumanRequestRefs: [requestRef] } });
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('a non-force archive on a tagged run needs no signature at all -- the escalation never runs', async () => {
+      const { app, token, store, audit } = buildApp();
+      try {
+        const runRef = seedRun(store, 'archive-tagged-noforce', ['publish']);
+        const run = store.getRun('operator', runRef);
+        if (!run.ok) throw new Error(run.detail);
+        if (!store.transitionRun('operator', runRef, run.value.run.version, 'failed').ok) throw new Error('transition failed');
+        const response = await app.inject({
+          method: 'POST', url: `/api/control/runs/${runRef}/archive`, headers: headers(token),
+          payload: { idempotencyKey: `archive:${runRef}:1`, reason: 'plain archive, tagged run' },
+        });
+        expect(response.statusCode, response.body).toBe(200);
+        expect(audit.filter((event) => event.action === 'authority-approval-refused')).toHaveLength(0);
+      } finally {
+        await app.close();
+      }
+    });
   });
 
   it('B-2: archives normally, with no force needed and no forced-open-requests row, when nothing is open', async () => {

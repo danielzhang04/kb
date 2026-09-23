@@ -1685,6 +1685,30 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     // store.ts#archiveRun's refusal when any request is open and this is absent/false.
     const force = body.force === true;
     const runScope = readScope(req);
+    // D1 (adversarial review of claude/c2-cadence-gates, 2026-09-23 boss ruling): `force: true`
+    // force-resolves every OPEN human request for this run — on a fail-closed (publish/spend-tagged, or
+    // legacy-untagged) run, that includes requests that would otherwise cost a signed approval to
+    // answer at all. Escalating exactly like the two iteration-gate/human-request routes
+    // (`escalate: 'workflow-tag'`, policy.ts) closes that gap at the SERVER boundary, not only in the
+    // C17 shell hook that gates one operator machine's `-Force` invocation. Verified BEFORE any audit
+    // row or mutation, same fail-closed-tags-required-signature rule, same untagged-stays-open rule —
+    // reusing `createIterationGateAuthorityService` verbatim rather than re-implementing the ladder.
+    // Non-force archive is completely untouched: this block never runs.
+    if (force) {
+      const actorLabel = parseActor(req.headers[ACTOR_HEADER] as string | string[] | undefined);
+      const archiveAuthority = createIterationGateAuthorityService({
+        workflowTags: (actorSubject, forRunRef) => resolveRunWorkflowTags(ctx, actorSubject, forRunRef, runScope),
+        verifyApproval: bindVerifyApproval(ctx, 'POST', req.routeOptions?.url ?? req.url, runRef),
+        audit: {
+          async append(event) {
+            await auditFn(ctx)(ctx.repoRoot, event, { runGit: ctx.opsGit, now: ctx.now });
+          },
+        },
+        escalationBinding: { route: escalationRouteKey('POST', req.routeOptions?.url ?? req.url), entityRef: runRef },
+      });
+      const authority = await archiveAuthority.verify({ actorSubject: sub, runRef, approval: body.approval, actorLabel });
+      if (!authority.ok) return reply.code(authority.status).send({ error: authority.error });
+    }
     // Keyed by the RUN's owner, like every other lifecycle control here — see the stop route.
     const owned = ctx.controlStore.getRun(sub, runRef, runScope);
     if (!owned.ok) return sendResult(reply, owned);
@@ -1990,7 +2014,10 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       ? null
       : loop.lastReceiptRef === undefined ? null
         : run.value.iterationReceipts.find((candidate) => candidate.receiptRef === loop.lastReceiptRef) ?? null;
-    if (parkGate && !['exhausted', 'no-progress', 'parked'].includes(loop.parkReason ?? '')) {
+    // F14: 'rejected' (a park created by a rejected/changes-requested completion gate,
+    // store.ts#resolveIterationGate's `!parkGate` branch) is a fourth legal park reason, alongside the
+    // three the no-progress/exhausted/explicit-park turn-outcome path produces.
+    if (parkGate && !['exhausted', 'no-progress', 'parked', 'rejected'].includes(loop.parkReason ?? '')) {
       reply.code(409).send({ error: 'iteration-gate-reason-mismatch' });
       return null;
     }
@@ -2011,11 +2038,34 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     };
   };
 
-  /** The decision vocabulary each gate kind admits — identical for the mint and the resolve. */
-  const iterationGateDecision = (body: Record<string, unknown>, parkGate: boolean, reply: FastifyReply) => {
+  /**
+   * The decision vocabulary each gate kind admits — identical for the mint and the resolve.
+   *
+   * C1 (adversarial review of claude/c2-cadence-gates, 2026-09-23 boss ruling): a park gate whose
+   * `parkReason` is `'rejected'` (F14 — minted when a human explicitly rejects a completion gate) must
+   * never be resolvable with `'approved'`. The generic park-approve semantics (`store.ts
+   * #resolveIterationGate`'s `parkGate` branch: loop -> `'passed'`, the run resumes) would silently
+   * overturn that rejection and republish the exact content a human just refused, while the event
+   * summary/`continuation` text this route sends (below) claims nothing but "a separate relaunch is
+   * required" — the opposite of what actually happens. There is no loop re-open/rework path in this
+   * codebase today to give "approve" an honest, different meaning here (a fresh cycle back to the
+   * producer, cycle-budget checked) — see the F14 test-suite scope note in routes.test.ts — so the only
+   * truthful contract is to refuse the ambiguous decision outright: decline (loop declined, run failed)
+   * or a separate operator relaunch remain the only paths.
+   */
+  const iterationGateDecision = (
+    body: Record<string, unknown>, parkGate: boolean, parkReason: string | null, reply: FastifyReply,
+  ) => {
     const decision = string(body.decision) as 'approved' | 'declined' | 'rejected' | 'changes-requested';
     if (parkGate && !['approved', 'declined'].includes(decision)) {
       reply.code(400).send({ error: 'invalid-iteration-park-decision', detail: 'Approve or decline; more work requires a separate relaunch.' });
+      return null;
+    }
+    if (parkGate && parkReason === 'rejected' && decision === 'approved') {
+      reply.code(409).send({
+        error: 'iteration-park-rejected-needs-retry-or-decline',
+        detail: 'This park was created by a rejected completion gate; it cannot be approved as-is. Decline it (loop declined, run failed) or relaunch separately.',
+      });
       return null;
     }
     if (!parkGate && !['approved', 'rejected', 'changes-requested'].includes(decision)) {
@@ -2066,7 +2116,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (binding === null) return reply;
     const { runScope, gateRequest, runDetail, loop, gateKind, parkGate, receipt } = binding;
     const { expectedLoopVersion, expectedReceiptVersion } = binding;
-    const decision = iterationGateDecision(body, parkGate, reply);
+    const decision = iterationGateDecision(body, parkGate, loop.parkReason ?? null, reply);
     if (decision === null) return reply;
     const suppliedGenerationRefs = Array.isArray(body.expectedGenerationRefs)
       && body.expectedGenerationRefs.every((value) => typeof value === 'string')

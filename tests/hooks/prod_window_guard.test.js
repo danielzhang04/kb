@@ -221,6 +221,24 @@ const CASES = [
     `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1' -VM root@localhost -Spool C:\\tmp\\spool"`, 2],
   ['C3 drain step1 -ApprovalDir traversal blocked', 'open', 'Bash',
     `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1' -VM root@localhost -ApprovalDir ${T}\\..\\..\\secrets"`, 2],
+
+  // ---- F13 (p14, 2026-09-23): -ChainBase <40hex>, only inside a genuine -VM root@localhost group,
+  // matching the correct-value probe from evidence.md p14's raw log exactly.
+  ['C3 drain step1 rehearsal -ChainBase, window closed', 'closed', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1' -VM root@localhost -WslDistro kb-rehearsal -ChainBase 9406e7e4244b22364734e4bd36b923c652f4313c"`, 0],
+  ['C3 drain step1 rehearsal -ChainBase, window open', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1' -VM root@localhost -WslDistro kb-rehearsal -ChainBase 9406e7e4244b22364734e4bd36b923c652f4313c"`, 0],
+  ['C3 drain step1 -ChainBase too short blocked', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1' -VM root@localhost -WslDistro kb-rehearsal -ChainBase 9406e7e4"`, 2],
+  ['C3 drain step1 -ChainBase uppercase blocked (must match git\'s own lowercase output exactly)', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1' -VM root@localhost -WslDistro kb-rehearsal -ChainBase 9406E7E4244B22364734E4BD36B923C652F4313C"`, 2],
+  ['C3 drain step1 -ChainBase quoted-with-metachar blocked', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1' -VM root@localhost -WslDistro kb-rehearsal -ChainBase '9406e7e4244b22364734e4bd36b923c652f4313c;rm'"`, 2],
+  ['C3 drain step1 -ChainBase WITHOUT -VM root@localhost is refused (prod shape, unmatched)', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1' -ChainBase 9406e7e4244b22364734e4bd36b923c652f4313c"`, 2],
+  ['C3 drain step1 full rehearsal shape incl. -ChainBase between -WslDistro and -CurlHeader, window closed', 'closed', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1' -VM root@localhost -URL http://localhost:4317 -SshShimDir C:\\shims -Spool C:\\Users\\danie\\kb-backups\\outbox-snapshots -Work C:\\Users\\danie\\kb-backups\\outbox-work -ApprovalDir ${T}\\rehearsal\\p13\\approval -WslDistro kb-rehearsal -ChainBase 9406e7e4244b22364734e4bd36b923c652f4313c -CurlHeader X-Tailscale-Serve:1"`, 0],
+
   ['C3 drain step1, prod-shaped line still window-gated (unaffected by F3)', 'closed', 'Bash',
     `${PS} -Command "& '${T}\\drain-v2\\drain-step1-v2.ps1'"`, 2],
 
@@ -238,6 +256,23 @@ const CASES = [
     `${PS} -Command "& '${T}\\drain-v2\\drain-step2-v2.ps1' -VM root@localhost -URL http://localhost:4317 -SshShimDir C:\\shims -Spool C:\\Users\\danie\\kb-backups\\outbox-snapshots -Work C:\\Users\\danie\\kb-backups\\outbox-work -Signers C:\\Users\\danie\\kb-backups\\kb-ops-approver.allowed-signers -WslDistro kb-rehearsal -CurlHeader X-Tailscale-Serve:1"`, 0],
   ['C5a drain step2 -Signers outside T/kb-backups blocked', 'open', 'Bash',
     `${PS} -Command "& '${T}\\drain-v2\\drain-step2-v2.ps1' -VM root@localhost -Signers C:\\tmp\\signers"`, 2],
+
+  // ---- F13 (p14, 2026-09-23): -ChainBase <40hex>, drain-step2-v2.ps1 side, same discipline as C3.
+  ['C5a drain step2 rehearsal -ChainBase, window closed', 'closed', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step2-v2.ps1' -VM root@localhost -WslDistro kb-rehearsal -ChainBase 9406e7e4244b22364734e4bd36b923c652f4313c"`, 0],
+  ['C5a drain step2 rehearsal -ChainBase, window open', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step2-v2.ps1' -VM root@localhost -WslDistro kb-rehearsal -ChainBase 9406e7e4244b22364734e4bd36b923c652f4313c"`, 0],
+  ['C5a drain step2 -ChainBase too short blocked', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step2-v2.ps1' -VM root@localhost -WslDistro kb-rehearsal -ChainBase 9406e7e4"`, 2],
+  ['C5a drain step2 -ChainBase uppercase blocked (must match git\'s own lowercase output exactly)', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step2-v2.ps1' -VM root@localhost -WslDistro kb-rehearsal -ChainBase 9406E7E4244B22364734E4BD36B923C652F4313C"`, 2],
+  ['C5a drain step2 -ChainBase quoted-with-metachar blocked', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step2-v2.ps1' -VM root@localhost -WslDistro kb-rehearsal -ChainBase '9406e7e4244b22364734e4bd36b923c652f4313c;rm'"`, 2],
+  ['C5a drain step2 -ChainBase WITHOUT -VM root@localhost is refused (prod shape, unmatched)', 'open', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step2-v2.ps1' -ChainBase 9406e7e4244b22364734e4bd36b923c652f4313c"`, 2],
+  ['C5a drain step2 full rehearsal shape incl. -ChainBase between -WslDistro and -CurlHeader, window closed', 'closed', 'Bash',
+    `${PS} -Command "& '${T}\\drain-v2\\drain-step2-v2.ps1' -VM root@localhost -URL http://localhost:4317 -SshShimDir C:\\shims -Spool C:\\Users\\danie\\kb-backups\\outbox-snapshots -Work C:\\Users\\danie\\kb-backups\\outbox-work -Signers C:\\Users\\danie\\kb-backups\\kb-ops-approver.allowed-signers -WslDistro kb-rehearsal -ChainBase 9406e7e4244b22364734e4bd36b923c652f4313c -CurlHeader X-Tailscale-Serve:1"`, 0],
+
   ['C5a drain step2, prod-shaped line still window-gated (unaffected by F3)', 'closed', 'Bash',
     `${PS} -Command "& '${T}\\drain-v2\\drain-step2-v2.ps1'"`, 2],
 
@@ -306,6 +341,38 @@ const CASES = [
   ['O4 traversal in the script path blocked', 'closed', 'Bash', `${PS} -File "${KB}\\scripts\\prod\\..\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok"`, 2],
   ['O4 still subject to standing blocks (D)', 'closed', 'Bash', `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok" && rm -rf /`, 2],
   ['O4 missing -Reason blocked', 'closed', 'Bash', `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1`, 2],
+
+  // ---- C17: prod-archive-run.ps1 CARRYING -Force is WINDOWED (T-B2), mirroring C16's exact
+  // relationship to O2. Plain O4 above (no -Force) stays open-class, unaffected by C17's existence.
+  ['C17 -Force blocked when window closed', 'closed', 'Bash',
+    `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "reopened, need to force through" -Force`, 2],
+  ['C17 -Force allowed when window open', 'open', 'Bash',
+    `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "reopened, need to force through" -Force`, 0],
+  ['C17 -Force with -Actor, window open', 'open', 'Bash',
+    `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "boss override" -Actor daniel -Force`, 0],
+  ['C17 -Force with rehearsal URL, window closed (waived like C16)', 'closed', 'Bash',
+    `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok" -URL http://127.0.0.1:4417 -Force`, 0],
+  ['C17 -Force malformed (extra token after -Force) blocked', 'open', 'Bash',
+    `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok" -Force -Yes`, 2],
+  ['C17 -Force before -Reason (wrong order) blocked', 'open', 'Bash',
+    `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Force -Reason "ok"`, 2],
+  // D1 (adversarial review of claude/c2-cadence-gates, 2026-09-23 boss ruling): the daemon's
+  // archive route now escalates force:true exactly like a gate resolution on a fail-closed run, so
+  // C17 gained an -Approval slot (same position C16 gives it: right before the terminal flag, after
+  // the optional rehearsal -URL). -Approval in the PINNED order (before -Force) is now a genuine,
+  // admitted C17 shape -- the old blanket "-Approval anywhere is always blocked" is no longer true.
+  ['C17 -Approval before -Force (pinned order), window open -> allowed', 'open', 'Bash',
+    `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok" -Approval ${T}\\approval.json -Force`, 0],
+  ['C17 -Approval before -Force, window closed -> blocked (windowed like every other C-shape)', 'closed', 'Bash',
+    `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok" -Approval ${T}\\approval.json -Force`, 2],
+  ['C17 -Approval AFTER -Force (wrong order) blocked -- never falls back to O4/C17 unmatched', 'open', 'Bash',
+    `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok" -Force -Approval ${T}\\approval.json`, 2],
+  ['C17 -Approval with no -Force at all still blocked (never O4, mirrors the C16/O4 guard)', 'open', 'Bash',
+    `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok" -Approval ${T}\\approval.json`, 2],
+  // Plain O4 (no -Force) stays open-class after C17 exists — regression check right next to the
+  // new windowed shape.
+  ['O4 (no -Force) still open-class after C17, window closed', 'closed', 'Bash',
+    `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok"`, 0],
 
   // ---- O2 prod-respond.ps1 — OPEN class (T7): resolve a gate/intervention, no window needed ----
   ['O2 approve with a reason, window closed', 'closed', 'Bash', `${PS} -File "${T}\\prod-respond.ps1" -Run run-cc508ddb -Request req-1 -Decision approve -Reason "sources added, brief is correct"`, 0],
@@ -601,6 +668,29 @@ test('A-2: O4 blocked when the pinned script path is missing/unreadable', () => 
   });
   assert.strictEqual(res.status, 2);
   assert.match(res.stderr, /pinned digest/);
+});
+
+test('C17: -Force blocked when the pinned script content differs by one byte (shares O4\'s digest pin)', () => {
+  setWindow('open');
+  const real = fs.readFileSync(ARCHIVE_SCRIPT_PATH, 'utf8');
+  const tampered = real + ' ';
+  const tmp = path.join(os.tmpdir(), 'prod-archive-run-tampered-c17-' + process.pid + '.ps1');
+  fs.writeFileSync(tmp, tampered, 'utf8');
+  try {
+    const payload = JSON.stringify({
+      tool_name: 'Bash',
+      tool_input: { command: `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok" -Force` },
+    });
+    const res = spawnSync(process.execPath, [HOOK], {
+      input: payload,
+      encoding: 'utf8',
+      env: Object.assign({}, process.env, { KB_PROD_WINDOW_AUDIT: AUDIT, KB_ARCHIVE_SCRIPT_PATH: tmp }),
+    });
+    assert.strictEqual(res.status, 2);
+    assert.match(res.stderr, /pinned digest/);
+  } finally {
+    fs.rmSync(tmp, { force: true });
+  }
 });
 
 test('Agent dispatch carrying --dangerously-skip-permissions is blocked even while closed', () => {

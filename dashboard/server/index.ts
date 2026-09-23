@@ -66,7 +66,11 @@ import { resolveDashboardStateRoot } from './composer/store.ts';
 import { acquireWriterLease } from './control/writerLease.ts';
 import type { FileControlPlaneAccess, WriterLease } from './control/writerLease.ts';
 import type { ControlPlaneStore } from './control/store.ts';
-import { createFileControlPlaneStore, createPythonScheduleClaimRenderer } from './control/store.ts';
+import {
+  createFileControlPlaneStore,
+  createPythonScheduleClaimRenderer,
+  createPythonScheduleNextOccurrenceResolver,
+} from './control/store.ts';
 import { loadP2MigrationEvidence } from './control/p2MigrationEvidence.ts';
 import { runP2ScheduleStartupMigrations } from './control/migrations.ts';
 import {
@@ -681,6 +685,8 @@ export interface ScheduleBootMigrationOptions {
   outboxRoot?: string;
   /** @internal Git runner for the default publisher's prepare/commit closures. */
   runGit?: GitRunner;
+  /** @internal Clock seam for the F11 boot backfill; production uses the real wall clock. */
+  now?: () => Date;
 }
 
 /** Production Schedule boot unit, exported so crash/restart tests exercise the exact startup path. */
@@ -727,6 +733,17 @@ export async function runScheduleBootMigrations(
       });
     },
   });
+  // F11 boot backfill (2026-09-23 ruling): repairs any armed schedule row stuck reporting `due=1`
+  // forever because its latest occurrence claim reached `card-saved` before `advanceScheduleOccurrence`
+  // (the F7 fix) existed to copy the claim's own correct `nextAt` onto the row. Runs AFTER the P2 seed/
+  // pause-marker migrations above (so a freshly-imported/converted row is repaired in the same boot
+  // pass it first becomes visible in), and is safe to run on every boot: a row with nothing stuck
+  // returns no entry (see `store.ts#backfillStaleScheduleNextAt`).
+  const now = options.now ?? (() => new Date());
+  const repairs = await controlStore.backfillStaleScheduleNextAt(now());
+  for (const repair of repairs) {
+    console.warn(`schedule-backfill: ${repair.scheduleId} nextAt ${repair.from ?? 'null'} -> ${repair.to}`);
+  }
 }
 
 export async function start(
@@ -748,6 +765,7 @@ export async function start(
       controlStore = createFileControlPlaneStore(lease.stateRoot, { mode: 'already-locked', lease }, {
         p2MigrationContext: loadP2MigrationEvidence(repoRoot),
         renderScheduleClaim: createPythonScheduleClaimRenderer(repoRoot),
+        resolveScheduleNextOccurrenceBatch: createPythonScheduleNextOccurrenceResolver(repoRoot),
       });
       await runScheduleBootMigrations(repoRoot, controlStore);
     }

@@ -30,6 +30,7 @@ import {
   CONTROL_PLANE_SCHEMA_VERSION,
 } from './generated/controlPlaneSchema.ts';
 import { decodeHostKind, decodeRun, decodeRunnableRef, decodeStoredRun } from './p2Decoders.ts';
+import { readDeclaredAgentDetails } from '../agents/roster.ts';
 import { FAIL_CLOSED_RUN_TAGS } from './ownerTags.ts';
 import type {
   RunnableRef,
@@ -321,6 +322,7 @@ import type {
   RunActivationInput,
   CanonicalStageProjectionInput,
   ControlPlaneStore,
+  ScheduleNextAtBackfillRepair,
 } from './storeTypes.ts';
 export type {
   StoredProposal,
@@ -381,6 +383,7 @@ export type {
   BrokerStoreBackend,
   HostAdvertisementUpsertResult,
   ControlPlaneStore,
+  ScheduleNextAtBackfillRepair,
 } from './storeTypes.ts';
 
 function retryPredecessorRefusal(document: StoreDocument, predecessor: StoredRun): string | null {
@@ -418,6 +421,21 @@ function retryPredecessorRefusal(document: StoreDocument, predecessor: StoredRun
 
 
 /**
+ * The project an agent-owner cadence's rendered card is scoped to (F8-adjacent, 2026-09-23 ruling):
+ * the agent's own declared primary project, or the fleet default `kb-ops` when the agent is
+ * fleet-scoped (`group: system`, per `agents/<id>.md`) or undeclared. Deliberately mirrors
+ * `dashboard/server/index.ts#createScheduleService`'s `mirrorPathForOwner` derivation exactly (same
+ * `group === 'system'` fleet check, same `[...projects].sort()[0]` primary-project pick) so an agent's
+ * cadence output directory and its HEARTBEAT mirror path always agree on which project owns it.
+ */
+export function deriveAgentCadenceProject(repoRoot: string, agentId: string): string {
+  const declaration = readDeclaredAgentDetails(repoRoot).get(agentId);
+  if (!declaration || declaration.group === 'system') return 'kb-ops';
+  const primaryProject = [...declaration.projects].sort()[0];
+  return primaryProject ?? 'kb-ops';
+}
+
+/**
  * Invoke the canonical Python card renderer without a shell or caller-provided path.
  *
  * `scripts/cards.py` ships with the platform release, not with the coordination-only ops
@@ -447,6 +465,9 @@ export function createPythonScheduleClaimRenderer(
         mirrorPath: input.mirrorPath,
         dispatchedAt: now().toISOString(),
         workflowProfile: input.workflowProfile,
+        agentCadenceProject: input.owner.type === 'agent'
+          ? deriveAgentCadenceProject(repoRoot, input.owner.id)
+          : undefined,
       }),
       encoding: 'utf8',
       maxBuffer: 1024 * 1024,
@@ -466,6 +487,75 @@ export function createPythonScheduleClaimRenderer(
       throw Object.assign(new Error('schedule-card-renderer-invalid'), { status: 503, code: 'schedule-card-renderer-invalid' });
     }
     return parsed as { card: Record<string, unknown>; cardBytesSha256: string };
+  };
+}
+
+
+/**
+ * Production wiring for the F11 boot backfill's cron resolver (`ControlStoreOptions
+ * .resolveScheduleNextOccurrenceBatch`): shells out to `scripts/dispatch.py
+ * --schedule-backfill-next-at`, the SAME cron evaluator (`next_occurrence`/`parse_cron`)
+ * `dispatch_stored_schedules` uses on every tick -- never `dashboard/src/lib/scheduleWords.ts
+ * #nextScheduleWindow`, which is explicitly documented display-only and must never gate a persisted
+ * `nextAt`. Resolved from `platformRoot` for the same reason `createPythonScheduleClaimRenderer` is
+ * (the VM's coordination-only `repoRoot` carries no `scripts/`).
+ */
+export function createPythonScheduleNextOccurrenceResolver(
+  repoRoot: string,
+  platformRoot: string = defaultPlatformRoot(),
+  // B1: overridable only so a test can prove the boot-blocking-subprocess failure mode with a REAL
+  // sleeping child process in well under a second, rather than waiting out the real 10s production
+  // bound or mocking `spawnSync` itself (which would only prove the mock, not this code). Every
+  // production caller (`index.ts`) takes the default.
+  timeoutMs = 10_000,
+): NonNullable<ControlStoreOptions['resolveScheduleNextOccurrenceBatch']> {
+  const script = join(platformRoot, 'scripts', 'dispatch.py');
+  return async (rows, after) => {
+    if (rows.length === 0) return new Map();
+    const command = process.platform === 'win32' ? 'py' : 'python3';
+    const args = process.platform === 'win32'
+      ? ['-3', script, '--schedule-backfill-next-at']
+      : [script, '--schedule-backfill-next-at'];
+    const result = spawnSync(command, args, {
+      cwd: repoRoot,
+      input: JSON.stringify({
+        after: after.toISOString(),
+        rows: rows.map((row) => ({ scheduleId: row.scheduleId, source: row.source })),
+      }),
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024,
+      windowsHide: true,
+      // B1 (adversarial review of claude/c2-cadence-gates, 2026-09-23): this resolver runs from
+      // `runScheduleBootMigrations` -> `backfillStaleScheduleNextAt`, synchronously, on the Node event
+      // loop, at SERVER BOOT -- with no timeout, a hung/misbehaving python process (bad PATH,
+      // interpreter stall) would wedge the entire dashboard server startup indefinitely, with no
+      // recovery. A timeout routes through the exact SAME `result.error` graceful path already handled
+      // below (`spawnSync` sets `result.error` to an ETIMEDOUT and SIGKILLs the child on timeout) --
+      // additive, not a new failure mode: the stuck rows are left untouched, one log line, boot
+      // continues.
+      timeout: timeoutMs,
+      killSignal: 'SIGKILL',
+    });
+    if (result.error || result.status !== 0 || !result.stdout) {
+      console.warn(`[control-store] schedule-next-occurrence-resolver-failed: script=${script} status=${result.status ?? 'null'} error=${result.error?.message ?? ''} stderr=${(result.stderr ?? '').toString().slice(0, 500)}`);
+      return new Map();
+    }
+    let parsed: unknown;
+    try { parsed = JSON.parse(result.stdout); } catch {
+      console.warn(`[control-store] schedule-next-occurrence-resolver-invalid: script=${script} stdout=${result.stdout.slice(0, 500)}`);
+      return new Map();
+    }
+    const results = typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as { results?: unknown }).results : undefined;
+    const out = new Map<string, string | null>();
+    if (!Array.isArray(results)) return out;
+    for (const entry of results) {
+      if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) continue;
+      const row = entry as { scheduleId?: unknown; nextAt?: unknown };
+      if (typeof row.scheduleId !== 'string') continue;
+      out.set(row.scheduleId, typeof row.nextAt === 'string' ? row.nextAt : null);
+    }
+    return out;
   };
 }
 
@@ -1828,7 +1918,12 @@ function validateIterationDurability(
     }
     if (loop.parkReason !== undefined && loop.state === 'passed'
       && (!iterationParkGate || iterationParkGate.gateKind !== 'iteration-park' || iterationParkGate.state !== 'resolved'
-        || iterationParkGate.response?.decision !== 'approved' || loop.unresolvedResidue === undefined)) {
+        || iterationParkGate.response?.decision !== 'approved'
+        // F14: a 'rejected' park (a rejected/changes-requested completion gate) never computes
+        // unresolvedResidue -- that field describes work remaining for ANOTHER iteration cycle, which
+        // has no meaning for a park whose trigger was a completion decision, not a turn outcome. Every
+        // OTHER park reason still requires it (unchanged).
+        || (loop.parkReason !== 'rejected' && loop.unresolvedResidue === undefined))) {
       throw new Error('invalid control-plane approved iteration park gate');
     }
     if (loop.unresolvedResidue && (loop.unresolvedResidue.cyclesUsed !== loop.cyclesUsed
@@ -2736,6 +2831,52 @@ function makeStore(
         }
         commit(document);
         return claimReceipt(claim);
+      });
+    },
+
+    // F11 boot backfill (2026-09-23 ruling): `advanceScheduleOccurrence` above only fires the FIRST
+    // time an occurrence's claim reaches `card-saved`. A row whose latest claim reached that phase
+    // under the pre-F7 code (before the advance existed at all) never gets a second chance -- its
+    // `schedule.nextAt` is left pinned at exactly that claim's own `scheduledFor` forever (the claim
+    // record itself always carried the CORRECT forward `nextAt`, computed by the caller at claim time
+    // regardless of the F7 bug; only the copy onto `schedule.nextAt` never happened). This repairs
+    // that class of row once, at boot, by recomputing a fresh `nextAt` strictly after "now" through
+    // the injected cron resolver (`options.resolveScheduleNextOccurrenceBatch`, production-wired to
+    // `scripts/dispatch.py --schedule-backfill-next-at` -- see `index.ts`), never by trusting the
+    // stale claim value, since by boot time even that value may itself already be in the past.
+    backfillStaleScheduleNextAt(now: Date) {
+      return scheduleTransaction(async () => {
+        const document = load();
+        const stuck = document.schedules.filter((schedule) => {
+          if (!schedule.armed || schedule.nextAt === null) return false;
+          const nextAtMs = Date.parse(schedule.nextAt);
+          if (Number.isNaN(nextAtMs) || nextAtMs >= now.getTime()) return false;
+          return document.scheduleOccurrenceClaims.some((claim) =>
+            claim.scheduleId === schedule.id
+            && claim.scheduledFor === schedule.nextAt
+            && (claim.phase === 'card-saved' || claim.phase === 'ledger-appended'));
+        });
+        if (stuck.length === 0 || !options.resolveScheduleNextOccurrenceBatch) return [];
+        const resolved = await options.resolveScheduleNextOccurrenceBatch(
+          stuck.map((schedule) => ({ scheduleId: schedule.id, source: schedule.cadence.source })),
+          now,
+        );
+        const repairs: ScheduleNextAtBackfillRepair[] = [];
+        for (const schedule of stuck) {
+          const nextAt = resolved.get(schedule.id);
+          // A missing/null entry means `cadence.source` did not parse as cron (never expected for an
+          // armed row that already dispatched once, but fail-safe: leave it exactly as found rather
+          // than guess). Re-running the backfill is a no-op once `nextAt` no longer matches a stuck
+          // claim's `scheduledFor` above -- idempotent by construction, not by comparing values here.
+          if (typeof nextAt !== 'string' || nextAt === '') continue;
+          const from = schedule.nextAt;
+          schedule.nextAt = nextAt;
+          schedule.version += 1;
+          document.scheduleCollectionRevision += 1;
+          repairs.push({ scheduleId: schedule.id, from, to: nextAt });
+        }
+        if (repairs.length > 0) commit(document);
+        return repairs;
       });
     },
 
@@ -4723,10 +4864,16 @@ function makeStore(
           gate: publicRequest(gate), interventionRequest: existingIntervention ? publicRequest(existingIntervention) : null }, true);
       }
       const parkGate = gate.gateKind === 'iteration-park';
+      // F14: a rejected/changes-requested completion gate parks its loop at bare 'parked' (below,
+      // the `!parkGate` branch), never 'awaiting-park-gate' -- the state every OTHER park path uses.
+      // Both are legal "this park gate is still open" states for a parkGate resolution; 'parked' is
+      // kept exactly as the pre-existing (already-shipped-to-prod) code always set it, rather than
+      // changed to 'awaiting-park-gate', so an ALREADY-STUCK production loop (parked before this fix
+      // existed) resolves without a data migration.
       if ((!parkGate && gate.kind !== 'approval') || gate.state !== 'open' || gate.revision !== input.expectedRequestRevision
         || loop.version !== input.expectedLoopVersion || (input.expectedReceiptVersion === null
           ? receipt !== undefined : receipt?.version !== input.expectedReceiptVersion)
-        || (parkGate ? loop.state !== 'awaiting-park-gate' || loop.interventionRef !== requestRef
+        || (parkGate ? !['awaiting-park-gate', 'parked'].includes(loop.state) || loop.interventionRef !== requestRef
           : loop.state !== 'awaiting-completion-gate' || loop.completionGateRef !== requestRef)) {
         return fail('conflict', 'iteration gate resolution changed');
       }
@@ -4745,6 +4892,13 @@ function makeStore(
           title: cleanText(`Iteration intervention: ${loop.iterationGroupId}`, MAX_TITLE),
           prompt: cleanText(`Completion gate ${input.decision}: ${receipt.summary}`, MAX_LONG_TEXT), response: null,
           resolutionOperationFingerprint: null, createdAt, updatedAt: createdAt,
+          // F14 (2026-09-23 ruling): before this, a rejection-created intervention carried no
+          // `gateKind` at all, so `routes.ts#iterationGateBinding` could never recognize it as a park
+          // gate -- `POST /api/control/iteration-gates/:ref/resolve` always 409'd
+          // `iteration-gate-linkage-ambiguous` for it (the route expected `kind: 'approval'`, this
+          // request's `kind` is `'intervention'`). Stamping it here gives it the same identity every
+          // OTHER park gate already carries, so the resolve route accepts it.
+          gateKind: 'iteration-park',
         };
       }
       return transitionIterationState(document, {
@@ -4771,6 +4925,11 @@ function makeStore(
           currentLoop.acceptedGenerationRefs = approved ? [...currentLoop.activeGenerationRefs] : [];
           if (intervention) {
             currentLoop.interventionRef = intervention.requestRef;
+            // F14: give the park a recognized reason (widened alongside 'exhausted'/'no-progress'/
+            // 'parked' in IterationParkReason and iterationGateBinding's allowlist) so the SAME
+            // resolve route this gate's own `gateKind` now points at does not also 409 on
+            // `iteration-gate-reason-mismatch`.
+            currentLoop.parkReason = 'rejected';
             document.humanRequests.push(intervention);
           } else {
             delete currentLoop.interventionRef;

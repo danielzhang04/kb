@@ -3,11 +3,30 @@
 #   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\prod\prod-archive-run.ps1 `
 #     -Run run-cc508ddb-98c5-4c65-a0a6-4e6c09650ea5 -Reason "dead canary test run, cap-blocked"
 #
-# OPEN CLASS (scripts/hooks/prod_window_guard.js rule A4o, shape O4): no prod window needed - same
-# posture as prod-respond.ps1's plain (no -Approval) shape. The daemon's
-# POST /api/control/runs/:runRef/archive is an OPEN route (dashboard/server/authority/policy.ts:45),
+#   # forcing through open human requests on a fail-closed/tagged run needs a signed approval. Argument
+#   # ORDER IS PINNED (hook rule C17): -Run -Reason [-Actor] [-URL] [-Approval] -Force, exactly as below.
+#   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\prod\prod-archive-run.ps1 `
+#     -Run run-cc508ddb-98c5-4c65-a0a6-4e6c09650ea5 -Reason "abandoning, superseded" `
+#     -Approval C:\Users\danie\kb-backups\approvals\archive-run-cc508ddb.json -Force
+#
+# OPEN CLASS without -Force (scripts/hooks/prod_window_guard.js rule A4o, shape O4): no prod window
+# needed - same posture as prod-respond.ps1's plain (no -Approval) shape. The daemon's
+# POST /api/control/runs/:runRef/archive is an OPEN route (dashboard/server/authority/policy.ts),
 # so the daemon is the real authority; this script's own pre-check exists so a mistaken run ref
 # fails fast, in plain language, before it ever reaches the daemon.
+#
+# WITH -Force (WINDOWED CLASS, hook rule C17): D1 (adversarial review of claude/c2-cadence-gates,
+# 2026-09-23 boss ruling) - the daemon's archive route now escalates exactly like the iteration-gate
+# and human-request respond routes (`escalate: 'workflow-tag'`, policy.ts) whenever `force: true` is
+# sent: a fail-closed (publish/spend-tagged, or legacy-untagged) run requires a signed approval bound
+# to this exact route + runRef before it force-resolves any open human request; an untagged run still
+# proceeds unsigned. -Approval names a JSON file holding that signed approval (the same
+# `{payload, signature}` shape prod-sign-approval.ps1's -Out writes and prod-respond.ps1 embeds) -
+# read, parsed, and forwarded verbatim as the POST body's `approval` field. The hook (C17) requires an
+# open prod window for -Force regardless of whether -Approval is present; this script does not gate
+# the window itself, exactly like every other windowed script here. ANY -Approval token alongside
+# this script's name (with or without -Force) is refused as OPEN class by the hook's
+# PROD_ARCHIVE_APPROVAL_GUARD -- it must match C17's exact windowed shape or nothing.
 #
 # Refuses (exit 1) BEFORE calling archive unless the run's lifecycle is one `archive` can legally
 # reach in one hop. The real vocabulary lives in dashboard/server/control/runLifecycle.ts's
@@ -38,13 +57,22 @@
 #
 # -Actor is recorded on the audit trail (the X-KB-Actor header) exactly like prod-respond.ps1's; it
 # is never trusted for authority (spec 4.3 - same non-authority property everywhere else in kb).
+#
+# -Force sends force:true in the POST body (D1: the daemon now escalates this exactly like a gate
+# resolution on a fail-closed run - see the header note above). -Approval names a JSON file holding a
+# signed approval; its content is forwarded verbatim as the POST body's `approval` field. -Approval
+# without -Force is accepted (the daemon simply ignores an unused field) but pointless; -Force without
+# -Approval is fine for an untagged run and will come back 403 approval-required otherwise, same as
+# any other escalated route.
 [CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)][string]$Run,
   [Parameter(Mandatory = $true)][string]$Reason,
   [string]$Actor = 'boss',
   [string]$URL = 'https://kb.tail82dd4f.ts.net',
-  [string[]]$CurlHeader = @()
+  [string[]]$CurlHeader = @(),
+  [switch]$Force,
+  [string]$Approval = ''
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path 'C:\Users\danie\kb-rehearsal\tooling\drain-v2' '_drain-common.ps1')
@@ -53,6 +81,13 @@ function Step($n, $m) { Write-Host ''; Write-Host "[$n] $m" -ForegroundColor Cya
 
 if ($Reason.Trim().Length -lt 1 -or $Reason.Length -gt 300) { Fail '-Reason must be 1..300 characters' }
 if ($Actor -notmatch '^(daniel|boss|worker:[a-z0-9][a-z0-9._-]{0,63})$') { Fail "-Actor '$Actor' is not a valid X-KB-Actor value" }
+
+$approvalObj = $null
+if ($Approval) {
+  if (-not (Test-Path -LiteralPath $Approval -PathType Leaf)) { Fail "-Approval file not found: $Approval" }
+  try { $approvalObj = Get-Content -LiteralPath $Approval -Raw | ConvertFrom-Json } catch { Fail "-Approval file was not valid JSON: $Approval" }
+  if (-not $approvalObj.payload -or -not $approvalObj.signature) { Fail "-Approval file must contain payload and signature fields: $Approval" }
+}
 
 Step 'A' "reading $Run"
 $detailRaw = Invoke-Curl $CurlHeader @('-s', '--max-time', '30', "$URL/api/control/runs/$Run")
@@ -68,10 +103,14 @@ $ARCHIVABLE_UNCONDITIONAL = @('succeeded', 'failed', 'stopped', 'interrupted')
 if ($ARCHIVABLE_UNCONDITIONAL -contains $state) {
   Step 'B' "state '$state' is archivable unconditionally"
 } elseif ($state -eq 'waiting-human') {
-  if ($openRequests.Count -ne 0) {
-    Fail "run $Run is waiting-human with $($openRequests.Count) open human request(s) - resolve or abandon them (prod-respond.ps1) before archiving"
+  if ($openRequests.Count -ne 0 -and -not $Force) {
+    Fail "run $Run is waiting-human with $($openRequests.Count) open human request(s) - resolve or abandon them (prod-respond.ps1), or pass -Force (with -Approval if the run requires a signature) to override, before archiving"
   }
-  Step 'B' 'state is waiting-human with zero open human requests - archivable'
+  if ($openRequests.Count -ne 0) {
+    Step 'B' "state is waiting-human with $($openRequests.Count) open human request(s) - forcing through (-Force)"
+  } else {
+    Step 'B' 'state is waiting-human with zero open human requests - archivable'
+  }
 } elseif ($state -eq 'archived') {
   Fail "run $Run is already archived"
 } else {
@@ -86,13 +125,21 @@ if ($state -eq 'waiting-human') {
   if (-not $reRead.run -and $reRead.value) { $reRead = $reRead.value }
   if (-not $reRead.run) { Fail "run $Run not found on the pre-POST re-read: $reReadRaw" }
   $reOpenRequests = @($reRead.humanRequests | Where-Object { $_.state -eq 'open' })
+  if ($reOpenRequests.Count -ne 0 -and -not $Force) {
+    Fail "run $Run picked up $($reOpenRequests.Count) new open human request(s) between the read and the archive POST - resolve or abandon them (prod-respond.ps1), or pass -Force, before archiving. The daemon would also now refuse this server-side (409 run-archive-open-requests); this script fails first, in plain language."
+  }
   if ($reOpenRequests.Count -ne 0) {
-    Fail "run $Run picked up $($reOpenRequests.Count) new open human request(s) between the read and the archive POST - resolve or abandon them (prod-respond.ps1) before archiving. The daemon would also now refuse this server-side (409 run-archive-open-requests); this script fails first, in plain language."
+    Write-Host "run $Run picked up $($reOpenRequests.Count) new open human request(s) since the first read - forcing through (-Force)" -ForegroundColor Yellow
   }
 }
 
-Step 'C' "archiving as $Actor : $Reason"
-$body = [ordered]@{ idempotencyKey = [guid]::NewGuid().ToString(); reason = $Reason } | ConvertTo-Json -Compress
+Step 'C' "archiving as $Actor : $Reason$(if ($Force) { ' (FORCE)' })"
+# D1: `force`/`approval` are only added to the body when actually requested - a plain archive's wire
+# shape is byte-identical to before this change.
+$bodyFields = [ordered]@{ idempotencyKey = [guid]::NewGuid().ToString(); reason = $Reason }
+if ($Force) { $bodyFields.force = $true }
+if ($approvalObj) { $bodyFields.approval = $approvalObj }
+$body = $bodyFields | ConvertTo-Json -Compress -Depth 10
 $tmp = [IO.Path]::GetTempFileName()
 [IO.File]::WriteAllText($tmp, $body)
 try {

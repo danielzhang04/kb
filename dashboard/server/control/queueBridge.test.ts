@@ -472,15 +472,15 @@ function cadenceCard(overrides: Partial<ParsedCard['meta']> = {}): ParsedCard {
   return {
     meta: {
       id: 'cadence-card-1',
-      // A containment-safe target (unlike the real `cards.py` shape, which stamps the agent's bare
-      // `agents/<id>.md` sourcePath — see the F8 report: ORG CONTAINMENT, a PRE-EXISTING and orthogonal
-      // check, refuses that shape regardless of this fix, and is deliberately left untouched here).
-      // This card exercises exactly what this fix changed: agent-declared / profile-allowlist /
-      // risk-tier validation for the `cadence:` action family, with a target that would satisfy any
-      // bare card's containment check the same way `baseCard()`'s does.
+      // The real shape `cards.py#schedule_occurrence_claim` renders for `hygiene` (fleet-scoped ->
+      // `kb-ops`, per `store.ts#deriveAgentCadenceProject`): `meta.project` and `target` both derived
+      // from the agent's own declared project, satisfying BOTH org containment (defs.ts) and the A1
+      // cross-check below (`validateCadenceCardShape` now verifies `project`/`target` against that same
+      // derivation) — see the dedicated real-shape/mismatch tests further down for the two checks this
+      // exercises on their own.
       project: 'kb-ops',
       action: 'cadence:hygiene',
-      target: 'orgs/kb-ops/agents/hygiene.md',
+      target: 'orgs/kb-ops/output/cadence/hygiene',
       'risk-tier': 'T1',
       profile: 'cadence',
       owner: 'hygiene',
@@ -523,6 +523,51 @@ describe('cardToWorkflowRequest — agent-owner cadence action family (F8)', () 
     const card = cadenceCard({ 'risk-tier': 'T3' });
     expect(() => cardToWorkflowRequest(card, { knownProfiles: CADENCE_KNOWN, repoRoot: REPO_ROOT }))
       .toThrow(/cadence risk-tier must be T1 or T2, got 'T3'/);
+  });
+
+  // F8-adjacent (2026-09-23 ruling): `scripts/cards.py#schedule_occurrence_claim` used to stamp an
+  // agent-owner card's target as the agent's bare declaration path (`agents/<agent>.md`, always
+  // outside `orgs/<project>/`) -- ORG CONTAINMENT (defs.ts:954-956) refused every such card, no matter
+  // how it was shaped otherwise. The fix moved the target to the agent's declared cadence output
+  // directory, `orgs/<project>/output/cadence/<agent-id>` (no trailing slash -- `isSafeRepoRelativePath`
+  // refuses one), with `meta.project` stamped to the SAME project. This is that real shape, exactly as
+  // `cards.py` now renders it for `hygiene` (fleet-scoped -> `kb-ops`, per
+  // `store.ts#deriveAgentCadenceProject`) -- proving the bridge admits it with no org-tree refusal.
+  it('maps the real cards.py-shaped agent-owner target (orgs/<project>/output/cadence/<agent-id>) with no org-tree refusal', () => {
+    const card = cadenceCard({ project: 'kb-ops', target: 'orgs/kb-ops/output/cadence/hygiene' });
+    const req = cardToWorkflowRequest(card, { knownProfiles: CADENCE_KNOWN, repoRoot: REPO_ROOT });
+    expect(req.def.stages).toHaveLength(1);
+    expect(req.def.stages[0].target).toBe('orgs/kb-ops/output/cadence/hygiene');
+    expect(req.def.project).toBe('kb-ops');
+  });
+
+  it('still refuses a cadence card whose target sits outside its own declared project tree', () => {
+    // meta.project says kb-ops (the agent's real derived project), but the target points somewhere
+    // else entirely -- caught by the A1 cross-check below (validateCadenceCardShape, which runs BEFORE
+    // org containment ever gets a look), not by org containment itself.
+    const card = cadenceCard({ project: 'kb-ops', target: 'orgs/kb/output/cadence/hygiene' });
+    expect(() => cardToWorkflowRequest(card, { knownProfiles: CADENCE_KNOWN, repoRoot: REPO_ROOT }))
+      .toThrow(/project\/target \('kb-ops'\/'orgs\/kb\/output\/cadence\/hygiene'\) does not match its derived project\/target/);
+  });
+
+  // A1 (adversarial review of claude/c2-cadence-gates, 2026-09-23): the three pre-existing checks
+  // (declared agent / allowlisted profile / T1-T2 tier) never verified `meta.project`/`target` against
+  // the agent's OWN derived project -- so a hand-placed card naming a DIFFERENT (but internally
+  // self-consistent) project passed every one of them. Org containment (defs.ts) is no defense here
+  // either: it only checks the target sits inside WHATEVER project the card claims, and this card's
+  // target genuinely does sit inside `orgs/some-other-project/`. Only a cross-check against the
+  // agent's own trusted derivation catches it.
+  it('A1: refuses a cadence card whose project/target are internally consistent but NOT the agent\'s own derived project', () => {
+    const card = cadenceCard({ project: 'some-other-project', target: 'orgs/some-other-project/output/cadence/hygiene' });
+    expect(() => cardToWorkflowRequest(card, { knownProfiles: CADENCE_KNOWN, repoRoot: REPO_ROOT }))
+      .toThrow(/project\/target \('some-other-project'\/'orgs\/some-other-project\/output\/cadence\/hygiene'\) does not match its derived project\/target \('kb-ops'\/'orgs\/kb-ops\/output\/cadence\/hygiene'\)/);
+  });
+
+  it('A1: admits a cadence card whose project/target match the agent\'s own derived project (structural refusal does not over-trigger)', () => {
+    const card = cadenceCard();
+    const req = cardToWorkflowRequest(card, { knownProfiles: CADENCE_KNOWN, repoRoot: REPO_ROOT });
+    expect(req.def.project).toBe('kb-ops');
+    expect(req.def.stages[0].target).toBe('orgs/kb-ops/output/cadence/hygiene');
   });
 });
 

@@ -196,11 +196,16 @@ def render(card: Card) -> bytes:
 # verbatim in each of the three places it is checked (none is importable from the other two).
 _WORKFLOW_PROFILE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9:._-]{0,127}$")
 
+# Byte-identical to `dashboard/server/agents/roster.ts`'s `SAFE_PROJECT_ID` -- same reason as
+# `_WORKFLOW_PROFILE_ID_RE` above: one shape, not importable across the Python/TS boundary.
+_PROJECT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+
 
 def schedule_occurrence_claim(*, schedule_id: str, scheduled_for: str,
                               owner: dict, mirror_path: str,
                               dispatched_at: str,
-                              workflow_profile: str | None = None) -> dict:
+                              workflow_profile: str | None = None,
+                              agent_cadence_project: str | None = None) -> dict:
     """Build the one deterministic card payload persisted by a schedule claim.
 
     P6-F1 (2026-09-17 ruling): an AGENT-owner cadence (``owner["type"] == "agent"``) has no workflow
@@ -214,6 +219,20 @@ def schedule_occurrence_claim(*, schedule_id: str, scheduled_for: str,
     cadence is unaffected: its profile is read from the definition file itself
     (``registeredWorkflowRequest``), so ``workflow_profile`` is expected ``None`` for it and is not
     written into the card at all.
+
+    F8-adjacent (2026-09-23 ruling): an agent-owner card's `meta.target` used to be
+    `owner["sourcePath"]` (`agents/<agent>.md`), a path that can never sit inside any `orgs/<project>/`
+    tree -- so `workflows/defs.ts`'s ORG CONTAINMENT check (the stage target must be inside the
+    synthesized definition's own project tree) refused EVERY agent-owner cadence card, unconditionally,
+    on top of the P6-F1 fix above. `agent_cadence_project` is the caller-resolved project for this
+    schedule's agent (the agent's declared primary project, or the fleet default `kb-ops` when the
+    agent is fleet-scoped -- resolved by `dashboard/server/control/store.ts`'s
+    `createPythonScheduleClaimRenderer`, mirroring the same derivation `mirrorPathForOwner`
+    (`dashboard/server/index.ts`) already uses for this agent's HEARTBEAT mirror). The card's own
+    `meta.project` is stamped to that SAME value, and `meta.target` becomes the agent's declared
+    cadence output directory under it (`orgs/<project>/output/cadence/<agent-id>`) -- inside the org
+    tree the synthesized definition (`project: meta.project`) declares, so the containment check that
+    refused every prior attempt now passes. `meta.owner`/the `cadence:<agent-id>` action are unchanged.
     """
     if (not isinstance(schedule_id, str) or len(schedule_id) != 64
             or any(ch not in "0123456789abcdef" for ch in schedule_id)):
@@ -234,6 +253,7 @@ def schedule_occurrence_claim(*, schedule_id: str, scheduled_for: str,
         "dispatched_at": dispatched_at,
     }
     project = "kb"
+    target = owner.get("sourcePath", mirror_path)
     if owner["type"] == "workflow":
         project = owner.get("project")
         if not isinstance(project, str) or not project:
@@ -247,12 +267,25 @@ def schedule_occurrence_claim(*, schedule_id: str, scheduled_for: str,
                 "agent-owner schedule claim requires a valid workflowProfile (P6-F1)"
             )
         extra["profile"] = workflow_profile
+        if (not isinstance(agent_cadence_project, str)
+                or not _PROJECT_ID_RE.match(agent_cadence_project)):
+            raise ValidationError(
+                "agent-owner schedule claim requires a valid agentCadenceProject (F8-adjacent)"
+            )
+        project = agent_cadence_project
+        target = f"orgs/{project}/output/cadence/{owner_id}"
+    body = f"## Work order\n\nRun the scheduled {owner_id} {owner['type']}.\n"
+    if owner["type"] == "agent":
+        # Tell the launched worker where it may write (F8-adjacent): the card's own `target` field is
+        # inert metadata to everything except this prose -- nothing else in the launch path tells the
+        # agent its writable directory, so this sentence is the only place that ever does.
+        body += f"\nYour writable target for this cadence run is `{target}/`.\n"
     card = new_card(
         project=project,
         action=f"cadence:{owner_id}",
-        target=owner.get("sourcePath", mirror_path),
+        target=target,
         risk_tier="T1",
-        body=f"## Work order\n\nRun the scheduled {owner_id} {owner['type']}.\n",
+        body=body,
         **extra,
     )
     payload = render(card)
@@ -337,6 +370,7 @@ def _main(argv: list[str] | None = None) -> int:
             mirror_path=request["mirrorPath"],
             dispatched_at=request["dispatchedAt"],
             workflow_profile=request.get("workflowProfile"),
+            agent_cadence_project=request.get("agentCadenceProject"),
         )
     except (KeyError, TypeError, ValueError, ValidationError, json.JSONDecodeError) as error:
         print(str(error)[:256], file=sys.stderr)

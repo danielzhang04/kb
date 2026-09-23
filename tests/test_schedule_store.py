@@ -158,6 +158,9 @@ def _claim_receipt(schedule_id: str, scheduled_for: str, phase: str = "claimed")
         dispatched_at="2026-08-21T12:15:01-04:00",
         # P6-F1: an agent-owner claim now requires a stored workflowProfile.
         workflow_profile="cadence",
+        # F8-adjacent: an agent-owner claim now requires the caller-resolved cadence project.
+        # `hygiene` is fleet-scoped (`group: system`), matching store.ts's `kb-ops` fallback.
+        agent_cadence_project="kb-ops",
     )
     receipt["phase"] = phase
     return receipt
@@ -184,6 +187,7 @@ def test_agent_owner_claim_stamps_meta_profile_from_workflow_profile():
         mirror_path="HEARTBEAT.md",
         dispatched_at="2026-09-21T09:00:01-04:00",
         workflow_profile="cadence",
+        agent_cadence_project="kb-ops",
     )
     assert receipt["card"]["meta"]["profile"] == "cadence"
 
@@ -235,6 +239,8 @@ def _cli_claim_receipt(schedule_id: str, scheduled_for: str, phase: str = "claim
         "dispatchedAt": "2026-08-21T12:15:01-04:00",
         # P6-F1: an agent-owner claim now requires a stored workflowProfile.
         "workflowProfile": "cadence",
+        # F8-adjacent: an agent-owner claim now requires the caller-resolved cadence project.
+        "agentCadenceProject": "kb-ops",
     }
     result = subprocess.run(
         [sys.executable, str(REPO_ROOT / "scripts" / "cards.py"), "--schedule-occurrence-claim"],

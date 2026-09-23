@@ -27,6 +27,9 @@
  *                   ssh-keygen sign command), and anything that PLACES a signed call
  *                   (prod-signed-call.ps1, and prod-respond.ps1 ONLY when it carries
  *                   -Approval — C16; the plain no-Approval shape is OPEN class, O2).
+ *                   prod-archive-run.ps1 ONLY when it carries -Force — C17; the plain
+ *                   no-Force shape stays OPEN class, O4 (B-2: the daemon now refuses to
+ *                   force-resolve open human requests unless the POST body says so).
  *                   Refused outside an explicitly opened prod window; anchored shapes
  *                   only inside one.
  *   (Standing blocks and the Agent-tool rule apply to every class identically.)
@@ -85,7 +88,12 @@ const ARCHIVE_SCRIPT_PATH = process.env.KB_ARCHIVE_SCRIPT_PATH || ARCHIVE_SCRIPT
 // them (dashboard/server/control/store.ts#archiveRun). No behavior in this script changed — same
 // argv shape, same client-side pre-check/re-read, no -Force plumbed through — so this is a
 // content-pin bump only.
-const ARCHIVE_SCRIPT_SHA256 = '93c5b36e5002e6fd8cbc85aca85e42055b686c288cd08c11afead1a415809588';
+//
+// D1 (adversarial review of claude/c2-cadence-gates, 2026-09-23 boss ruling): prod-archive-run.ps1
+// gained a real `[switch]$Force` (sends `force: true`) and `-Approval <file>` (forwards a signed
+// approval verbatim) — the C17 windowed shape below finally matches a script that actually has the
+// flag it gates, instead of a dormant grammar branch with nothing on the other end. Content-pin bump.
+const ARCHIVE_SCRIPT_SHA256 = 'e1501f56f94a72c095ea518a54a8ec9e336b6a19fe88283e0e97c7b1b81a424a';
 
 const MAX_STDIN = 1024 * 1024;
 
@@ -192,11 +200,39 @@ const SAFE_T_OR_BACKUPS = '["\']?(?:' + T + '|' + BACKUPS + ')' + B + NO_TRAVERS
 // and no -CurlHeader -- so it must not be offered either group; see the empty extras list on its
 // cmdShape() call below.
 const WSLDISTRO_ARG_GROUP = '(?:\\s+-wsldistro\\s+[a-z0-9-]{1,40})?';
+// F13 (p14, 2026-09-23): drain-step1-v2.ps1/drain-step2-v2.ps1 both declare a -ChainBase param
+// (chain[0].parent's expected value, per promote_vm_outbox.py:919-920's chain check) with a script-
+// header-documented default that goes stale every drain -- a rehearsal pass computing the correct
+// value from the local spool snapshot had no grammar shape to pass it through at all (evidence.md
+// p14 F13 item 2: refused verbatim as "not one of the reviewed shapes"). Value is a bare 40-hex
+// token only -- no quoting, matching the discipline every other allowlisted hex constant in this
+// file (DEPLOY_SHA/BROKER_DIGEST/ARCHIVE_SCRIPT_SHA256) already uses. Nested inside the -VM
+// root@localhost group like every other extra here, so a prod-shaped line (no genuine -VM
+// root@localhost marker) can never carry it.
+const CHAINBASE_ARG_GROUP = '(?:\\s+-chainbase\\s+[0-9a-f]{40})?';
 // $CurlHeader is [string[]] on the scripts (repeatable via multiple -CurlHeader occurrences), but
 // the reviewed rehearsal shape only ever needs the one tailscale-serve-shaped header Invoke-Curl
 // adds, so the grammar admits exactly one occurrence carrying one SAFE_ARG token, not an
 // arbitrary-length repeated group.
 const CURLHEADER_ARG_GROUP = '(?:\\s+-curlheader\\s+' + SAFE_ARG + ')?';
+
+// F13: -ChainBase must be exactly 40 LOWERCASE hex chars -- checked against the case-preserved
+// command text, not the lowercased `n` every shape above matches against, because
+// promote_vm_outbox.py compares this value byte-for-byte against a git sha (always lowercase from
+// git rev-parse/log) and CHAINBASE_ARG_GROUP's `[0-9a-f]{40}` class only ever sees the ALREADY-
+// lowercased command, so it cannot by itself tell a genuinely-lowercase value from one that merely
+// lowercases to something valid. A case-differing value is refused rather than silently folded to
+// something the operator never typed.
+// Captures the alnum RUN only (not \S+) -- the reviewed shapes wrap the whole -Command string in
+// a trailing `"`, immediately butting up against the value with no separating space, and \S+ would
+// swallow that quote into the captured value and false-fail a genuinely well-formed lowercase one.
+const CHAINBASE_RAW = /-chainbase\s+([0-9a-zA-Z]+)/i;
+function chainBaseCaseOk(command) {
+  const collapsed = String(command == null ? '' : command).replace(/\s+/g, ' ').trim();
+  const m = collapsed.match(CHAINBASE_RAW);
+  if (!m) return true;                       // no -ChainBase token on the command at all
+  return /^[0-9a-f]{40}$/.test(m[1]);
+}
 // -Spool/-Work/-ApprovalDir/-Signers all default to paths under kb-backups on both prod and
 // rehearsal (outbox-snapshots/outbox-work/outbox-approval-current/kb-ops-approver.allowed-signers);
 // a rehearsal run may point them at a throwaway rehearsal copy under the tooling tree instead, so
@@ -252,10 +288,27 @@ function cmdShape(rel, extraRehearsalGroups) {
     + '\\s*"$');
 }
 const C3 = cmdShape('drain-v2/drain-step1-v2.ps1',
-  [SPOOL_ARG_GROUP, WORK_ARG_GROUP, APPROVALDIR_ARG_GROUP, WSLDISTRO_ARG_GROUP, CURLHEADER_ARG_GROUP]);
+  [SPOOL_ARG_GROUP, WORK_ARG_GROUP, APPROVALDIR_ARG_GROUP, WSLDISTRO_ARG_GROUP, CHAINBASE_ARG_GROUP,
+    CURLHEADER_ARG_GROUP]);
 const C5A = cmdShape('drain-v2/drain-step2-v2.ps1',
-  [SPOOL_ARG_GROUP, WORK_ARG_GROUP, SIGNERS_ARG_GROUP, WSLDISTRO_ARG_GROUP, CURLHEADER_ARG_GROUP]);
+  [SPOOL_ARG_GROUP, WORK_ARG_GROUP, SIGNERS_ARG_GROUP, WSLDISTRO_ARG_GROUP, CHAINBASE_ARG_GROUP,
+    CURLHEADER_ARG_GROUP]);
 const C5B = cmdShape('drain-v2/ops-refresh.ps1', []);
+
+// Change 3 (2026-09-23): the accepted rehearsal drain shape, recorded here so the next rehearsal
+// worker does not have to rediscover it from evidence.md. Step 1's lock route (step A) needs the
+// 4417 Windows-side PROXY URL, not the direct daemon port 4317 (F13 item 1 -- the direct port
+// returns {"error":"forbidden","reason":"host-not-allowed"} for this specific control-mutation
+// route; read-only routes accept either). -ChainBase is only ever needed when the script's own
+// stale default (see drain-step1-v2.ps1's/drain-step2-v2.ps1's own header) no longer matches the
+// chain under test -- compute it fresh from the local spool snapshot (first unreceipted manifest's
+// `parent`) before each drain and pass it as plain lowercase hex, no quotes:
+//   powershell -NoProfile -ExecutionPolicy Bypass -Command "& 'C:\Users\danie\kb-rehearsal\tooling\
+//     drain-v2\drain-step1-v2.ps1' -VM root@localhost -URL http://127.0.0.1:4417 -SshShimDir
+//     <shim-dir> -WslDistro kb-rehearsal -ChainBase <40-hex-computed-from-the-spool>"
+// Drop the trailing -ChainBase group entirely when the script's own default is already correct for
+// the chain under test (the pre-F13 shape, still accepted). drain-step2-v2.ps1 takes the identical
+// extras (C5A) once Daniel has signed the approval step 1 wrote.
 
 // C4 — Daniel's one signature of the morning
 const C4 = new RegExp('^ssh-keygen\\s+-y\\s+sign\\s+-f\\s+' + PATHARG
@@ -318,6 +371,28 @@ const O4 = new RegExp(PRE + PS + '-file\\s+' + PKB('scripts/prod/prod-archive-ru
   + '(?:\\s+-actor\\s+' + ACTOR_ARG + ')?'
   + URL_REHEARSAL_ARG_GROUP + '$');
 
+// C17 — prod-archive-run.ps1 CARRYING -Force, WINDOWED class (mirrors C16's relationship to O2
+// exactly): the daemon's archive route (B-2, dashboard/server/control/store.ts#archiveRun) refuses
+// a run with open human requests unless the POST body carries force:true; prod-archive-run.ps1
+// gained a -Force switch that plumbs that through. Same O4 grammar, -Force trailing after the
+// (optional) rehearsal -URL marker, same content-pin (archiveScriptDigestOk, below) as O4 since
+// C17 targets the exact same script file, not a different one. Refused outside a prod window like
+// every other windowed shape -- this does not weaken O4's own no-window posture, it only ever adds
+// a NARROWER, MORE gated path (window required) for a flag O4's own grammar has no branch for.
+//
+// D1 (adversarial review of claude/c2-cadence-gates, 2026-09-23 boss ruling): the daemon's archive
+// route now escalates force:true exactly like a gate resolution on a fail-closed/tagged run, so
+// prod-archive-run.ps1 gained an -Approval <file> that forwards a signed approval. Same optional
+// slot C16 gives -Approval -- right before the terminal flag, after the (optional) rehearsal -URL
+// marker -- matching the script's own pinned invocation order (-Run -Reason [-Actor] [-URL]
+// [-Approval] -Force).
+const C17 = new RegExp(PRE + PS + '-file\\s+' + PKB('scripts/prod/prod-archive-run.ps1')
+  + '\\s+-run\\s+([a-z0-9-]{1,80})\\s+-reason\\s+' + REASON
+  + '(?:\\s+-actor\\s+' + ACTOR_ARG + ')?'
+  + URL_REHEARSAL_ARG_GROUP
+  + '(?:\\s+-approval\\s+' + SAFE_T_OR_BACKUPS + ')?'
+  + '\\s+-force$');
+
 /**
  * A-2: O4's shape match proves the COMMAND is well-formed, not that the SCRIPT at that path is the
  * reviewed one — the main checkout at KBDIR is not content-pinned and routinely switches branches
@@ -343,6 +418,14 @@ function archiveScriptDigestOk() {
 // O4's grammar has no -Approval branch at all, so this never actually matches today — it exists so
 // the invariant is explicit rather than incidental if O4 is ever extended.
 const PROD_ARCHIVE_APPROVAL_GUARD = /prod-archive-run\.ps1\b[\s\S]*(?:^|\s)-approval(?:\s|$)/;
+
+// C17's classification guard: prod-archive-run.ps1 named alongside a genuine -Force token must
+// NEVER be treated as O4 (open class, no window needed) -- mirrors PROD_RESPOND_APPROVAL_SCRIPT's
+// guard for C16 exactly, same position/reasoning (checked in isProdTargeting BEFORE OPEN_SCRIPTS,
+// so OPEN_SCRIPTS' own prod-archive-run.ps1 arm never gets first crack at it). Whitespace-bounded,
+// so a -Reason value that merely CONTAINS the substring "-force" also trips this -- a conservative
+// (more-restrictive, never less-restrictive) false positive, not a hole.
+const PROD_ARCHIVE_FORCE_SCRIPT = /prod-archive-run\.ps1\b[\s\S]*(?:^|\s)-force(?:\s|$)/;
 
 // A quoted "<METHOD> /api/..." route template, shared by the two signed-channel helpers below.
 const ROUTE_ARG = '("[a-z]+ /api/[a-z0-9/:_-]{1,120}"|\'[a-z]+ /api/[a-z0-9/:_-]{1,120}\')';
@@ -556,6 +639,9 @@ function isProdTargeting(n) {
   // C16: prod-respond.ps1 carrying -Approval is windowed — checked before OPEN_SCRIPTS so it is
   // never classified A4o (OPEN_SCRIPTS' own prod-respond.ps1 arm would otherwise match first).
   if (PROD_RESPOND_APPROVAL_SCRIPT.test(n)) return 'A4w';
+  // C17: prod-archive-run.ps1 carrying -Force is windowed — same reasoning/position as C16 above,
+  // checked before OPEN_SCRIPTS so it is never classified A4o.
+  if (PROD_ARCHIVE_FORCE_SCRIPT.test(n)) return 'A4w';
   if (OPEN_SCRIPTS.test(n)) return 'A4o';
   if (WINDOWED_SCRIPTS.test(n)) return 'A4w';
 
@@ -718,6 +804,7 @@ function allowlistMatch(n) {
   if (C14.test(n)) return 'C14';
   if (C15.test(n)) return 'C15';
   if (C16.test(n)) return 'C16';
+  if (C17.test(n)) return 'C17';
   const ssh = n.match(SSH_ROOT);
   if (ssh && isReadVerb(ssh[1])) return 'C7';
   return null;
@@ -903,10 +990,25 @@ function decide(raw, oversize) {
   if (!allowed) {
     block('the prod window is open, but this command is not one of the reviewed shapes '
       + '(preflight / kb-deploy / drain-step1 / sign / drain-step2 / ops-refresh / prod-stop-run / '
-      + 'prod-canary-launch / prod-sign-approval / prod-signed-call / the human-approval signature / an allowlisted '
-      + 'read-only root ssh verb). Extra parameters are refused on purpose. Run it by hand outside '
-      + 'the fleet, or add the shape to scripts/hooks/prod_window_guard.js and its tests first.',
+      + 'prod-canary-launch / prod-sign-approval / prod-signed-call / the human-approval signature / '
+      + 'prod-archive-run -Force / an allowlisted read-only root ssh verb). Extra parameters are '
+      + 'refused on purpose. Run it by hand outside the fleet, or add the shape to '
+      + 'scripts/hooks/prod_window_guard.js and its tests first.',
       tool, prodRule, command, true);
+  }
+
+  // F13: -ChainBase's VALUE must match the case-preserved command exactly, not just the
+  // lowercased `n` the shape grammar above already matched against — see chainBaseCaseOk().
+  if ((allowed === 'C3' || allowed === 'C5a') && !chainBaseCaseOk(command)) {
+    block('-ChainBase must be exactly 40 lowercase hex characters, matching git\'s own output '
+      + 'case. Refusing a value that only matches after this hook lowercases the whole command.',
+      tool, allowed, command, true);
+  }
+
+  // C17 shares O4's content-pin: same script file, so the same digest check applies here too.
+  if (allowed === 'C17' && !archiveScriptDigestOk()) {
+    block('prod-archive-run.ps1 content does not match the pinned digest; update '
+      + 'ARCHIVE_SCRIPT_SHA256 in the hook and its tests after review.', tool, 'A2', command, true);
   }
 
   audit('ALLOW', tool, allowed, command);
