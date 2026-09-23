@@ -2,82 +2,96 @@
 
 ## Now
 
-The production VM (`kb`, tailnet `100.89.73.118`) is LIVE on release `8f71173e`
-(main after PR #202 merged 2026-09-17, deployed 23:01Z under the prod-window
-guard; `previous` = `7e09fd4f`, backup `/root/pre-fix-20260917T230126Z`).
-Authority and guardrails are in force: no passkeys, open|signed|none route
-classes on every scope, SSH-signed human approvals (`kb-ops-approver`, namespace
-`kb-human-approval`, allowed-signers installed at
-`/usr/local/lib/kb/kb-ops-approver.allowed-signers`, passkey drop-in removed),
-`X-KB-Actor` audit with a required reason, publish/spend tags pinned at launch.
+The production VM (`kb`, tailnet `100.89.73.118`) is LIVE on release `e8ac49ad`
+(PR #203 rulings batch merged 2026-09-21 to `fc750a46`; PR #204 collector
+`claude/tick-baseline`, 4cb7748c, merged 2026-09-23 to `e8ac49ad`; deployed to
+prod 2026-09-23 05:55Z, backup `/root/pre-fix-20260923T055529Z`, previous
+`8f71173e`). Release: daemon-internal schedule tick (every 5 min, outbox mode,
+before/after status snapshot, dirty-checkout skip); `cadence` execution
+profile + allowlist for agent-owner cadences; bridge admits `cadence:<agent>`
+cards and stops retrying structural refusals; `nextAt` advances on
+card-saved; `archiveRun` refuses open human requests unless forced; kb-reader
+sshd `Match`/`ForceCommand` block with reader-shell `SSH_ORIGINAL_COMMAND`
+fix (F4); prod-window guard hook rehearsal-only waiver (A-1), D10 metachar
+block, O4 archive shape content-pinned, drain rehearsal `-WslDistro` shapes.
 
-The v1 acceptance canary `run-cc508ddb-98c5-4c65-a0a6-4e6c09650ea5` completed on
-the new release: its legacy completion gate was resolved with a signed approval
-by Daniel (HTTP 200, `resolvedBy.actor=daniel`), the run reached
-`succeeded / ok`, and `brief.json` served 200 by digest with a matching sha256
-while a tampered digest returned 404. The v1 launch arc is closed.
+Live tick proof 2026-09-23: first tick `due=0 dispatched=0 paths=1
+committed=5e9a5c0b` clean checkout; schedule `67340ae3` (self-lint-report,
+cron `18 2 * * *` ET) claimed by the 06:20Z tick (`due=1 dispatched=1 paths=2
+committed=4bb05d95`), run `run-e3860b76-...` succeeded/ok 06:24:46Z, checkout
+clean at `0a2fa755`. Daily drain 2026-09-22: 19 bundles promoted
+(`bd803ef7` → `8865a57f`); a governance path the boss had cherry-picked onto
+ops was refused by VM apply and reverted (`052c8355`); resumed via
+`promote_vm_outbox --reconcile-only`. Ops linear; next drain chain base
+`052c8355`. Rehearsal passes p13 (tip `25778d50`) and p14 (tip `4cb7748c`)
+evidence in `C:\Users\danie\kb-rehearsal\tooling\rehearsal\p13\evidence.md`
+and `p14\evidence.md`.
 
-The outbox is drained to `origin/ops` (linear). Nine agent-owner cadences remain
-disarmed (rehearsal tooling p8 snapshot); the workflow schedule `96db76e4` is
-armed but nothing ticks it on the VM.
+Three cards closed this pass (`queue/done/`): `2c3d4e5f-708192a3` (tick
+source), `3d4e5f60-8192a3b4` (cadence execution profile — ruling+code done,
+re-arm blocked by new finding), `4e5f6071-92a3b4c5` (sshd SFTP deny).
 
 ## Current gate
 
-None for the launch. Daniel owns the rulings in `## Next`.
+None for the deploy. Daniel owns the rulings in `## Next` items 1 and 3.
 
 ## Next
 
-1. Daniel rules (cards filed in `queue/inbox/` 2026-09-17): `governance/risk-tiers.md`
-   D2.13 amendment; schedule tick source; agent-cadence execution profile;
-   `sshd` SFTP deny for `kb-reader`; linear-history ruleset on ops; the
-   dashboard-ops worktree reset.
-2. Daniel re-runs `python C:\Users\danie\kb-rehearsal\tooling\patch-settings-prod-window.py`
-   so the session hook also gates Write/Edit on the window file (review 2, N4),
-   and closes PR #196 (its hook copy shipped inside #202) and rules on PR #193.
-3. Archive the dead canary runs `run-1328b419`, `run-4113b3b2`, `run-efad83df`,
-   `run-8bd8eeb9`, `run-4b3867de`, `run-bb9b3a00` (delete-class, human only).
-4. Sweep `queue/` for any pre-deploy `queue-bridge:` card whose run exists; N1 is
-   fixed (`012a14ca`) so replays now reconcile, but a card that failed before the
-   deploy may need one re-dispatch.
-5. Residual LOW/MEDIUM review items are cards in `queue/inbox/` (14 filed
-   2026-09-17).
+1. Four new findings cards filed 2026-09-23 in `queue/inbox/`:
+   `202b9025-5ac106e7` (T2 — agent-owner cadence target-synthesis mismatch,
+   blocks re-arming the nine disarmed cadences), `3ad32939-41ae8728` (T2 —
+   `nextAt` boot backfill for pre-fix `card-saved` rows), `c14ef64c-a4bce73c`
+   (T2 — drain rehearsal `-ChainBase`/4417-proxy gap + completion-gate
+   rejection missing `gateKind`, stuck `run-cdae7121` on prod), and
+   `0139c14e-5bb7dc47` (T3, human — archive 4 dead canaries, rule on schedule
+   `67340ae3`).
+2. Daniel gates owed: live test 3 (signed budget override, one signed line);
+   browser dashboard + Terminal check on `e8ac49ad`; delete
+   `governance/webauthn-credentials.yaml` on main; `claude/v1-desktop-u12`
+   (PR #186) keep-or-drop. Done 2026-09-17/22: patch-settings re-run, PR #196
+   closed, PR #193 merged, ops linear-history ruleset, dashboard-ops reset,
+   D2.13 pasted on main.
+3. `run-4113b3b2` and `run-bb9b3a00` were archived by Daniel in the UI on
+   2026-09-17; only the four named in `0139c14e-5bb7dc47` remain.
+4. Residual LOW/MEDIUM review items remain as cards in `queue/inbox/` (14
+   filed 2026-09-17).
 
 ## Blocked
 
-Nothing platform-side. Governance and operations items await Daniel’s rulings.
+Re-arming the nine disarmed agent-owner cadences is blocked on
+`202b9025-5ac106e7` (target-synthesis mismatch). `run-cdae7121` is stuck
+`waiting-human` pending `c14ef64c-a4bce73c`. Nothing else platform-side;
+remaining items await Daniel's rulings.
 
 ## Decisions
 
-- 2026-09-16 — Daniel ruled: no passkeys on production.
-- 2026-09-16 — Daniel approved authority and guardrails Approach 1, specified
-  in `docs/superpowers/specs/2026-09-16-authority-and-guardrails-design.md` and
-  planned in `docs/superpowers/plans/2026-09-16-authority-and-guardrails-plan.md`.
-- 2026-09-17 — Boss ruling: `workflowTags` are not part of the launch
-  fingerprint (derived from `owner`, which is fingerprinted), so legacy
-  idempotency keys replay 200 instead of 409 (N1, `012a14ca`).
-- 2026-09-17 — Daniel: subagent dispatches run on sonnet/haiku unless a
-  security-critical review demands opus.
+- 2026-09-16 — no passkeys on production; authority/guardrails Approach 1
+  approved.
+- 2026-09-17 — `workflowTags` excluded from the launch fingerprint (N1,
+  `012a14ca`); subagent dispatches default sonnet/haiku unless
+  security-critical (opus).
+- 2026-09-21 — Boss amendment to ruling 2: tick source = daemon-internal, not
+  a systemd timer, because only the daemon can commit into the ops checkout.
+- 2026-09-22 — Daniel: "one branch, one merge" — no per-fix PRs; boss tests
+  and rehearses locally, one merge Daniel reviews, never auto-merge.
+- 2026-09-22 — Daniel accepted rulings 2/3/4 and pasted D2.13 on main
+  (governance stays off ops: reconciler allowlist only, never a direct or
+  cherry-picked write — see the drain incident in `## Now`).
 
 ## Findings
 
-- Seven production demo canaries each failed at one distinct layer and were
-  fixed and deployed in PRs #194, #195, #197, #198, #199, #200, and #201:
-  research profile Write permission; fenced-judge JSON; empty
-  `resolvedFindingRefs`; $5 cap counting subscription usage; accounting-window
-  policy hash; prose-wrapped JSON; and budget-window handling. Lesson: one
-  real-model pass per workflow before "launch-ready"; the stub masks all three.
-- Final rehearsal pass p12 (opus, `C:\Users\danie\kb-rehearsal\tooling\rehearsal\p12\evidence.md`)
-  proved the exact 403 → sign → 200 sequence on a legacy-shaped run, a clean
-  Linux gate (3044 vitest, 2285 pytest), and found N1's first fix was dead code
-  behind a store-only test. Lesson: a reviewer's "fixed" needs a production-path
-  test.
-- Non-descriptive `-Topic` values make the demo researchers answer BLOCKED;
-  always pass a subject-like topic.
-- The auto-mode classifier refuses some hook-allowlisted prod shapes
-  nondeterministically (window open, park, signed respond); Daniel ran the
-  signed respond by hand with the `!` prefix in Git Bash form.
-- PR #202 gates open/signed/none route classes on every scope, uses the
-  `kb-ops-approver` SSH signing key and `kb-human-approval` namespace, audits
-  `X-KB-Actor`, requires a reason, pins publish/spend tags at launch, supports a
-  signed budget override, adds loopback peer-owner proof for win32-desktop, and
-  hardens the session hook (228 tests).
+- Seven production demo canaries (pre-launch) were fixed across PRs #194–201;
+  lesson: one real-model pass per workflow before "launch-ready".
+- v1 acceptance canary `run-cc508ddb` closed the launch arc (signed approval,
+  succeeded/ok, digest 200/tamper 404) — see PR #202.
+- 2026-09-23 findings, each filed as its own card (see `## Next` item 1):
+  agent-owner cadence target-synthesis mismatch (F8-adjacent);
+  prospective-only `nextAt` advance leaves pre-fix rows noisy forever (F11);
+  drain rehearsal `-ChainBase`/proxy gap and completion-gate-rejection
+  `gateKind` gap sticking runs in `waiting-human` (F13/F14); four dead canary
+  interventions need human archiving (T3).
+- Reusable lessons from this pass are in `memory/claude-boss.md` under
+  "2026-09-22/23 — rulings batch" (tick untracked-file check, one-branch-one-
+  merge, governance-off-ops after the cherry-pick incident, F4 self-
+  ForceCommand, F14 gateKind, F11 ship-backfill-with-the-fix, F8-adjacent
+  joint-contract testing).

@@ -48,6 +48,36 @@
 - PLATFORM DEFECT FOUND+FIXED: manifest hashing was checkout-dependent (raw bytes vs autocrlf) — every fresh Windows clone false-tampered every blessed suite; agent-suite + canary hashers now EOL-normalize (G2, 1365c5a). Also: the promotion-eval-namespace canary's claim was too broad — it proved key-noncollision only; the actual eval-suite→promotion exclusion didn't exist until Task G built it. Canary claims deserve the same adversarial reading as code.
 - REMAINS: Daniel's 5 morning gates in MORNING-REPORT-WAVE2.md (rule-8 pick, manifest blessings, maintainer first fire, residue, merge-later); Wave-3 candidates in docs/proposals/agent-arch-reconciliation.md.
 
+## 2026-09-22/23 — rulings batch: review found the tick wrote untracked files; one-branch-one-merge; drain incident from a governance cherry-pick; F4 self-ForceCommand; F14 rejection intervention
+- RULING: tick source = daemon-internal, not a systemd timer — only the daemon can commit into
+  the ops checkout (2026-09-21 ruling 2, amended by the boss). Any future "add a timer" proposal
+  for anything that commits to ops is wrong by construction.
+- RULING (Daniel, 2026-09-22): "one branch, one merge" — no per-fix PRs; boss tests + rehearses
+  locally, one merge he reviews, never auto-merge. Applies to this whole close-out batch.
+- LESSON: pre-merge review of the tick caught it writing untracked files on a real tick — verify
+  checkout cleanliness (`git status --short` empty) after every tick test, not just that the
+  commit itself succeeded.
+- HAZARD (real): the 2026-09-22 daily drain had the VM refuse apply because a governance path had
+  been cherry-picked onto ops by the boss — reverted (`052c8355`), then resumed via the promote
+  script's `--reconcile-only` path once merged to main properly. LAW: `governance/` never lands on
+  ops by cherry-pick or any other direct write; it flows through main and the reconciler's own
+  allowlist only.
+- FIX (F4): the kb-reader sshd `Match`/`ForceCommand` block only worked once the reader shell was
+  made to honour `SSH_ORIGINAL_COMMAND` on its own self-invocation — a ForceCommand wrapper that
+  re-execs itself must explicitly thread that variable through, or the restriction silently
+  no-ops.
+- FIX (F14): rejecting a completion gate must stamp `gateKind` on the resulting intervention, or
+  both `iteration-gates/:ref/resolve` and the human-requests respond route refuse it
+  (`iteration-gate-linkage-ambiguous`) and the run sticks in `waiting-human` with no route out.
+- LESSON (F11): a `nextAt`-advance fix that only applies prospectively leaves every
+  already-`card-saved` row stuck reporting `due=1` forever — ship the boot backfill in the SAME
+  change as the advance fix, not as a follow-up card, or the noise looks like a false "working".
+- LESSON (F8-adjacent): the card-claim renderer and the workflow-definition target validator
+  (`workflows/defs.ts`) were never tested against each other for agent-owner cadences — each side
+  had passing unit tests while the seam between them (`agents/<agent>.md` vs. "inside the org
+  tree") silently blocked every claim. Cross-component contracts need a joint test, not two
+  separate green suites.
+
 ## 2026-08-21 — Dashboard v3 P2 run (boss session, codex-only; Daniel away, no gates)
 - INFRA: codex-cli 0.149 rejects `approval_policy = "untrusted"` at config load → dispatch preflight read it as "auth stale". Fixed repo `.codex/config.toml` → `on-request` and made the preflight pass the same `-c approval_policy=never` spawn uses (`432a49db`). Diagnose "auth stale" by running plain `codex login status` first.
 - WORKED: plan cycle r1 → full adversarial review (sol) → r2 rewrite → review 2 → targeted patch → scoped opus verify = SHIP in 4 rounds (~3 h). Boss findings the reviewer missed twice: spec §6 "Seeded System schedules" (7 seeds + Grader/Hygiene mappings) — read every spec section the phase's "In" list names, not only §10.

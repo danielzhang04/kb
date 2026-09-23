@@ -1,6 +1,6 @@
 # kb-ops — GOAL
 
-_Refreshed: 2026-09-17_
+_Refreshed: 2026-09-23_
 
 ## North star
 
@@ -21,8 +21,10 @@ guardrail boundaries.
 - The real completion gate can be resolved with the new signed approval
   channel, without a production passkey.
 - Remaining operational and governance decisions are recorded by Daniel:
-  D2.13, schedule tick source, agent-cadence execution profile, `kb-reader`
-  SFTP deny, ops linear-history ruleset, and dashboard-ops reset.
+  D2.13, schedule tick source, agent-cadence execution profile, and
+  `kb-reader` SFTP deny are RECORDED (2026-09-21/22, PR #204, live on prod
+  `e8ac49ad`). Still open: ops linear-history ruleset and dashboard-ops
+  reset.
 
 ## Invariants
 
