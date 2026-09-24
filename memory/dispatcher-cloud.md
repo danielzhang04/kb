@@ -992,3 +992,22 @@
 - Action-required carried: figment T3 GATE A eye-gate 65d8f246; atlas remediation diff >400 lines
   on codex/atlas-enhancements-20260820 awaiting Daniel review (+ remote push blocked pending origin).
 - Push path: see final summary (DIRECT-PUSH vs PR-AWAITING-HUMAN-MERGE determined at push time).
+
+## 2026-09-24 nightly-review (dispatcher-cloud, cloud VM)
+- Ran clean: preamble OK, `sync_skills.py --check` in sync (exit 0), dispatch emitted 1 card
+  (nightly-review 6ab4bfba-40e8790d, model claude-sonnet-5, acts-alone). Executed it; regenerated
+  both dashboards in full. Today cost $0.00 vs $30; yesterday $1.88 (4 runpod l40s pod-create).
+- sync_daemon_dirs (unchanged chronic): script still main-only/absent on ops. Ran refs-fallback
+  (`git show origin/main:scripts/sync_daemon_dirs.py > tmp; python tmp --check --repo-root .`)
+  -> exit 1, SAME single ops-only drift `orgs/kb-ops/workflows/acceptance-run.md`. Counted
+  12 dedicated wake-me cards ALREADY OPEN on this exact issue (2026-08-15..2026-09-23). DECISION:
+  did NOT file a 13th duplicate (frugality; report-only gate already served 12x) — surfaced via
+  the scheduled-run push notification + dashboard Anomalies + this note instead. Owed DESKTOP fix:
+  re-add script to ops + `--sync --prune` (or reconcile file to main) AND amend nightly.md step 2b
+  so it stops re-firing. If a future run keeps piling duplicates, the routine itself is the bug.
+- Working/ staleness: judge from `git log -1 --format=%ci -- <path>`, NOT fs mtime (fresh clone
+  => all mtimes = clone time). Confirmed stale: d126c410 (figment, since 2026-09-07 ~17d, also has
+  unquoted-colon malformed `action:`), 6a6bc3dd (kb-ops iter-smoke, since 2026-07-30 ~56d).
+- Action-required carried: figment T3 GATE A eye-gate 65d8f246; atlas remediation diff >400 lines
+  on codex/atlas-enhancements-20260820 awaiting Daniel review.
+- Push path recorded in the final run summary (DIRECT-PUSH vs PR-AWAITING-HUMAN-MERGE).
