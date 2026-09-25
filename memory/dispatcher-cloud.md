@@ -1011,3 +1011,23 @@
 - Action-required carried: figment T3 GATE A eye-gate 65d8f246; atlas remediation diff >400 lines
   on codex/atlas-enhancements-20260820 awaiting Daniel review.
 - Push path recorded in the final run summary (DIRECT-PUSH vs PR-AWAITING-HUMAN-MERGE).
+
+## 2026-09-25 nightly-review (dispatcher-cloud, cloud VM)
+- Ran clean: preamble OK, `sync_skills.py --check` in sync (exit 0), dispatch emitted 1 card
+  (nightly-review 6ab6117a-b6c77610, model claude-sonnet-5, acts-alone). Executed it; regenerated
+  both dashboards in full. Cost $0.00 today vs $30 ceiling; 2026-09-24 cost row $0.00.
+- sync_daemon_dirs (unchanged chronic): script still main-only/absent on ops (EXIT=2 literal).
+  Refs-fallback (`git show origin/main:scripts/sync_daemon_dirs.py > tmp; python tmp --check
+  --repo-root .`) -> exit 1, SAME single ops-only drift `orgs/kb-ops/workflows/acceptance-run.md`.
+- DECISION DIVERGES from 2026-09-24: this run's mandate was "read routines/nightly.md and follow
+  it EXACTLY", and step 2b unambiguously says write a wake-me card on drift. So I DID file
+  `wake-daniel-2026-09-25-sync-daemon-dirs-drift` (now 13 open on this exact issue, 08-15..09-25).
+  Noted the tension: prior run skipped filing for frugality; a literal read of the routine files it.
+  The real fix is still DESKTOP: re-add script to ops + `--sync --prune` (or reconcile file to
+  main) AND amend step 2b so it dedupes against an already-open card. Until step 2b is amended,
+  each literal run keeps adding one card/night.
+- Working/ staleness by `git log -1 -- <path>` (NOT fs mtime; fresh clone => all clone-time):
+  d126c410 (figment, since 2026-09-07 ~18d, unquoted-colon malformed `action:` -> yaml ScannerError),
+  6a6bc3dd (kb-ops iter-smoke, since 2026-07-30 ~57d). Both surfaced in dashboard Anomalies.
+- Action-required carried: figment T3 GATE A eye-gate 65d8f246 (blocks curation to 40).
+- Push path recorded in the final run summary (DIRECT-PUSH vs PR-AWAITING-HUMAN-MERGE).
