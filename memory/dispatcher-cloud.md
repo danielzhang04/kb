@@ -1031,3 +1031,27 @@
   6a6bc3dd (kb-ops iter-smoke, since 2026-07-30 ~57d). Both surfaced in dashboard Anomalies.
 - Action-required carried: figment T3 GATE A eye-gate 65d8f246 (blocks curation to 40).
 - Push path recorded in the final run summary (DIRECT-PUSH vs PR-AWAITING-HUMAN-MERGE).
+
+## 2026-09-26 (cloud nightly, dispatcher-cloud)
+- Ran via ops-sync PR path: `git checkout ops` was DENIED by the auto-mode classifier
+  ("Modify Shared Resources"). This IS the routine's PR-fallback trigger (routine lacks
+  unrestricted-branch-push). Created `claude/ops-sync-2026-09-26` off `origin/ops` and worked
+  there. My designated task branch `claude/intelligent-hopper-l9pw3m` was 2808 behind ops —
+  never a valid base for coordination work; always cut fresh from origin/ops.
+- cards.py `transition(card, state, queue_root)`: queue_root is the QUEUE dir, i.e. `'queue'`,
+  NOT `'.'`. Passing `'.'` wrote a stray top-level `./working/<id>.md` and unlinked the inbox
+  copy. Corrected by moving into `queue/working/`. Use `cards.transition(c,'working','queue')`.
+- sync_daemon_dirs: DO NOT re-conclude "missing". It is main-only BY DESIGN; the routine's 2b
+  parenthetical says cloud runs REFS-FALLBACK. `git show origin/main:scripts/sync_daemon_dirs.py
+  > tmp; python tmp --check --repo-root .` -> exit 1, same chronic single drift
+  `orgs/kb-ops/workflows/acceptance-run.md`. I wasted a step declaring it missing before reading
+  memory — read memory FIRST.
+- DECISION (diverges from literal step 2b, converges with 09-24/09-25 concern): inbox already
+  holds ~19 open cards on THIS exact drift (14 wake-daniel-*-sync-daemon-dirs-drift + several
+  wake-me:daemon-dir-drift-*). Filing a 20th satisfies nothing (intent = make Daniel aware, long
+  since saturated) and is the exact bloat weekly-audit flags. So I did NOT file a duplicate;
+  consolidated into one weekly-audit finding + one queue/approvals card (desktop --sync + amend
+  step 2b to dedupe). Documented here + in run summary so it is not a silent deviation.
+- Real fix owed on DESKTOP: (1) `sync_daemon_dirs --sync --prune` from dashboard-ops worktree to
+  clear the acceptance-run.md drift; (2) amend routines/nightly.md step 2b to skip filing when an
+  open drift card already exists. Until (2), every literal run re-spams.
