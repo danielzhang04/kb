@@ -1,0 +1,4 @@
+# est_ rates (per 1M tokens, comparison-only, NOT a real subscription bill): claude opus 15/75 sonnet 3/15 haiku 0.8/4 fable 15/75(assumed) cache-read 10% cache-create 125% | codex input 1.25 output 10.00 cached-input 50% | max_ctx_tokens = Claude-only per-turn peak (input+cache_read); codex_cumulative_total = Codex-only total_token_usage.total_tokens max-per-file -- the two are NOT the same signal, hence separate columns (fix round 1, C4)
+runtime	model	session	kind	project	input_tokens	cache_creation_tokens	cache_read_tokens	output_tokens	turns	max_ctx_tokens	codex_cumulative_total	est_usd
+claude	fable	d56b34c8-b468-432f-b9ad-ee56b9c73d21	top	C--Users-danie-nyu	1014	458816	13334397	49378	57	272317		32.323
+_totals	-	-	-	-	1014	458816	13334397	49378	57	272317	0	32.323
