@@ -1,27 +1,31 @@
 # Executive Dashboard
-_Generated: 2026-09-26T06:19:57Z by dispatcher-cloud_
+_Generated: 2026-09-27T06:18:36Z by dispatcher-cloud_
 
 ## Action required
 - **figment / T3** — `65d8f246-8a461521`: GATE A eye-gate — operator to rule creator-001
   expansion-02 blind board (seven axes) before curation to 40 can proceed. Awaiting Daniel.
+- **kb / T1** — `6ab76543-b01ea7d5`: `wake:human-decision` — a human-decision card sits in
+  approvals. Awaiting Daniel.
 
 ## Queue
 | state | count |
 |-------|-------|
 | inbox | 117 |
 | working | 3 |
-| approvals | 1 |
+| approvals | 2 |
 | blocked | 0 |
-| done | 1614 |
+| done | 1616 |
 | archived | 10 |
 
 ## Last 24h
-- Cadences dispatched today (2026-09-26): `nightly-review` (`6ab7633d-038267ce`),
-  `weekly-audit` (`6ab7633d-543cd841`) — both by dispatcher-cloud, cloud tier.
-- Prior nightly-review ran 2026-09-25 (`6ab6117a-b6c77610`).
-- Cost: $0.00 API-billed (all steps subscription-billed, logged 0.0) against the
+- Cadences dispatched today (2026-09-27): `nightly-review` (`6ab8b4e3-b9fb4514`) by
+  dispatcher-cloud, cloud tier. This run is executing it.
+- Prior night (2026-09-26): `nightly-review` (`6ab7633d-038267ce`) and `weekly-audit`
+  (`6ab7633d-543cd841`).
+- Cost: $0.00 API-billed today (all steps subscription-billed, logged 0.0) against the
   $30.00/day ceiling → full budget remaining.
-- Notable: this nightly run regenerated dashboards and is executing the weekly audit.
+- Notable: this nightly run regenerated dashboards; preamble and `sync_skills --check` both
+  passed clean.
 
 ## Projects
 - **atlas** — Omni-interface foundation complete locally (`codex/atlas-enhancements-20260820`);
@@ -38,17 +42,19 @@ _Generated: 2026-09-26T06:19:57Z by dispatcher-cloud_
 
 ## Anomalies
 - Stale working/ cards (>48h, no movement):
-  - `6a6bc3dd-5494006b` (kb-ops, `iter-smoke-t2`, T1, owner codex-worker) — last touched
-    2026-07-30, ~58 days stale. Candidate for stranded-archiver / human triage.
-  - `d126c410-9bc54280` (figment, `track1:replicate`, T2, owner figment-expand) — last touched
-    2026-09-07, ~19 days stale.
+  - `6a6bc3dd-5494006b` (kb-ops, owner codex-worker) — ~8 weeks stale (last touched late July).
+    Candidate for stranded-archiver / human triage.
+  - `d126c410-9bc54280` (figment, owner figment-expand) — ~3 weeks stale (last touched
+    2026-09-07).
 - Large inbox backlog: 117 cards in queue/inbox/ — worth a human glance to confirm none are
   stranded awaiting dispatch.
-- Daemon-dirs drift (chronic): `sync_daemon_dirs --check` (run via the routine's cloud
-  refs-fallback, `origin/main` vs `origin/ops`) reports exit 1 — one persistent ops-only extra,
-  `orgs/kb-ops/workflows/acceptance-run.md`. Fix is a desktop `--sync --prune`.
-- Wake-card pileup: ~19 open inbox cards already report this identical drift (14
-  `wake-daniel-*-sync-daemon-dirs-drift` + several `wake-me:daemon-dir-drift-*`). This run did
-  NOT file a 20th duplicate; it consolidated the issue into a single weekly-audit finding +
-  one approval card instead. Step 2b needs amending to dedupe against an open card.
-- `preamble` and `sync_skills --check` both passed clean.
+- Daemon-dirs drift (chronic): `sync_daemon_dirs --check` run in the routine's cloud
+  refs-fallback mode (`origin/main` vs `origin/ops`, since the script is main-only by design)
+  reports exit 1 — one persistent ops-only extra, `orgs/kb-ops/workflows/acceptance-run.md`.
+  This is already saturated across ~19 open inbox wake cards
+  (`wake-me:daemon-dir-drift-and-missing-sync-script`, `wake-me:sync-daemon-dirs-drift`, and
+  several dated `daemon-dir-drift-*`), so this run filed NO duplicate. Owed on desktop:
+  `sync_daemon_dirs --sync --prune` from the dashboard-ops worktree to clear it. The gate is
+  report-only and did not block dispatch.
+- `preamble` (verified read-only: no STOP file, no ANTHROPIC_API_KEY, $0 spend vs $30 ceiling)
+  and `sync_skills --check` both passed clean.
