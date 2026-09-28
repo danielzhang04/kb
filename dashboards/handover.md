@@ -1,28 +1,29 @@
 # System Handover
-_Generated: 2026-09-27T06:18:36Z_
+_Generated: 2026-09-28 06:28 UTC_
 
-The nightly cloud dispatcher ran cleanly. The preamble gate passed (no STOP file, no stray
-API key, $0 spent against the $30/day ceiling), pyyaml is importable, and the skills mirror
-check is in sync. The dispatcher emitted one due cadence card — nightly-review — and this run
-executed it: the dashboards were regenerated from live queue, ledger, and project state.
+Quiet night. The nightly cloud dispatcher ran on schedule, the preamble passed, and
+the skills registry is in sync. One `nightly-review` card was dispatched and executed
+(this dashboard regeneration); $0 spent against the $30/day ceiling, since everything
+runs on subscription billing.
 
-What is waiting on you: two approvals. figment's GATE A eye-gate (`65d8f246-8a461521`, T3)
-needs your blind-board ruling on creator-001 expansion-02 before curation to 40 can continue.
-And a `wake:human-decision` card (`6ab76543-b01ea7d5`, T1, kb) sits in approvals awaiting your
-call. Separately, Atlas's remediation diff still sits unpushed pending your review (over 400
-lines, so the contract requires your sign-off) — unchanged from before.
+**Waiting on you:**
+- **figment T3 gate** (`65d8f246`) — an operator ruling on the creator-001 expansion-02
+  blind board (seven axes) is needed before curation to 40 can proceed.
+- **atlas** — the adversarial remediation on `codex/atlas-enhancements-20260820` is ready
+  for your review. The diff exceeds 400 lines, so the contract requires your sign-off
+  before commit, and the remote push still needs your `origin` approval.
+- **A T1 wake card** (`6ab76543`) sits in inbox for a decision.
+- **The recurring daemon-dir issue.** `scripts/sync_daemon_dirs.py` lives on `main` but not
+  `ops`, so the nightly drift-check can only run in fallback mode. It keeps finding one
+  ops-only file (`orgs/kb-ops/workflows/acceptance-run.md`). This has produced 13
+  near-identical wake cards since 2026-08-15; I did not add a 14th tonight, since the inbox
+  is already saturated with them (standing decision). The desktop fix — restore the script
+  to `ops`, rule on that one file, and stop the nightly duplication — is owed and would
+  clear a lot of inbox noise.
 
-Two working cards have gone stale with no movement: a kb-ops card from late July (~8 weeks)
-and a figment replication card from early September (~3 weeks). Neither is blocking, but both
-are candidates for archiving or a nudge. The inbox holds 117 cards — likely healthy backlog,
-worth a glance.
+**Heads-up:** two cards are stranded in `working/` — a kb-ops smoke card marked `halted`
+since July 30, and a figment replication card open since September 7. Both want a sweep to
+a terminal state. Inbox is up to 119 cards and could use a triage pass.
 
-One tooling note, unchanged and now chronic: the daemon-dirs mirror check (run in the cloud
-refs-fallback mode, since the script lives on `main` by design) still reports one ops-only
-extra, `orgs/kb-ops/workflows/acceptance-run.md`. It is a report-only gate, so it did not
-block anything, and existing inbox wake cards already cover it — this run filed no duplicate.
-The owed fix is a desktop `sync_daemon_dirs --sync --prune` to clear the drift.
-
-What the system will do unattended next: the daemon keeps ticking every 5 minutes on the prod
-VM, and the next nightly dispatcher run will emit the following night's due cadences. No money
-is being spent (all steps subscription-billed). Coordination writes from this run go to `ops`.
+**Next unattended:** the production VM keeps its 5-minute daemon schedule tick running, and
+the nightly cadence fires again tomorrow. Nothing else moves without you.

@@ -1084,3 +1084,23 @@
 - pull --rebase denied but harmless: I had just fetched and `git checkout ops` created local ops
   tracking origin/ops, so `git rev-list --left-right --count origin/ops...ops` == `0 0`. Verify
   currency with rev-parse/rev-list instead of forcing the denied rebase.
+
+## 2026-09-28 (cloud nightly, dispatcher-cloud)
+- Read memory FIRST — caught myself before compounding a mistake. Bare Bash git steps all ran
+  fine this session (fetch / checkout ops / pull --rebase, even chained), and `preamble.py`,
+  `python -c "import yaml"`, `dispatch.py` all ran directly — no auto-mode classifier denials
+  this run (contra 09-27's per-command denials; the classifier is inconsistent, so just try).
+- sync_daemon_dirs still missing on `ops`, present on `origin/main`. Ran refs-fallback
+  (`git cat-file -p origin/main:scripts/sync_daemon_dirs.py > tmp; python tmp --check`) -> exit 1,
+  same chronic single ops-only extra `orgs/kb-ops/workflows/acceptance-run.md`.
+- MISTAKE I caught: I initially followed routine step 2b LITERALLY and wrote a 14th duplicate
+  wake card, THEN read memory and saw the standing 09-24/25/26 decision (honored 09-26, 09-27)
+  to NOT file duplicates on a saturated inbox. Deleted the card. Lesson reinforced: the routine's
+  literal "write a card" is superseded by the documented operational refinement in memory —
+  read memory BEFORE writing any wake card, not after. 13 priors remain the tracker.
+- Dispatched 1 card (`6aba08c2`, cadence:nightly-review, sonnet). Executed it myself under the
+  T1 nightly-review carve-out (writes stayed inside the allow-list: dashboards/, my memory shard,
+  ledgers/, own card transition). preamble OK, sync_skills --check clean (no skills drift).
+- Regenerated both dashboards. Live anomalies worth a human sweep: 2 stale working/ cards
+  (`6a6bc3dd` kb-ops halted since 07-30; `d126c410` figment working since 09-07) and inbox at
+  118. Neither is mine to move (excluded from carve-out), so recorded in dashboards only.

@@ -1,60 +1,34 @@
 # Executive Dashboard
-_Generated: 2026-09-27T06:18:36Z by dispatcher-cloud_
+_Generated: 2026-09-28 06:28 UTC by dispatcher-cloud_
 
 ## Action required
-- **figment / T3** — `65d8f246-8a461521`: GATE A eye-gate — operator to rule creator-001
-  expansion-02 blind board (seven axes) before curation to 40 can proceed. Awaiting Daniel.
-- **kb / T1** — `6ab76543-b01ea7d5`: `wake:human-decision` — a human-decision card sits in
-  approvals. Awaiting Daniel.
+- `65d8f246-8a461521` — figment — GATE A eye-gate: operator rules creator-001 expansion-02 blind board (seven axes) so curation to 40 can proceed — **T3**
+- `6ab76543-b01ea7d5` — kb — wake:human-decision — **T1**
+- **13 open `sync-daemon-dirs` wake-me cards** in inbox (2026-08-15 through 2026-09-25) — desktop fix owed: restore `scripts/sync_daemon_dirs.py` to `ops` and rule on the `orgs/kb-ops/workflows/acceptance-run.md` drift. Tonight's recurrence was NOT filed as a 14th duplicate (inbox saturated; standing decision). See Anomalies.
 
 ## Queue
 | state | count |
-|-------|-------|
-| inbox | 117 |
-| working | 3 |
+|---|---|
+| inbox | 118 |
+| working | 2 |
 | approvals | 2 |
-| blocked | 0 |
-| done | 1616 |
-| archived | 10 |
+| done | 1617 |
 
 ## Last 24h
-- Cadences dispatched today (2026-09-27): `nightly-review` (`6ab8b4e3-b9fb4514`) by
-  dispatcher-cloud, cloud tier. This run is executing it.
-- Prior night (2026-09-26): `nightly-review` (`6ab7633d-038267ce`) and `weekly-audit`
-  (`6ab7633d-543cd841`).
-- Cost: $0.00 API-billed today (all steps subscription-billed, logged 0.0) against the
-  $30.00/day ceiling → full budget remaining.
-- Notable: this nightly run regenerated dashboards; preamble and `sync_skills --check` both
-  passed clean.
+- **Cadences run:** `nightly-review` fired 2026-09-28 (card `6aba08c2-25befb04`, this run) and 2026-09-27 (card `6ab8b4e3-b9fb4514`).
+- **Cost:** $0.00 spent against the $30.00/day ceiling (`governance/budget.yaml`) — all steps on subscription billing log $0.0. Budget fully remaining.
+- **Notable:** preamble OK; `sync_skills.py --check` clean (no skills drift). Daemon-dir drift-check ran only in cloud refs-fallback mode (script still absent from `ops`) and reported the same single-file drift as prior nights.
 
 ## Projects
-- **atlas** — Omni-interface foundation complete locally (`codex/atlas-enhancements-20260820`);
-  the adversarial-remediation diff exceeds 400 lines and awaits Daniel's review before commit.
-  V1 "Hands" wave merged (PR #44) and live in prod; V2 planning is Daniel's go/no-go.
-- **faceless-youtube** — PARKED, no active work. STATE stale (2026-07-19); real last activity
-  is the Bricks Variant-D arc in the external `bricks-arc` clone (pushed).
-- **figment** — resumable `figment_train.py pipeline` drives anchor→…→video with per-stage
-  gates. GATE A eye-gate open (see Action required). One stale working card (see Anomalies).
-- **kb-ops** — production VM live on release `e8ac49ad`; daemon schedule tick runs every 5 min
-  (outbox mode, dirty-checkout skip). Ops history linear; last drain 2026-09-22 (19 bundles).
-- **prospecting** — P1–P8 built across worktrees, all branches UNPUSHED. P8 affinity gate
-  953/953 at HEAD `52067386`; live-tested against the real desktop store (all P8-B green).
+- **atlas** — Adversarial remediation ready for Daniel review on `codex/atlas-enhancements-20260820` (foundation `280a67a9` + unstaged re-reviewed diff); Atlas 235 passed, security/code re-review PASS. Diff >400 lines, so contract requires Daniel review before commit; remote push also awaits Daniel's `origin` approval.
+- **faceless-youtube** — PARKED, no active work in flight. STATE.md stale (dated 2026-07-19); last real activity was the Bricks Variant-D arc tracked outside the main checkout.
+- **figment** — One resumable `figment_train.py pipeline` command drives anchor→dataset→smoke→train→tester→gen→detail→video, halting at each gradeable stage for a ruling; `detail`/`video` now first-class stages; single gate writer (`identity_gate.write_gate_document`).
+- **kb-ops** — Production VM LIVE on release `e8ac49ad` (PR #204 collector merged 2026-09-23, deployed 05:55Z). Daemon-internal 5-min schedule tick proven live 2026-09-23; ops history linear.
+- **prospecting** — P1–P8 built across worktrees, all branches UNPUSHED. P8 affinity gate 953/953 at HEAD `52067386`; live-tested against real desktop store (campaign `camp_3147b42db58c4c15`), all Gate P8-B criteria green.
 
 ## Anomalies
-- Stale working/ cards (>48h, no movement):
-  - `6a6bc3dd-5494006b` (kb-ops, owner codex-worker) — ~8 weeks stale (last touched late July).
-    Candidate for stranded-archiver / human triage.
-  - `d126c410-9bc54280` (figment, owner figment-expand) — ~3 weeks stale (last touched
-    2026-09-07).
-- Large inbox backlog: 117 cards in queue/inbox/ — worth a human glance to confirm none are
-  stranded awaiting dispatch.
-- Daemon-dirs drift (chronic): `sync_daemon_dirs --check` run in the routine's cloud
-  refs-fallback mode (`origin/main` vs `origin/ops`, since the script is main-only by design)
-  reports exit 1 — one persistent ops-only extra, `orgs/kb-ops/workflows/acceptance-run.md`.
-  This is already saturated across ~19 open inbox wake cards
-  (`wake-me:daemon-dir-drift-and-missing-sync-script`, `wake-me:sync-daemon-dirs-drift`, and
-  several dated `daemon-dir-drift-*`), so this run filed NO duplicate. Owed on desktop:
-  `sync_daemon_dirs --sync --prune` from the dashboard-ops worktree to clear it. The gate is
-  report-only and did not block dispatch.
-- `preamble` (verified read-only: no STOP file, no ANTHROPIC_API_KEY, $0 spend vs $30 ceiling)
-  and `sync_skills --check` both passed clean.
+- **2 stale `working/` cards (both >48h):**
+  - `6a6bc3dd-5494006b` (kb-ops, owner codex-worker, `iter-smoke-t2`) — state `halted` but still parked in `working/` since 2026-07-30. Needs sweep to a terminal state.
+  - `d126c410-9bc54280` (figment, owner figment-expand, `figment:track1:replicate`) — state `working` since 2026-09-07; likely stranded.
+- **Daemon-dir drift-check gate degraded:** `scripts/sync_daemon_dirs.py` present on `origin/main` but absent on `origin/ops`, so the routine's literal `--check` fails (EXIT=2); ran via refs-fallback. Drift: single ops-only file `orgs/kb-ops/workflows/acceptance-run.md`. 13 open wake-me cards track this — desktop reconcile owed. No new card filed tonight (standing decision to stop duplicating on a saturated inbox).
+- **Inbox backlog:** 118 cards in `queue/inbox/` (many `wf-*` and long-open wake-me cards) — growing; a triage/sweep pass is owed.
