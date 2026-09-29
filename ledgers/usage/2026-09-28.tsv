@@ -1,0 +1,9 @@
+# est_ rates (per 1M tokens, comparison-only, NOT a real subscription bill): claude opus 15/75 sonnet 3/15 haiku 0.8/4 fable 15/75(assumed) cache-read 10% cache-create 125% | codex input 1.25 output 10.00 cached-input 50% | max_ctx_tokens = Claude-only per-turn peak (input+cache_read); codex_cumulative_total = Codex-only total_token_usage.total_tokens max-per-file -- the two are NOT the same signal, hence separate columns (fix round 1, C4)
+runtime	model	session	kind	project	input_tokens	cache_creation_tokens	cache_read_tokens	output_tokens	turns	max_ctx_tokens	codex_cumulative_total	est_usd
+claude	default	7cd92840-929b-4684-a9a9-32e78b4a4710	top	C--Users-danie-nyu	0	0	0	0	1	280545		0.0
+claude	fable	1befdb9b-5bbe-4d79-a4e4-3525633cac7c	top	C--Users-danie-nyu	4	63370	60736	2064	2	30370		1.4342
+claude	fable	3d93d038-a9a4-4d61-ac04-a6e17f4c1154	top	C--Users-danie-nyu	26	65303	754092	1900	13	64733		2.4985
+claude	fable	7cd92840-929b-4684-a9a9-32e78b4a4710	top	C--Users-danie-nyu	316	517603	28787077	203924	158	280545		68.1847
+claude	fable	823d0f5b-d9db-412c-962b-75ab4f16679e	top	C--Users-danie-nyu	84	500929	3785355	31336	42	144046		17.4219
+codex	gpt-5.6-sol	01a0e91a-6431-7a12-a4b1-1fbc12f330c9	top	-	1064712	0	982272	7508	5		1072220	0.7921
+_totals	-	-	-	-	1065142	1147205	34369532	246732	221	280545	1072220	90.3314
