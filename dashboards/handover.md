@@ -1,5 +1,5 @@
 # System Handover
-_Generated: 2026-09-28 06:28 UTC_
+_Generated: 2026-09-29 06:22 UTC_
 
 Quiet night. The nightly cloud dispatcher ran on schedule, the preamble passed, and
 the skills registry is in sync. One `nightly-review` card was dispatched and executed
@@ -23,7 +23,7 @@ runs on subscription billing.
 
 **Heads-up:** two cards are stranded in `working/` — a kb-ops smoke card marked `halted`
 since July 30, and a figment replication card open since September 7. Both want a sweep to
-a terminal state. Inbox is up to 119 cards and could use a triage pass.
+a terminal state. Inbox holds 117 cards and could use a triage pass.
 
 **Next unattended:** the production VM keeps its 5-minute daemon schedule tick running, and
 the nightly cadence fires again tomorrow. Nothing else moves without you.

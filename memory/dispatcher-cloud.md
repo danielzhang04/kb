@@ -1104,3 +1104,18 @@
 - Regenerated both dashboards. Live anomalies worth a human sweep: 2 stale working/ cards
   (`6a6bc3dd` kb-ops halted since 07-30; `d126c410` figment working since 09-07) and inbox at
   118. Neither is mine to move (excluded from carve-out), so recorded in dashboards only.
+
+## 2026-09-29 (cloud nightly, dispatcher-cloud)
+- Clean run, no classifier denials: fetch / checkout ops / pull --rebase (Already up to date),
+  preamble OK, `import yaml` OK, dispatch.py all ran directly.
+- Read memory BEFORE touching any wake card this time (09-28 lesson applied): sync_daemon_dirs
+  still absent on `ops`, present on `origin/main`; refs-fallback (`git show
+  origin/main:scripts/sync_daemon_dirs.py > tmp; python tmp --check`) -> exit 1, same chronic
+  single ops-only extra `orgs/kb-ops/workflows/acceptance-run.md`. Did NOT file a 14th duplicate
+  (standing 09-24→09-28 decision honored). 13 priors remain the tracker; health line only.
+- Dispatched 1 card (`6abb58ee`, cadence:nightly-review, routed sonnet). Executed myself under
+  the T1 nightly-review carve-out; writes stayed inside allow-list (dashboards/, memory shard,
+  ledgers/, own card transition). sync_skills --check clean.
+- Regenerated both dashboards. Same 2 stale working/ cards (`6a6bc3dd` kb-ops halted since 07-30;
+  `d126c410` figment working since 09-07) still stranded — not mine to move, recorded in
+  dashboards. Inbox 117.
