@@ -238,7 +238,9 @@ def test_time_boundary_just_over_throttle_window_injects(tmp_path):
     write_state(state_dir, {SESSION: {"lastInjectionMs": NOW - THROTTLE_MS - 1, "toolCallsSinceInjection": 0}})
     r = run_hook(GOAL_STATE, state_dir, {**EVENT, "session_id": SESSION}, {"KB_REGROUND_NOW_MS": str(NOW)})
     assert r.returncode == 0 and context_of(r) is not None
-    assert state_record(state_dir, SESSION) == {"lastInjectionMs": NOW, "toolCallsSinceInjection": 0}
+    assert state_record(state_dir, SESSION)["lastInjectionMs"] == NOW
+    assert state_record(state_dir, SESSION)["toolCallsSinceInjection"] == 0
+    assert len(state_record(state_dir, SESSION)["fingerprint"]) == 64
 
 
 def test_future_injection_time_is_corrupt_and_resets_on_backward_clock_skew(tmp_path):
@@ -246,7 +248,9 @@ def test_future_injection_time_is_corrupt_and_resets_on_backward_clock_skew(tmp_
     write_state(state_dir, {SESSION: {"lastInjectionMs": NOW + 1, "toolCallsSinceInjection": 7}})
     r = run_hook(GOAL_STATE, state_dir, {**EVENT, "session_id": SESSION}, {"KB_REGROUND_NOW_MS": str(NOW)})
     assert r.returncode == 0 and context_of(r) is not None
-    assert state_record(state_dir, SESSION) == {"lastInjectionMs": NOW, "toolCallsSinceInjection": 0}
+    assert state_record(state_dir, SESSION)["lastInjectionMs"] == NOW
+    assert state_record(state_dir, SESSION)["toolCallsSinceInjection"] == 0
+    assert len(state_record(state_dir, SESSION)["fingerprint"]) == 64
 
 
 def test_injected_context_is_byte_identical_across_metadata_and_throttle_paths(tmp_path):

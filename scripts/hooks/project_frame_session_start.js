@@ -34,7 +34,6 @@
 const path = require("path");
 const { spawnSync } = require("child_process");
 const io = require("./lib/hook_io.js");
-const store = require("./lib/context_store.js");
 const pf = require("./lib/project_frame.js");
 
 const PREAMBLE_TIMEOUT_MS = 10000;
@@ -132,46 +131,6 @@ function usageLine(cwd, env) {
   return line.length > 200 ? line.slice(0, 200) : line;
 }
 
-/**
- * Write this session's governing sections from the active project's GOAL.md/STATE.md, WITHOUT
- * touching any section this hook does not own. A no-op when there is no session, no project, or
- * neither ops file yields any of the three headings -- `updateStore` (and the locked
- * `readStore`/`upsertSection`/`writeStore` inside it) already fails open on IO trouble and on
- * lock contention, so this never throws and never hangs even when the store directory cannot be
- * created.
- */
-function writeGoverningSections(sessionId, project, cwd, env) {
-  if (!sessionId || !project || !cwd) return;
-  const goalText = pf.readOpsFile(cwd, `orgs/${project}/GOAL.md`, env);
-  const stateText = pf.readOpsFile(cwd, `orgs/${project}/STATE.md`, env);
-  const goalSections = goalText ? pf.parseSections(goalText) : [];
-  const stateSections = stateText ? pf.parseSections(stateText) : [];
-
-  // PREFIX-matched, not exact: spec §1 spells GOAL.md/STATE.md headings "exact, prefix-matched",
-  // and a real STATE.md carries annotated headings like "## Current gate (P8)". frame() has always
-  // read them through pf.sectionBodyByPrefix; this writer used store.sectionBody (exact by design,
-  // and pinned that way by U8's tests), so an annotated heading silently wrote NOTHING into the
-  // store and U7/U9 re-grounding lost the very section the frame was showing on screen.
-  const northStar = pf.sectionBodyByPrefix(goalSections, store.HEADINGS.NORTH_STAR);
-  const invariants = pf.sectionBodyByPrefix(goalSections, store.HEADINGS.INVARIANTS);
-  const currentGate = pf.sectionBodyByPrefix(stateSections, store.HEADINGS.CURRENT_GATE);
-  if (!northStar && !invariants && !currentGate) return;
-
-  // ONE LOCKED read-modify-write: the PreCompact sibling and the PostToolUse activity tracker
-  // write the same file, and an interleaved read->write between them dropped whole sections.
-  // The git/ops reads above stay OUTSIDE the lock -- only the store touch is serialized.
-  store.updateStore(
-    sessionId,
-    (sections) => {
-      let next = sections;
-      if (northStar) next = store.upsertSection(next, store.HEADINGS.NORTH_STAR, northStar);
-      if (invariants) next = store.upsertSection(next, store.HEADINGS.INVARIANTS, invariants);
-      if (currentGate) next = store.upsertSection(next, store.HEADINGS.CURRENT_GATE, currentGate);
-      return next;
-    },
-    env,
-  );
-}
 
 function main() {
   // Fails open ("{}", exit 0) inside this call on: no stdin, malformed JSON, a non-object
@@ -201,7 +160,7 @@ function main() {
   // The store WRITE happens on every SessionStart, including a compacted one (ruling: U7's
   // post-compact re-grounding needs fresh sections to read even on a turn where THIS hook stays
   // silent).
-  writeGoverningSections(sessionId, project, cwd, env);
+  pf.refreshStore(sessionId, project, cwd, env);
   // NOTE (fix wave M3): a '## Session model' store note used to be written here from `event.model`.
   // It had exactly one intended reader, context_guard.js, which does not read it -- Task 0 proved
   // `event.model` is absent from every SessionStart/PreToolUse payload in this build, so the note

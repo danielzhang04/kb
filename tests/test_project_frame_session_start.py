@@ -498,6 +498,7 @@ def test_seeded_resumed_summary_and_recent_activity_survive_the_write(tmp_path):
         store_dir,
         session_id,
         [
+            {"heading": "Context source", "body": "orgs/prospecting/GOAL.md and orgs/prospecting/STATE.md"},
             {"heading": "Resumed-session summary", "body": resumed_body},
             {"heading": "Recent activity", "body": activity_body},
         ],

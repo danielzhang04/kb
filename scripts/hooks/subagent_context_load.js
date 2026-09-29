@@ -35,7 +35,7 @@
  * is missing — so reading by `session_id` is correct rather than merely convenient.
  *
  * ── WHAT IT INJECTS, AND WHAT IT DELIBERATELY DOES NOT ──────────────────────────────────────────
- * Only the three GOVERNING sections: '## North star', '## Invariants', '## Current gate'.
+ * Governing sections plus Decisions, Now, Next, Blocked and recovery notices.
  * '## Recent activity' (the redacted tool ring buffer) and '## Resumed-session summary' (the
  * parent's compaction recall) are NOT injected. A subagent prompt is a wider blast radius than the
  * parent's own store: the activity trail is redacted best-effort, not provably clean, and a summary
@@ -79,14 +79,18 @@ const INHERITED_HEADINGS = [
   store.HEADINGS.NORTH_STAR,
   store.HEADINGS.INVARIANTS,
   store.HEADINGS.CURRENT_GATE,
+  store.HEADINGS.DECISIONS,
+  store.HEADINGS.NOW,
+  store.HEADINGS.NEXT,
+  store.HEADINGS.BLOCKED,
+  "Context recovery",
 ];
 
 /** Hard cap on the injected block, in characters. Tighter than SessionStart's 4000 on purpose: this
  *  is a frame for a focused child, not a session resume, and it is prepended to every single spawn. */
 const DEFAULT_MAX_CHARS = 2000;
 
-/** Capping lives in lib/hook_io.js — one copy shared by the three hooks that inject context. */
-const truncateTo = io.truncateTo;
+/** Shared bounded rendering lives in lib/context_store.js. */
 
 /** The audience a Claude subagent reads as; `all` is the fallback render, never a third try. */
 const KIT_AUDIENCE = "claude";
@@ -154,7 +158,7 @@ function main() {
   for (const heading of INHERITED_HEADINGS) {
     const body = store.sectionBody(sections, heading);
     if (body) {
-      parts.push(heading + ": " + body);
+      parts.push({ label: heading, body });
     }
   }
   if (parts.length === 0) {
@@ -166,7 +170,7 @@ function main() {
   // "THE SECOND SOURCE" in the header).
   const kit = kitContext(kitRoot(), KIT_AUDIENCE);
   if (kit) {
-    parts.push(kit);
+    parts.push({ label: "Standing doctrine", body: kit });
   }
 
   // The guard sentence FIRST: the framing has to be read before the content it frames.
@@ -175,7 +179,11 @@ function main() {
   // session already has" — is simply FALSE for a freshly spawned child, which has never seen any of
   // it. Telling a subagent it already holds context it does not is the exact confusion a guard exists
   // to prevent, so it gets a sentence true of its own situation: inherited framing, not the task.
-  const block = truncateTo(io.SUBAGENT_GUARD_LINE + "\n\n" + parts.join("\n\n"), maxChars());
+  // A recovery pointer must preserve the same allowlist as direct injection: do not
+  // turn overflow into permission to read the parent's transcript/activity sections.
+  const pointer = `ONLY named sections (${INHERITED_HEADINGS.join(", ")}) from ${store.sessionPath(sessionId)}`
+    + (kit ? `; standing doctrine from ${path.join(kitRoot(), "kit", ".rendered", "claude.md")} (all.md fallback)` : "");
+  const block = store.boundedContext(io.SUBAGENT_GUARD_LINE, parts, maxChars(), pointer);
 
   io.emitContext("SubagentStart", block);
 }

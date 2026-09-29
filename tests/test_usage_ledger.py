@@ -85,6 +85,108 @@ def _codex_line(rec):
     return json.dumps(rec)
 
 
+def test_claude_deduplicates_usage_snapshots_and_keeps_model_peaks(tmp_path):
+    day = "2026-09-10"
+    def record(mid, out, inp=100, cc=200, cr=300, stop=None, model="claude-opus-5"):
+        rec = json.loads(_claude_line(model, day, inp, cc, cr, out))
+        rec["message"].update(id=mid, stop_reason=stop)
+        return rec
+
+    records = [
+        record("a", 1), record("a", 50, stop="tool_use"), record("a", 2),
+        record("b", 50),  # identical usage, distinct request
+        record("c", 10, inp=1, cc=2, cr=3, model="claude-sonnet-5"),
+        record("synthetic", 0, model="<synthetic>"),
+        record(None, 5), record(None, 5),  # no identity: never guess duplicates
+        record("a", "bad"), record("a", 900, inp=-1),  # malformed snapshots
+    ]
+    path = tmp_path / "claude.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+    rows = {r["model"]: r for r in ul.process_claude_file(path, "subagent", "s", "p", day)}
+    assert set(rows) == {"opus", "sonnet"}
+    assert rows["opus"]["turns"] == 4
+    assert rows["opus"]["output_tokens"] == 110
+    assert rows["opus"]["input_tokens"] == 400
+    assert rows["opus"]["cache_creation_tokens"] == 800
+    assert rows["opus"]["cache_read_tokens"] == 1200
+    assert rows["opus"]["max_ctx_tokens"] == 600
+    assert rows["sonnet"]["max_ctx_tokens"] == 6
+    assert rows["opus"]["est_usd"] == round(ul.claude_cost("opus", 400, 800, 1200, 110), 4)
+
+
+def test_claude_completed_tie_wins_and_midnight_request_is_counted_once(tmp_path):
+    records = []
+    for day, inp, stop in [("2026-09-10", 100, None), ("2026-09-11", 150, "end_turn"),
+                           ("2026-09-11", 999, None)]:
+        rec = json.loads(_claude_line("claude-opus-5", day, inp=inp))
+        rec["message"].update(id="same-request", stop_reason=stop)
+        records.append(rec)
+    path = tmp_path / "midnight.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+    rows = ul.process_claude_file(path, "top", "s", "p", "2026-09-10")
+    assert rows[0]["turns"] == 1
+    assert rows[0]["input_tokens"] == 150
+    assert ul.process_claude_file(path, "top", "s", "p", "2026-09-11") == []
+
+
+def test_codex_task_count_is_not_usage_event_count(tmp_path):
+    path = tmp_path / "rollout.jsonl"
+    records = [
+        {"type": "session_meta", "payload": {"id": "s", "timestamp": "2026-09-10T00:00:00Z"}},
+        {"type": "event_msg", "payload": {"type": "task_started"}},
+    ]
+    for total in (10, 20, 20):
+        records.append({"type": "event_msg", "timestamp": "2026-09-11T01:00:00Z",
+                        "payload": {"type": "token_count", "info": {
+                            "total_token_usage": {"input_tokens": total, "total_tokens": total}}}})
+    path.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+    row = ul.process_codex_file(path, "2026-09-10")
+    assert row["turns"] == 1 and row["codex_cumulative_total"] == 20
+    assert ul.process_codex_file(path, "2026-09-11") is None
+    summary = ul.summary_line([row], "2026-09-10")
+    assert "claude 0 requests / codex 1 tasks" in summary
+    assert "codex cumulative" in summary
+
+
+def test_claude_malformed_fragments_cannot_crash_or_displace_valid_request(tmp_path):
+    valid = json.loads(_claude_line("claude-opus-5", "2026-09-10"))
+    valid["message"]["id"] = "valid-request"
+    corruptions = [
+        ("timestamp", None), ("timestamp", 123), ("timestamp", ""),
+        ("timestamp", "2026-02-30T00:00:00Z"),
+        ("id", []), ("id", {}), ("id", ""),
+        ("message", []), ("message", "malformed"),
+        ("usage", []), ("usage", "malformed"), ("model", {}),
+    ]
+    path = tmp_path / "malformed.jsonl"
+    for field, value in corruptions:
+        bad = json.loads(json.dumps(valid))
+        if field in ("timestamp", "message"):
+            bad[field] = value
+        else:
+            bad["message"][field] = value
+        if field == "message":
+            bad["timestamp"] = "2026-09-09T00:00:00Z"  # old-day malformed record
+        for records in ([bad, valid], [valid, bad]):
+            path.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+            rows = ul.process_claude_file(path, "top", "s", "p", "2026-09-10")
+            assert len(rows) == 1 and rows[0]["turns"] == 1, (field, value)
+            assert rows[0]["input_tokens"] == 100 and rows[0]["output_tokens"] == 50
+
+
+def test_historical_ledger_values_preserved_with_explicit_legacy_summary(tmp_path):
+    path = tmp_path / "old.tsv"
+    old = _ledger_text(137).replace(ul.RATE_TABLE_HEADER, "# historical rates")
+    path.write_text(old, encoding="utf-8")
+    rows = ul.read_existing_rows(path)
+    assert rows[0]["turns"] == 137 and rows[0]["max_ctx_tokens"] == 10
+    summary = ul.summary_line(rows, "2026-09-10")
+    assert "137 records" in summary and "legacy ctx estimate" in summary
+    assert len(summary) <= 200
+    assert path.read_text(encoding="utf-8") == old
+    assert "_legacy_accounting" not in ul.TSV_FIELDS
+
+
 def test_process_codex_file_takes_max_total_usage_per_file(tmp_path):
     day = "2026-09-10"
     path = tmp_path / "rollout-1.jsonl"
@@ -448,6 +550,36 @@ def test_cli_regenerates_missing_sidecar_on_idempotent_read(tmp_path):
     assert out_path.stat().st_mtime_ns == tsv_mtime  # TSV itself was NOT recomputed
 
 
+def test_cli_refreshes_legacy_summary_once_without_rewriting_tsv(tmp_path):
+    day = "2026-09-10"
+    repo_root = tmp_path / "repo"
+    out_path = repo_root / "ledgers" / "usage" / f"{day}.tsv"
+    out_path.parent.mkdir(parents=True)
+    out_path.write_text(_ledger_text(137).replace(ul.RATE_TABLE_HEADER, "# historical rates"),
+                        encoding="utf-8")
+    sidecar = out_path.with_suffix(".summary")
+    sidecar.write_text(f"{day}: 137 turns | peak ctx 0k\n", encoding="utf-8")
+    tsv_bytes, tsv_mtime = out_path.read_bytes(), out_path.stat().st_mtime_ns
+    env = {"KB_CLAUDE_PROJECTS_DIR": str(tmp_path / "empty"),
+           "KB_CODEX_SESSIONS_DIR": str(tmp_path / "empty2"),
+           "LOCALAPPDATA": str(tmp_path / "appdata")}
+    args = ("--date", day, "--root", str(repo_root), "--no-publish", "--summary")
+    first = _run(env, *args)
+    assert first.returncode == 0, first.stderr
+    refreshed = sidecar.read_text(encoding="utf-8")
+    assert "137 records" in refreshed and "legacy ctx estimate" in refreshed
+    assert first.stdout.strip() == refreshed.strip()
+    # A fixed old mtime makes an accidental second write detectable without sleeping.
+    os.utime(sidecar, (1_600_000_000, 1_600_000_000))
+    summary_mtime = sidecar.stat().st_mtime_ns
+    second = _run(env, *args)
+    assert second.returncode == 0, second.stderr
+    assert sidecar.read_text(encoding="utf-8") == refreshed
+    assert sidecar.stat().st_mtime_ns == summary_mtime
+    assert out_path.read_bytes() == tsv_bytes
+    assert out_path.stat().st_mtime_ns == tsv_mtime
+
+
 def test_cli_is_idempotent_per_day(tmp_path):
     day = "2026-09-10"
     claude_dir, codex_dir = _make_fixture_tree(tmp_path, day)
@@ -656,6 +788,23 @@ def test_publish_to_ops_publishes_a_brand_new_day_normally(tmp_path):
     thin.write_text(_ledger_text(turns=1), encoding="utf-8")
     ok, msg = ul.publish_to_ops(repo_root, [(thin, "ledgers/usage/2026-09-11.tsv")])
     assert ok and msg == "pushed"
+
+
+def test_publish_git_children_do_not_open_windows(tmp_path, monkeypatch):
+    calls = []
+    def failed_git(args, **kwargs):
+        calls.append((args, kwargs))
+        return subprocess.CompletedProcess(args, 1, "", "fixture failure")
+    monkeypatch.setattr(ul.subprocess, "run", failed_git)
+    monkeypatch.setattr(ul.subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    monkeypatch.setattr(ul.time, "sleep", lambda _: None)
+    for platform, expected in [("win32", 0x08000000), ("linux", 0)]:
+        monkeypatch.setattr(ul.sys, "platform", platform)
+        calls.clear()
+        assert ul.publish_to_ops(tmp_path, [])[0] is False
+        assert len(calls) == 4  # three fetch attempts and worktree cleanup
+        assert all(args[0] == "git" and kw["creationflags"] == expected for args, kw in calls)
+        assert all(kw["capture_output"] and kw["timeout"] == 120 for _, kw in calls)
 
 
 def test_publish_and_track_clears_the_marker_on_a_terminal_refusal(tmp_path, monkeypatch):
