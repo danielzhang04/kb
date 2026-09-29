@@ -137,7 +137,8 @@ def test_cap_bounds_the_injected_block(tmp_path):
 
     capped = context_of(run_hook(tmp_path, cap=300))
     assert capped is not None and len(capped) <= 300
-    assert capped.endswith("...")
+    assert "Context shortened" in capped
+    assert "MUST read" in capped
 
 
 def test_missing_store_fails_open(tmp_path):

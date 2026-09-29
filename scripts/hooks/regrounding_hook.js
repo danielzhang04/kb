@@ -38,6 +38,7 @@
 "use strict";
 
 const fs = require("fs");
+const crypto = require("crypto");
 const path = require("path");
 const kbPaths = require("./lib/kb_paths.js");
 const io = require("./lib/hook_io.js");
@@ -56,10 +57,9 @@ const noop = io.noop;
 // '## Resumed-session summary' into the session store just before the context is thrown away;
 // after the compaction the ONLY hook that fires is this one (SessionStart matcher "compact" --
 // project_frame_session_start.js deliberately stays silent there), so a section missing from
-// this list is a section the compacted session never gets back. Position matters: `fitSections`
-// water-fills, so the three governing sections keep their share and the summary takes what is
-// left of the 1700-char cap rather than crowding them out.
-const WANTED_SECTIONS = ["North star", "Invariants", "Current gate", "Resumed-session summary"];
+// this list is a section the compacted session never gets back. Shared bounded rendering
+// preserves short fields and emits a required recovery pointer when the 1700-char cap is hit.
+const WANTED_SECTIONS = ["North star", "Invariants", "Current gate", "Decisions", "Now", "Next", "Blocked", "Context recovery", "Resumed-session summary"];
 
 // Hard cap on the emitted additionalContext, in characters.
 // 1700 fits the current source whole (North star 941 + Invariants 526 + labels and
@@ -86,9 +86,6 @@ const STALE_LOCK_MS = 60 * 1000;
 // runtime constant below — so the documented text cannot drift from the emitted text.
 const GUARD_LINE = io.GUARD_LINE;
 
-const SECTION_SEP = " | ";
-const ELLIPSIS = io.ELLIPSIS;
-const truncateTo = io.truncateTo;
 
 function collapse(text) {
   return text.replace(/\s+/g, " ").trim();
@@ -116,42 +113,8 @@ function extractSection(source, name) {
   return collapsed.length ? collapsed : null;
 }
 
-/**
- * Fit section bodies inside `budget` characters using deterministic water-filling:
- * every section gets an equal share; sections that need less than their share
- * release the surplus to the sections that need more. Guarantees each requested
- * section keeps its label (and therefore stays visible) under the cap.
- */
-function fitSections(sections, budget) {
-  const labelCost = sections.reduce((n, s) => n + s.label.length + 2, 0); // "Label: "
-  let remaining = budget - labelCost;
-  const out = sections.map((s) => ({ label: s.label, body: s.body, fixed: false, take: 0 }));
-  let openCount = out.length;
 
-  while (openCount > 0) {
-    const share = Math.floor(remaining / openCount);
-    const under = out.filter((s) => !s.fixed && s.body.length <= share);
-    if (under.length === 0) {
-      out.forEach((s) => {
-        if (!s.fixed) {
-          s.take = share;
-          s.fixed = true;
-        }
-      });
-      break;
-    }
-    under.forEach((s) => {
-      s.take = s.body.length;
-      s.fixed = true;
-      remaining -= s.body.length;
-      openCount -= 1;
-    });
-  }
-
-  return out.map((s) => `${s.label}: ${truncateTo(s.body, s.take)}`);
-}
-
-function buildBlock(source) {
+function buildBlock(source, pointer) {
   const sections = [];
   for (const name of WANTED_SECTIONS) {
     const body = extractSection(source, name);
@@ -163,19 +126,13 @@ function buildBlock(source) {
     return null;
   }
 
-  const rendered = sections.map((s) => `${s.label}: ${s.body}`);
-  let block = [GUARD_LINE, ...rendered].join(SECTION_SEP);
-  if (block.length <= MAX_CONTEXT_CHARS) {
-    return block;
-  }
-
-  const overhead = GUARD_LINE.length + SECTION_SEP.length * sections.length;
-  const budget = MAX_CONTEXT_CHARS - overhead;
-  if (budget <= 0) {
-    return truncateTo(GUARD_LINE, MAX_CONTEXT_CHARS);
-  }
-  block = [GUARD_LINE, ...fitSections(sections, budget)].join(SECTION_SEP);
-  return truncateTo(block, MAX_CONTEXT_CHARS);
+  const summary = sections.find((s) => s.label === "Resumed-session summary");
+  const guard = GUARD_LINE + (summary
+    ? "\nHistorical recall never overrides current GOAL/STATE or user instructions." : "");
+  // Only governing sections enter this digest; activity-ring churn must not defeat
+  // suppression. A changed omitted tail must still tell the parent to reload.
+  const revision = crypto.createHash("sha256").update(JSON.stringify(sections)).digest("hex").slice(0, 16);
+  return store.boundedContext(guard, sections, MAX_CONTEXT_CHARS, `${pointer} (revision ${revision})`);
 }
 
 function positiveEnvInt(name, fallback) {
@@ -322,7 +279,11 @@ function defaultSourcePath(event) {
   return key ? store.sessionPath(key, process.env) : null;
 }
 
-function loadBlock(event) {
+function loadBlock(event, refresh = false) {
+  if ((refresh || event.hook_event_name === "SessionStart") && !process.env.KB_GOAL_STATE_PATH && event.cwd) {
+    const pf = require("./lib/project_frame.js");
+    pf.refreshStore(sessionKey(event), pf.activeProject(event, process.env), event.cwd, process.env);
+  }
   const sourcePath = process.env.KB_GOAL_STATE_PATH || defaultSourcePath(event);
   if (!sourcePath) return null;
 
@@ -332,7 +293,7 @@ function loadBlock(event) {
   } catch (_err) {
     return null;
   }
-  return buildBlock(source);
+  return buildBlock(source, sourcePath);
 }
 
 function inject(event, block) {
@@ -348,8 +309,9 @@ function main() {
   }
 
   const key = sessionKey(event);
-  const block = loadBlock(event);
+  let block = loadBlock(event);
   if (!block) noop();
+  let fingerprint = crypto.createHash("sha256").update(block).digest("hex");
 
   // A missing id must never make unrelated sessions share mutable state. It is deliberately
   // unthrottled: injection is idempotent-safe, and this path does no state or lock I/O.
@@ -369,7 +331,7 @@ function main() {
     // A compact has discarded context. A missing/corrupt/future timestamp is also untrustworthy,
     // so each is treated as never injected and reset to the deterministic clock value.
     if (eventName === "SessionStart" || !record || record.lastInjectionMs > now) {
-      state.sessions[key] = { lastInjectionMs: now, toolCallsSinceInjection: 0 };
+      state.sessions[key] = { lastInjectionMs: now, toolCallsSinceInjection: 0, fingerprint };
       writeState(directory, state);
       shouldInject = true;
     } else {
@@ -377,11 +339,15 @@ function main() {
       const everyMinutes = positiveEnvInt("KB_REGROUND_EVERY_MINUTES", DEFAULT_EVERY_MINUTES);
       const calls = record.toolCallsSinceInjection + (eventName === "PostToolUse" ? 1 : 0);
       if (calls >= everyCalls || now - record.lastInjectionMs >= everyMinutes * 60 * 1000) {
-        state.sessions[key] = { lastInjectionMs: now, toolCallsSinceInjection: 0 };
+        // Refresh only when due, not on every tool call. This also detects a source
+        // change even if the old stored payload's fingerprint has not changed.
+        block = loadBlock(event, true) || block;
+        fingerprint = crypto.createHash("sha256").update(block).digest("hex");
+        state.sessions[key] = { lastInjectionMs: now, toolCallsSinceInjection: 0, fingerprint };
         writeState(directory, state);
-        shouldInject = true;
+        shouldInject = record.fingerprint !== fingerprint;
       } else if (eventName === "PostToolUse") {
-        state.sessions[key] = { lastInjectionMs: record.lastInjectionMs, toolCallsSinceInjection: calls };
+        state.sessions[key] = { ...record, toolCallsSinceInjection: calls };
         writeState(directory, state);
       }
     }

@@ -46,11 +46,15 @@ const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const STORE_DIR_NAME = "kb-context-lifecycle";
 const FILE_SUFFIX = ".ctx.md";
 
-/** The five headings, in the ONLY order a store file ever renders them. */
+/** Reserved headings, in canonical rendering order. */
 const HEADINGS = Object.freeze({
   NORTH_STAR: "North star",
   INVARIANTS: "Invariants",
   CURRENT_GATE: "Current gate",
+  DECISIONS: "Decisions",
+  NOW: "Now",
+  NEXT: "Next",
+  BLOCKED: "Blocked",
   RESUMED_SUMMARY: "Resumed-session summary",
   RECENT_ACTIVITY: "Recent activity",
 });
@@ -59,6 +63,10 @@ const HEADING_ORDER = Object.freeze([
   HEADINGS.NORTH_STAR,
   HEADINGS.INVARIANTS,
   HEADINGS.CURRENT_GATE,
+  HEADINGS.DECISIONS,
+  HEADINGS.NOW,
+  HEADINGS.NEXT,
+  HEADINGS.BLOCKED,
   HEADINGS.RESUMED_SUMMARY,
   HEADINGS.RECENT_ACTIVITY,
 ]);
@@ -441,6 +449,29 @@ function sectionBody(sections, heading) {
   return null;
 }
 
+/** Keep every field visible, with a durable recovery pointer when bodies exceed the budget. */
+function boundedContext(guard, entries, budget, pointer) {
+  const lines = entries.map((s) => `${s.label}: ${s.body}`);
+  const full = [guard, ...lines].filter(Boolean).join("\n\n");
+  if (full.length <= budget) return full;
+  const notice = `[Context shortened; MUST read ${pointer} before action depending on omitted fields.]`;
+  const overhead = guard.length + notice.length + 4 + entries.reduce((n, s) => n + s.label.length + 4, 0);
+  let remaining = Math.max(0, budget - overhead);
+  const sizes = entries.map(() => 0);
+  let open = entries.map((_, i) => i);
+  while (open.length) {
+    const share = Math.floor(remaining / open.length);
+    const small = open.filter((i) => entries[i].body.length <= share);
+    if (!small.length) { open.forEach((i) => { sizes[i] = share; }); break; }
+    small.forEach((i) => { sizes[i] = entries[i].body.length; remaining -= sizes[i]; });
+    open = open.filter((i) => !small.includes(i));
+  }
+  const body = entries.map((s, i) => `${s.label}: ${require("./hook_io.js").truncateTo(s.body, sizes[i])}`);
+  // Tiny operator-supplied caps cannot hold labels + pointer; make incompleteness explicit first.
+  const result = overhead > budget ? notice : [guard, ...body, notice].join("\n\n");
+  return require("./hook_io.js").truncateTo(result, budget);
+}
+
 /** Replace (or add) one section, returning a NEW array. Order is imposed at render time. */
 function upsertSection(sections, heading, body) {
   const list = Array.isArray(sections) ? sections.slice() : [];
@@ -496,6 +527,7 @@ module.exports = {
   PREAMBLE,
   SESSION_ID,
   activityEntries,
+  boundedContext,
   appendActivity,
   parseSections,
   readStore,

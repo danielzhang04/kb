@@ -17,13 +17,19 @@ The sidecar exists so `scripts/hooks/project_frame_session_start.js`'s '## Usage
 can be a PURE FILE READ (spec S3: that hook must never spawn this parser, full stop) -- see
 `write_summary_sidecar`.
 
-COLUMN SPLIT (fix round 1, C4 ruling): `max_ctx_tokens` (per-turn peak of input+cache_read, a
+COLUMN SPLIT (fix round 1, C4 ruling): `max_ctx_tokens` (per-request peak of input+cache_create+cache_read, a
 CONTEXT-WINDOW signal) is Claude-only; Codex rows carry that column empty and instead populate
 `codex_cumulative_total` (`total_token_usage.total_tokens`, max per rollout file) -- the two
 runtimes' token-accounting models are not comparable, so they get separate columns rather than
 one column silently mixing two different signals. `_totals` reports the Claude-only peak in
 `max_ctx_tokens` and the summed Codex cumulative total in `codex_cumulative_total`; `--summary`
 prints them as "peak ctx <N>k" (Claude) and "codex total <N>M" (Codex), separately.
+
+`turns` is retained for schema compatibility: newly collected Claude rows count unique message
+IDs per file (ID-less records count separately), Codex rows count task_started events, NOT model
+requests. Historical TSVs are not recomputed and may count duplicate Claude records. Codex totals
+remain cumulative snapshots attributed to session-start day, not daily consumption; inherited
+fork histories are not deduplicated across files. Do not infer model calls per user turn from them.
 
 stdlib only. Invoked as `py -3 scripts/usage_ledger.py [--date YYYY-MM-DD] [--summary]
 [--no-publish] [--root <path>] [--full]`. Ruling 2026-09-11 Section 0.1: measure only -- this
@@ -86,12 +92,14 @@ CODEX_OUTPUT_PRICE = 10.00
 CODEX_CACHE_MULT = 0.50
 
 RATE_TABLE_HEADER = (
-    "# est_ rates (per 1M tokens, comparison-only, NOT a real subscription bill): "
+    "# accounting=v2 | est_ rates (per 1M tokens, comparison-only, NOT a real subscription bill): "
     "claude opus 15/75 sonnet 3/15 haiku 0.8/4 fable 15/75(assumed) cache-read 10% cache-create 125% "
     "| codex input 1.25 output 10.00 cached-input 50% "
-    "| max_ctx_tokens = Claude-only per-turn peak (input+cache_read); codex_cumulative_total = "
+    "| max_ctx_tokens = Claude-only per-request peak (input+cache_create+cache_read); codex_cumulative_total = "
     "Codex-only total_token_usage.total_tokens max-per-file -- the two are NOT the same signal, "
-    "hence separate columns (fix round 1, C4)"
+    "hence separate columns (fix round 1, C4) | turns = Claude unique message IDs per file "
+    "(ID-less records separately), Codex task_started events; Codex cumulative snapshots attributed "
+    "to session-start day, inherited fork history not deduplicated"
 )
 
 # runtime-specific columns: max_ctx_tokens is Claude-only (empty for codex rows);
@@ -184,43 +192,67 @@ def _iter_complete_json_lines(path: Path):
 
 def process_claude_file(path: Path, kind: str, session_id: str, project: str, target_day: str):
     """Rows (one per model class actually seen) for ONE Claude transcript, filtered to records
-    whose OWN timestamp falls on target_day -- a long-lived session file spans many days, and
+    whose first usage record falls on target_day -- a long-lived session file spans many days, and
     attributing its whole history to whichever day it was last touched would misreport "yesterday".
     `codex_cumulative_total` is always None here -- that column is Codex-only (C4)."""
     per_model = defaultdict(lambda: defaultdict(float))
-    ctx_per_turn = []
-    for rec in _iter_complete_json_lines(path):
+    # Store only IDs, dates and numeric usage, never transcript content. Streaming fragments can
+    # repeat message.id; select a whole usage snapshot, not independently maximized token fields.
+    messages = {}
+    for index, rec in enumerate(_iter_complete_json_lines(path)):
         if not isinstance(rec, dict) or rec.get("type") != "assistant":
             continue
-        ts = rec.get("timestamp") or ""
-        if ts[:10] != target_day:
+        ts = rec.get("timestamp")
+        if not isinstance(ts, str):
             continue
-        msg = rec.get("message") or {}
-        usage = msg.get("usage") or {}
-        if not usage:
+        try:
+            record_day = datetime.fromisoformat(ts.replace("Z", "+00:00")).date().isoformat()
+        except ValueError:
             continue
-        mclass = classify_claude_model(msg.get("model"))
+        msg = rec.get("message")
+        if not isinstance(msg, dict):
+            continue
+        usage = msg.get("usage")
+        mid = msg.get("id")
+        model = msg.get("model")
+        if (not isinstance(usage, dict) or not usage
+                or (mid is not None and (not isinstance(mid, str) or not mid.strip()))
+                or (model is not None and not isinstance(model, str)) or model == "<synthetic>"):
+            continue
+        mclass = classify_claude_model(model)
         inp = usage.get("input_tokens", 0) or 0
         cc = usage.get("cache_creation_input_tokens", 0) or 0
         cr = usage.get("cache_read_input_tokens", 0) or 0
         out = usage.get("output_tokens", 0) or 0
+        if any(type(value) is not int or value < 0 for value in (inp, cc, cr, out)):
+            continue  # malformed fragments must not replace a valid numeric snapshot
+        key = ("id", mid) if mid is not None else ("record", index)
+        score = (out, bool(msg.get("stop_reason")), inp + cc + cr)
+        previous = messages.get(key)
+        first_day = min(previous[0], record_day) if previous else record_day
+        if previous and previous[1] > score:
+            messages[key] = (first_day, *previous[1:])
+        else:
+            messages[key] = (first_day, score, mclass, inp, cc, cr, out)
+    for first_day, _, mclass, inp, cc, cr, out in messages.values():
+        if first_day != target_day:
+            continue
         row = per_model[mclass]
         row["input"] += inp
         row["cache_creation"] += cc
         row["cache_read"] += cr
         row["output"] += out
         row["turns"] += 1
-        ctx_per_turn.append(inp + cr)
+        row["max_ctx"] = max(row["max_ctx"], inp + cc + cr)
     if not per_model:
         return []
-    max_ctx = max(ctx_per_turn) if ctx_per_turn else 0
     rows = []
     for mclass, row in per_model.items():
         rows.append({
             "runtime": "claude", "model": mclass, "session": session_id, "kind": kind, "project": project,
             "input_tokens": int(row["input"]), "cache_creation_tokens": int(row["cache_creation"]),
             "cache_read_tokens": int(row["cache_read"]), "output_tokens": int(row["output"]),
-            "turns": int(row["turns"]), "max_ctx_tokens": int(max_ctx), "codex_cumulative_total": None,
+            "turns": int(row["turns"]), "max_ctx_tokens": int(row["max_ctx"]), "codex_cumulative_total": None,
             "est_usd": round(claude_cost(mclass, row["input"], row["cache_creation"], row["cache_read"], row["output"]), 4),
         })
     return rows
@@ -466,6 +498,7 @@ def read_existing_rows(path: Path):
             continue
         values = line.split("\t")
         row = dict(zip(header, values))
+        row["_legacy_accounting"] = "accounting=v2" not in lines[0]
         for k in ("input_tokens", "cache_creation_tokens", "cache_read_tokens", "output_tokens", "turns"):
             row[k] = int(row.get(k, 0) or 0)
         for k in ("max_ctx_tokens", "codex_cumulative_total"):
@@ -483,9 +516,15 @@ def summary_line(rows: list[dict], target_day: str) -> str:
     codex_usd = sum(r["est_usd"] for r in rows if r["runtime"] == "codex")
     peak_ctx_k = int(totals["max_ctx_tokens"]) // 1000
     codex_total_m = totals["codex_cumulative_total"] / 1e6
+    claude_turns = sum(r["turns"] for r in rows if r["runtime"] == "claude")
+    codex_tasks = sum(r["turns"] for r in rows if r["runtime"] == "codex")
+    legacy = any(r.get("_legacy_accounting") for r in rows if r["runtime"] == "claude")
+    claude_unit = "records" if legacy else "requests"
+    peak_label = "legacy ctx estimate" if legacy else "peak ctx"
     line = (
         f"{target_day}: claude ${claude_usd:.2f}-eq / codex ${codex_usd:.2f}-eq "
-        f"| {int(totals['turns'])} turns | peak ctx {peak_ctx_k}k | codex total {codex_total_m:.1f}M"
+        f"| claude {claude_turns} {claude_unit} / codex {codex_tasks} tasks "
+        f"| {peak_label} {peak_ctx_k}k | codex cumulative {codex_total_m:.1f}M"
     )
     return line[:200]
 
@@ -571,7 +610,11 @@ def _turn_count_regression(existing: Path, new_content: bytes) -> str | None:
 def publish_to_ops(repo_root: Path, files: list[tuple[Path, str]]) -> tuple[bool, str]:
     def git(*a, cwd=repo_root, timeout=120):
         try:
-            return subprocess.run(["git", *a], cwd=str(cwd), capture_output=True, text=True, timeout=timeout)
+            # The ledger is detached from a console by preamble; its Git children must not
+            # allocate fresh console windows for each fetch/status/commit/cleanup command.
+            return subprocess.run(["git", *a], cwd=str(cwd), capture_output=True, text=True,
+                                  timeout=timeout, creationflags=(subprocess.CREATE_NO_WINDOW
+                                  if sys.platform == "win32" else 0))
         except subprocess.TimeoutExpired:
             return subprocess.CompletedProcess(a, 1, "", "git timed out")
 
@@ -749,7 +792,9 @@ def main(argv=None) -> int:
             # fix round 3: the sidecar is regenerated on the idempotent-read path if it's missing
             # (an older ledger written before this fix, or a partial prior run) -- the TSV alone
             # is not enough for the SessionStart hook's pure-file-read '## Usage (yesterday)'.
-            if not sidecar_path.exists():
+            # Refresh labels only, preserving historical TSV values and the thinner-day guard.
+            if (not sidecar_path.exists()
+                    or sidecar_path.read_text(encoding="utf-8").strip() != summary_line(rows, target_day)):
                 write_summary_sidecar(sidecar_path, rows, target_day)
                 need_publish = True
             if _pending_marker(target_day).exists():

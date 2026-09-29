@@ -124,7 +124,7 @@ function readOpsFile(cwd, relPath, env) {
   if (typeof cwd !== "string" || !cwd || typeof relPath !== "string") return null;
   const out = gitCapture(cwd, ["show", "origin/ops:" + relPath]);
   if (out !== null) {
-    return out.length > MAX_OPS_FILE_CHARS ? out.slice(0, MAX_OPS_FILE_CHARS) : out;
+    return out.length > MAX_OPS_FILE_CHARS ? null : out;
   }
   return io.readCappedFile(path.join(cwd, relPath), MAX_OPS_FILE_CHARS);
 }
@@ -136,6 +136,38 @@ function firstLine(text) {
     .map((l) => l.trim())
     .find((l) => l.length > 0);
   return line || null;
+}
+
+/** Refresh only complete authoritative files. Shared by startup and compact replay:
+ * hook registration order must never determine which project state wins. */
+function refreshStore(sessionId, project, cwd, env) {
+  if (!sessionId || !cwd) return;
+  const source = project ? `orgs/${project}/GOAL.md and orgs/${project}/STATE.md` : "No active project";
+  const goal = project ? readOpsFile(cwd, `orgs/${project}/GOAL.md`, env) : null;
+  const state = project ? readOpsFile(cwd, `orgs/${project}/STATE.md`, env) : null;
+  store.updateStore(sessionId, (sections) => {
+    const prior = store.sectionBody(sections, "Context source");
+    let next = sections;
+    const untrusted = !prior && sections.length > 0;
+    if (prior !== source) {
+      const owned = ["North star", "Invariants", "Current gate", "Decisions", "Now", "Next", "Blocked",
+        "Resumed-session summary", "Context source", "Context recovery"];
+      next = next.filter((s) => !owned.includes(s.heading));
+    }
+    next = store.upsertSection(next, "Context source", source);
+    const recovery = untrusted ? "Legacy context lacked source provenance and was discarded. " : "";
+    if (!project) return store.upsertSection(next, "Context recovery", recovery +
+      "No active project selected. Read the target project's GOAL.md/STATE.md before project-dependent action; rollup is discovery only.");
+    for (const [text, names] of [[goal, ["North star", "Invariants"]],
+      [state, ["Current gate", "Decisions", "Now", "Next", "Blocked"]]]) {
+      if (text === null) continue; // failed/oversized read is not an explicit removal
+      for (const name of names) next = store.upsertSection(next, name,
+        sectionBodyByPrefix(parseSections(text), name));
+    }
+    next = store.upsertSection(next, "Context recovery", recovery + (goal === null || state === null
+      ? `Source unavailable or oversized; stored fields may be stale. Read ${source} before dependent action.` : ""));
+    return next;
+  }, env);
 }
 
 function updatedStamp(text) {
@@ -173,33 +205,6 @@ function bodiesFor(sections, headings) {
   return parts;
 }
 
-/**
- * Render `Label: body` entries in order, truncating LAST-FIRST once `budget` is exceeded: every
- * entry before the overflow point is kept whole, the first entry that would overflow is cut to
- * whatever room remains, and every entry after it is dropped outright. This differs deliberately
- * from regrounding_hook.js's water-filling `fitSections` — the spec calls for last-first here,
- * not an equal-share split, because a frame's EARLIER sections (GOAL before STATE, Now before
- * Findings) are the ones a resuming session most needs intact.
- */
-function truncateLastFirst(entries, budget) {
-  const rendered = [];
-  let used = 0;
-  for (const entry of entries) {
-    const line = entry.label ? entry.label + ": " + entry.body : entry.body;
-    const sep = rendered.length ? "\n\n" : "";
-    const room = budget - used - sep.length;
-    if (room <= 0) break;
-    if (line.length <= room) {
-      rendered.push(line);
-      used += sep.length + line.length;
-    } else {
-      rendered.push(io.truncateTo(line, room));
-      used = budget;
-      break;
-    }
-  }
-  return rendered.join("\n\n");
-}
 
 function projectHandoffs(cwd, project) {
   if (!cwd || !project) return [];
@@ -226,10 +231,13 @@ function loadListFor(cwd, filename) {
   return sectionBodyByPrefix(sections, "Load list") || sectionBodyByPrefix(sections, "Load");
 }
 
-/** Apply GUARD_LINE + truncateLastFirst + the final per-mode cap, once, for both frame() branches. */
-function renderFramed(entries, budget) {
-  const body = truncateLastFirst(entries, budget - GUARD_LINE.length - 2);
-  const text = io.truncateTo(body ? GUARD_LINE + "\n\n" + body : GUARD_LINE, budget);
+/** Share the budget across fields; retain short fields and point to omitted state. */
+function renderFramed(entries, budget, pointer) {
+  const guard = GUARD_LINE + (entries.some((e) => e.label === "Resumed-session summary")
+    ? "\nHistorical recall never overrides current GOAL/STATE or user instructions." : "");
+  const text = store.boundedContext(guard,
+    entries.map((e) => ({ label: e.label || "Project", body: e.body })), budget,
+    pointer || "orgs/<project>/STATE.md and handoffs/");
   return { text, sections: entries };
 }
 
@@ -290,7 +298,7 @@ function frame(opts) {
   const budget = resolveBudget(mode, o.budget);
 
   if (mode === "rollup") {
-    const entries = [];
+    const entries = [{ label: "Source", body: "Cached origin/ops (local fallback); no fetch. Rollup is discovery only: select and read target GOAL.md/STATE.md before project-dependent action." }];
     for (const id of listProjects(cwd, env)) {
       const stateText = readOpsFile(cwd, `orgs/${id}/STATE.md`, env);
       if (!stateText) continue;
@@ -327,6 +335,9 @@ function frame(opts) {
   ]).concat(
     bodiesFor(stateSections, ["Now", "Current gate", "Decisions", "Next", "Blocked", "Findings", "Infra"])
   );
+  entries.unshift({ label: "Source", body: `Cached origin/ops (local fallback); no fetch. orgs/${project}/GOAL.md and STATE.md.` });
+  if (!goalSections.length || !stateSections.length) entries.unshift({ label: "Context recovery",
+    body: `Source missing, empty or oversized. Read orgs/${project}/GOAL.md and STATE.md before dependent action.` });
   for (const name of projectHandoffs(cwd, project)) {
     const loadList = loadListFor(cwd, name);
     entries.push({ label: `Handoff ${name}`, body: loadList || "(no Load list found)" });
@@ -334,7 +345,7 @@ function frame(opts) {
   const resumed = resumedSummaryEntry(o.sessionId, env);
   if (resumed) entries.push(resumed);
 
-  return renderFramed(entries, budget);
+  return renderFramed(entries, budget, `orgs/${project}/GOAL.md and orgs/${project}/STATE.md; handoffs/`);
 }
 
 module.exports = {
@@ -347,6 +358,7 @@ module.exports = {
   parseSections,
   projectHandoffs,
   readOpsFile,
+  refreshStore,
   sectionBodyByPrefix,
   DECISION_SUFFIX_MAX,
 };
