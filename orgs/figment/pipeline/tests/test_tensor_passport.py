@@ -219,9 +219,14 @@ def test_pick_creates_the_identity_and_logs_age_hold_rulings(command, tmp_path, 
     assert re.search(r"held for age[^<]*\(2\)</h2>", Path(grade["page"]).read_text("utf-8"))
     template = load_json(Path(grade["rulings_template"]))
     assert len(template["rulings"]) == 12
+    assert [row.get("age_ruling", "absent") for row in template["rulings"][:4]] == [None, None, "absent", "absent"]
     for index, row in enumerate(template["rulings"]):
         row.update(_axes(), decision="keep" if index == 1 else "cull",
                    why="the pick" if index == 1 else "not picked")
+    # Final review F2: the age call is the operator's own, independent of the pick --
+    # cell 0 is judged adult (released) yet not picked.
+    template["rulings"][0]["age_ruling"] = "release"
+    template["rulings"][1]["age_ruling"] = "release"
     template.update(decided_by="operator-fixture", decided_at="2026-09-30T00:00:00Z")
     filled = out / "filled.json"
     filled.write_text(json.dumps(template), "utf-8")
@@ -236,16 +241,18 @@ def test_pick_creates_the_identity_and_logs_age_hold_rulings(command, tmp_path, 
     holds = [json.loads(line) for line in
              (persona_dir / "calibration" / "age-holds.jsonl").read_text("utf-8").splitlines()]
     assert [(h["image_id"], h["ruling"]) for h in holds] == [
-        (template["rulings"][0]["image_id"], "cull"), (template["rulings"][1]["image_id"], "release")]
+        (template["rulings"][0]["image_id"], "release"), (template["rulings"][1]["image_id"], "release")]
     assert (holds[1]["vit_age"], holds[1]["judge_age"], holds[1]["age_floor_years"]) == (18.0, 19, 20)
     assert holds[1]["decided_by"] == "operator-fixture" and len(holds[1]["image_sha256"]) == 64
     with pytest.raises(command.FigmentTrainError, match="already has its passport"):
         _plan(command, tmp_path, personas, name="again")
 
 
-def _graded_passport(command, tmp_path, monkeypatch, keeps):
+def _graded_passport(command, tmp_path, monkeypatch, keeps, age_rulings=None):
     """Plan + fake outputs + grade creator-003 (cells 0,1 held for age, 2 unscorable);
-    return (persona_dir, plan_path, filled_rulings_path) with `keeps` kept, the rest culled."""
+    return (persona_dir, plan_path, filled_rulings_path) with `keeps` kept, the rest culled.
+    `age_rulings` maps held cell index -> age_ruling (default: both held cells "cull";
+    a None value leaves the key out)."""
     personas = tmp_path / "personas"
     persona_dir = _pre_passport_persona(personas)
     out = tmp_path / "plan"
@@ -258,6 +265,9 @@ def _graded_passport(command, tmp_path, monkeypatch, keeps):
     template = load_json(Path(grade["rulings_template"]))
     for index, row in enumerate(template["rulings"]):
         row.update(_axes(), decision="keep" if index in keeps else "cull", why=f"ruling {index}")
+    for index, age_ruling in ({0: "cull", 1: "cull"} if age_rulings is None else age_rulings).items():
+        if age_ruling is not None:
+            template["rulings"][index]["age_ruling"] = age_ruling
     template.update(decided_by="operator-fixture", decided_at="2026-09-30T00:00:00Z")
     filled = out / "filled.json"
     filled.write_text(json.dumps(template), "utf-8")
@@ -290,11 +300,25 @@ def test_all_cull_writes_no_identity_but_logs_the_age_hold_culls(command, tmp_pa
     assert _holds(persona_dir) == [("c003-passport-p01", "cull"), ("c003-passport-p02", "cull")]
 
 
-def test_keeping_a_passed_cell_still_logs_the_held_cells_as_culls(command, tmp_path, monkeypatch):
-    persona_dir, plan_path, filled = _graded_passport(command, tmp_path, monkeypatch, {3})
+def test_keeping_a_passed_cell_logs_the_held_cells_age_rulings_not_their_pick(command, tmp_path, monkeypatch):
+    persona_dir, plan_path, filled = _graded_passport(command, tmp_path, monkeypatch, {3},
+                                                      age_rulings={0: "release", 1: "cull"})
     command.apply_rulings("creator-003", "anchor", plan_path, filled)
     assert load_json(persona_dir / "persona.yaml")["identity"]["references"] == ["anchors/passport.png"]
-    assert _holds(persona_dir) == [("c003-passport-p01", "cull"), ("c003-passport-p02", "cull")]
+    assert _holds(persona_dir) == [("c003-passport-p01", "release"), ("c003-passport-p02", "cull")]
+
+
+@pytest.mark.parametrize("value", [None, "keep", ""])
+def test_a_held_cell_without_an_age_ruling_is_refused_before_any_write(command, tmp_path, monkeypatch, value):
+    persona_dir, plan_path, filled = _graded_passport(command, tmp_path, monkeypatch, {3},
+                                                      age_rulings={0: "cull", 1: value})
+    with pytest.raises(command.FigmentTrainError,
+                       match="held-for-age cell c003-passport-p02 has no age_ruling"):
+        command.apply_rulings("creator-003", "anchor", plan_path, filled)
+    assert not (persona_dir / "anchors" / "passport.png").exists()
+    assert _holds(persona_dir) == []
+    assert load_json(persona_dir / "persona.yaml")["identity"]["references"] == []
+    assert not (plan_path.parent / "grade" / "anchor" / "rulings.json").exists()
 
 
 def test_a_retry_after_a_failed_rulings_write_never_duplicates_hold_rows(command, tmp_path, monkeypatch):

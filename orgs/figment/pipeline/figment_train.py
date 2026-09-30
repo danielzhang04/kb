@@ -5943,6 +5943,7 @@ def build_grade(
             } if local_research else {}),
         ),
     )
+    held_for_age = {row["image_id"] for row in gate_document.get("rows", []) if row.get("group") == "age"}
     _write_json(template_path, {
         "schema": "figment/rulings-template@1",
         "creator": creator_id,
@@ -5966,6 +5967,9 @@ def build_grade(
             # the gate, and a template that sometimes omits the field invites a
             # rulings document that never carries it at all.
             "gate_override": "",
+            # Final review F2: a held-for-age cell needs the operator's own adult call
+            # (release|cull), independent of the keep/cull pick.
+            **({"age_ruling": None} if row["image_id"] in held_for_age else {}),
         } for row in images],
     })
     page_path.write_text(
@@ -6349,8 +6353,10 @@ def _age_hold_rows(
     gate_document: dict[str, Any], images: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """Spec 2026-09-29 §7: every ruling on a held-for-age cell is also a labelled example
-    for tuning the age judge. `keep` (with its required gate_override) is a release;
-    `cull` is a cull. Built (image hashes included) before apply_rulings writes anything,
+    for tuning the age judge. The label is the ruling's explicit `age_ruling`
+    (release|cull) -- the operator's adult call, independent of keep/cull, which stays the
+    pick -- and a held cell without one is refused (a stage cannot close while a held image
+    has no ruling). Built (image hashes included) before apply_rulings writes anything,
     so an unreadable held image refuses the whole apply rather than orphaning an identity."""
     gate_by_id = {row["image_id"]: row for row in gate_document.get("rows", [])}
     rulings = {row["image_id"]: row for row in normalized["rulings"]}
@@ -6360,13 +6366,18 @@ def _age_hold_rows(
         if gate_row.get("group") != "age":
             continue
         ruling = rulings[row["image_id"]]
+        age_ruling = ruling.get("age_ruling")
+        age_ruling = age_ruling.strip().lower() if isinstance(age_ruling, str) else None
+        if age_ruling not in ("release", "cull"):
+            raise FigmentTrainError(
+                f"held-for-age cell {row['image_id']} has no age_ruling (release|cull)")
         rows.append({
             "creator": plan["creator"], "stage": stage, "image_id": row["image_id"],
             "image_sha256": _sha256(Path(row["path"])),
             "vit_age": gate_row.get("age_value"),
             "judge_age": (gate_row.get("judge") or {}).get("apparent_age_candidate"),
             "age_floor_years": (gate_document.get("thresholds") or {}).get("age_floor_years"),
-            "ruling": "release" if ruling["decision"] == "keep" else "cull",
+            "ruling": age_ruling,
             "why": ruling.get("why", ""),
             "decided_by": normalized["decided_by"], "decided_at": normalized["decided_at"],
         })
