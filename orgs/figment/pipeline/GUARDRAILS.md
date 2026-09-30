@@ -13,7 +13,9 @@ restart.
    real person's name in a generation prompt.
 
 2. **Unambiguously adult output.** Every generated persona must clearly read as an adult
-   woman. Cull anything ambiguous rather than keeping it. A declared or prompt-stated
+   woman. The operator makes that call by eye on every image: automated age checks
+   score and flag, and never cull on their own (operator ruling 2026-09-29). An image
+   the operator finds ambiguous is not kept. A declared or prompt-stated
    age does not cure a youthful appearance — destination platforms judge by eye, and
    this pipeline's paid tier is explicit content, which makes an ambiguous face an
    unrecoverable mistake rather than a cosmetic one.

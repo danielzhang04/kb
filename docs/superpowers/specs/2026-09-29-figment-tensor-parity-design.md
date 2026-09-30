@@ -369,10 +369,10 @@ a prompt template, and stage settings. It adds no separate driver, plan format o
 
 **Order, at every gradeable stage.**
 1. The automated gate scores every image.
-2. The board shows these groups: *passed*; *held for age*; *held unscorable* (a required metric could not be computed, such as a rear view with no face); *failed* (collapsed, with the failing metric, and openable).
+2. The board shows these groups: *passed*; *held for age*; *held unscorable* (a required metric could not be computed, such as a rear view with no face); *failed* (expanded, with the failing metric).
 3. The operator rules.
 
-The automated gate only filters. It never keeps an image, and it never replaces the eye gate. Nothing is dropped without appearing on the board.
+The automated gate only scores and sorts (operator ruling 2026-09-29: no automatic culling for now). Every image in every batch reaches the operator, including the *failed* group, which is shown expanded with its failing metric. The gate never keeps or culls an image, and it never replaces the eye gate. Only an operator ruling removes an image.
 
 **Age hold.**
 - Today's gate has no absolute age floor, only `age_delta` against the reference (`gate.yaml`: ViT `age_delta_max_years` 5.0, judge `age_delta_max` 1.5).
@@ -461,7 +461,7 @@ end-to-end run the operator funds explicitly.
 
 **Rulings owed by the operator**
 1. **Cap.** Raise `ARC_CAP_USD` for phase 6 (about $10–14 against about $5.7 remaining). Separately, `orgs/figment/_index.md` still says "$50 hard cap" while STATE records $60. GOAL.md is not present in this worktree; check it on `ops`.
-2. **Age floor value and hold semantics.** GUARDRAILS #2 says "cull anything ambiguous", and TENSOR-REPLICATION's grading protocol culls under-twenty faces outright. Decision 7 lets the operator release a held image. Confirm that a release means the operator judged the image unambiguously adult by eye, and set the floor (precedent: 20).
+2. **Age floor value.** Hold semantics are ruled (2026-09-29): GUARDRAILS #2 now says the operator makes the adult call by eye on every image, automated checks flag and never cull, and an image the operator finds ambiguous is not kept. Still owed: the floor value that triggers a flag (precedent: 20).
 3. **Age term.** Decision 6 adopts "youthful young woman" (m10) and "young woman" (m03, m09, m11). D13 recorded this wording as a GUARDRAILS #2 defect. The age hold is the mitigation. Confirm that GUARDRAILS needs no amendment.
 4. **Pickle hatch as the default path.** The hatch flag is named `diagnostic_non_commercial`. Confirm using it for tensor manifests, or approve renaming it as a blocking fix.
 5. **Provenance.** `realistic_snapshot_lora`, `zit_upscaler`, `bfs_head_v5`, `RealisticSnapshotKrea2`, `pawg_krea2` and the NMKD `.pt` come from an anonymous account with no licence (r20, r25). Decision 3 reinstates them. `pawg_krea2` is a body-shape LoRA whose effect on the clothed register is unaudited.
