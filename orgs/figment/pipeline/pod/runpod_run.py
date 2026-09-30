@@ -32,7 +32,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
@@ -433,6 +433,17 @@ class RunPodAPI:
         data = self._request("GET", "/pods?includeMachine=true")
         if not isinstance(data, list):
             raise HarnessError("RunPod list response was not an array")
+        return data
+
+    def pod_billing(self, pod_id: str, start: str, end: str) -> list[dict[str, Any]]:
+        """Read-only GET /billing/pods for one pod, day buckets grouped by pod id."""
+        query = urlencode({
+            "podId": pod_id, "startTime": start, "endTime": end,
+            "bucketSize": "day", "grouping": "podId",
+        })
+        data = self._request("GET", f"/billing/pods?{query}")
+        if not isinstance(data, list):
+            raise HarnessError("RunPod billing response was not an array")
         return data
 
     def delete_pod(self, pod_id: str) -> None:
@@ -2560,6 +2571,34 @@ def enforce_arc_cap(estimate: float, *, arc_cap_usd: float | None = None,
             f"exceeds ${cap:.4f} cap"
         )
     return cap, spent
+
+
+RECONCILE_TOLERANCE_USD = 0.01
+
+
+def ledger_pod_totals(ledger_dir: Path,
+                      ledger_glob: str = DEFAULT_ARC_LEDGER_GLOB) -> dict[str, dict[str, Any]]:
+    """Sum every `pod-create <pod_id>` ledger row per pod across all dated files (history
+    included -- reconciliation is a report, not the arc total), with the first day seen."""
+    totals: dict[str, dict[str, Any]] = {}
+    for path in sorted(ledger_dir.glob(ledger_glob)):
+        day = ledger_file_day(path)
+        try:
+            with path.open("r", encoding="utf-8", newline="") as handle:
+                reader = csv.DictReader(handle, delimiter="	")
+                if not reader.fieldnames or not {"step", "usd"} <= set(reader.fieldnames):
+                    continue
+                for row in reader:
+                    step = row.get("step") or ""
+                    if not step.startswith("pod-create "):
+                        continue
+                    pod_id = step.removeprefix("pod-create ").strip()
+                    entry = totals.setdefault(pod_id, {"ledger_usd": 0.0, "first_day": day})
+                    entry["ledger_usd"] += float(row["usd"])
+                    entry["first_day"] = min(entry["first_day"], day)
+        except (OSError, TypeError, ValueError) as exc:
+            raise HarnessError(f"could not read cost ledger {path}: {exc}") from exc
+    return totals
 
 
 def ready_hourly_price(pod: dict[str, Any]) -> float:
@@ -5346,6 +5385,56 @@ def command_probe(_args: argparse.Namespace) -> int:
         session.close()
 
 
+def command_reconcile(args: argparse.Namespace) -> int:
+    """Read-only: compare our pod-create ledger rows with RunPod's own billing per pod."""
+    try:
+        datetime.strptime(args.since, "%Y-%m-%d")
+    except ValueError as exc:
+        raise HarnessError("--since must be YYYY-MM-DD") from exc
+    totals = ledger_pod_totals(configured_ledger_dir(args.ledger_dir))
+    pod_ids = args.pod_id or sorted(
+        pod_id for pod_id, entry in totals.items() if entry["first_day"] >= args.since
+    )
+    if not pod_ids:
+        raise HarnessError("no pod-create ledger rows to reconcile")
+    try:
+        session, redactor = build_authenticated_session()
+    except KeyError as exc:
+        raise HarnessError("RUNPOD_API_KEY is required for live commands") from exc
+    set_active_redactor(redactor)
+    try:
+        api = RunPodAPI(session)
+        end = utc_now().strftime("%Y-%m-%dT%H:%M:%SZ")
+        failures = 0
+        print("pod_id	ledger_usd	runpod_usd	runpod_billed_s	diff_usd	status")
+        for pod_id in pod_ids:
+            entry = totals.get(pod_id, {"ledger_usd": 0.0, "first_day": args.since})
+            start_day = datetime.strptime(entry["first_day"], "%Y-%m-%d") - timedelta(days=1)
+            records = [
+                record for record in api.pod_billing(
+                    pod_id, start_day.strftime("%Y-%m-%dT00:00:00Z"), end,
+                )
+                if record.get("podId") in (None, pod_id)
+            ]
+            ledger_usd = entry["ledger_usd"]
+            if not records:
+                failures += 1
+                print(redactor.redact(
+                    f"{pod_id}	{ledger_usd:.4f}	-	-	-	NO-PROVIDER-RECORD"))
+                continue
+            runpod_usd = sum(float(record.get("amount") or 0.0) for record in records)
+            billed_s = sum(float(record.get("timeBilledMs") or 0.0) for record in records) / 1000.0
+            diff = ledger_usd - runpod_usd
+            match = abs(diff) <= max(RECONCILE_TOLERANCE_USD, 0.02 * runpod_usd)
+            failures += 0 if match else 1
+            print(redactor.redact(
+                f"{pod_id}	{ledger_usd:.4f}	{runpod_usd:.4f}	{billed_s:.0f}	{diff:+.4f}	"
+                f"{'MATCH' if match else 'MISMATCH'}"))
+        return 0 if failures == 0 else 1
+    finally:
+        session.close()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -5409,6 +5498,19 @@ def build_parser() -> argparse.ArgumentParser:
         "probe", help="read-only GET /pods response-shape probe",
     )
     probe.set_defaults(func=command_probe)
+    reconcile = sub.add_parser(
+        "reconcile", help="read-only: compare ledger pod-create rows with RunPod billing",
+    )
+    reconcile.add_argument(
+        "--ledger-dir", type=Path,
+        help="cost ledger root (fallback: KB_LEDGER_DIR, ops worktree, then repo ledger)",
+    )
+    reconcile.add_argument("--pod-id", action="append", default=None)
+    reconcile.add_argument(
+        "--since", default=ARC_START_DAY,
+        help="without --pod-id: every pod whose first ledger day is on/after this day",
+    )
+    reconcile.set_defaults(func=command_reconcile)
     return parser
 
 

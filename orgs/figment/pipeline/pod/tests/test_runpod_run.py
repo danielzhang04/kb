@@ -5841,3 +5841,61 @@ def test_malformed_arc_ledger_fails_closed(tmp_path, name, body):
     (ledgers / name).write_text(body, encoding="utf-8")
     with pytest.raises(rr.HarnessError):
         rr.arc_budget_state(arc_cap_usd=75.0, ledger_dir=ledgers)
+
+
+def _billing_ledger(ledgers: Path) -> None:
+    ledgers.mkdir()
+    (ledgers / "figment-2026-09-30.tsv").write_text(
+        "model\tstep\tusd\n"
+        "runpod:l40s\tpod-create podmatch\t0.605392\n"
+        "runpod:l40s\tpod-create podoff\t0.400000\n",
+        encoding="utf-8",
+    )
+
+
+def test_reconcile_compares_ledger_pod_rows_with_runpod_billing(tmp_path, monkeypatch, capsys):
+    ledgers = tmp_path / "ledgers"
+    _billing_ledger(ledgers)
+    session = StubSession([
+        StubResponse(200, [{"amount": 0.60, "podId": "podmatch", "time": "2026-09-30T00:00:00Z",
+                            "timeBilledMs": 1676000}]),
+        StubResponse(200, [{"amount": 0.90, "podId": "podoff", "time": "2026-09-30T00:00:00Z",
+                            "timeBilledMs": 2490000}]),
+    ], key="secret-runpod-key")
+    redactor = rr.ApiKeyRedactionFilter(session)
+    monkeypatch.setattr(rr, "build_authenticated_session", lambda: (session, redactor))
+
+    code = rr.main(["reconcile", "--ledger-dir", str(ledgers), "--since", "2026-09-29"])
+
+    captured = capsys.readouterr()
+    lines = captured.out.splitlines()
+    assert code == 1
+    assert "podmatch\t0.6054\t0.6000\t1676\t+0.0054\tMATCH" in lines
+    assert "podoff\t0.4000\t0.9000\t2490\t-0.5000\tMISMATCH" in lines
+    assert "secret-runpod-key" not in captured.out + captured.err
+    assert [call[0] for call in session.calls] == ["GET", "GET"]
+    assert all("/billing/pods?" in call[1] and "grouping=podId" in call[1] for call in session.calls)
+    assert "podId=podmatch" in session.calls[0][1] and "startTime=2026-09-29T00%3A00%3A00Z" in session.calls[0][1]
+
+
+def test_reconcile_reports_no_provider_record_and_never_calls_it_a_match(tmp_path, monkeypatch, capsys):
+    ledgers = tmp_path / "ledgers"
+    _billing_ledger(ledgers)
+    session = StubSession([StubResponse(200, [])])
+    monkeypatch.setattr(rr, "build_authenticated_session",
+                        lambda: (session, rr.ApiKeyRedactionFilter(session)))
+    code = rr.main(["reconcile", "--ledger-dir", str(ledgers), "--pod-id", "podmatch"])
+    assert code == 1
+    assert "podmatch\t0.6054\t-\t-\t-\tNO-PROVIDER-RECORD" in capsys.readouterr().out.splitlines()
+
+
+def test_reconcile_http_error_fails_without_echoing_the_body(tmp_path, monkeypatch, capsys):
+    ledgers = tmp_path / "ledgers"
+    _billing_ledger(ledgers)
+    session = StubSession([StubResponse(403, {"echo": "secret-runpod-key"})], key="secret-runpod-key")
+    monkeypatch.setattr(rr, "build_authenticated_session",
+                        lambda: (session, rr.ApiKeyRedactionFilter(session)))
+    assert rr.main(["reconcile", "--ledger-dir", str(ledgers), "--pod-id", "podmatch"]) == 1
+    captured = capsys.readouterr()
+    assert "returned HTTP 403" in captured.err
+    assert "secret-runpod-key" not in captured.out + captured.err
