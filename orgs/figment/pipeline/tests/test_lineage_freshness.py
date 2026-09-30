@@ -442,3 +442,23 @@ def test_gen_refine_and_detailer_denoise_are_gen_time_only_like_gen_prompt_style
 
 def test_recipe_profile_is_a_train_time_key(command):
     assert "recipe_profile" in command._lineage_module().TRAIN_TIME_KEYS
+
+
+def test_pre_profile_record_stays_current_for_clean_and_refuses_tensor(command):
+    lineage = command._lineage_module()
+    base = {"steps": 3000, "save_every": 250}
+    subject = {"creator": "creator-001", "persona": {"id": "creator-001", "training": dict(base)},
+               "training": dict(base)}
+    record = {"subject": subject, "subject_sha256": lineage.canonical_sha256(subject)}
+
+    def current(profile):
+        training = {**base, "recipe_profile": profile}
+        return {"creator": "creator-001", "persona": {"id": "creator-001", "training": dict(training)},
+                "training": dict(training)}
+
+    lineage.assert_current(record, current("clean"), label="approval")
+    with pytest.raises(lineage.LineageError, match="stale"):
+        lineage.assert_current(record, current("tensor"), label="approval")
+    assert lineage.pre_profile_compatible(base, {**base, "recipe_profile": "clean"}) == base
+    keyed = {**base, "recipe_profile": "clean"}
+    assert lineage.pre_profile_compatible(keyed, {**base, "recipe_profile": "tensor"})["recipe_profile"] == "tensor"

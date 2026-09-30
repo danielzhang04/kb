@@ -639,7 +639,7 @@ defects below for where these two sources disagree past 09-04.
 - **Add a stage.** Widen `STAGES`/`GRADEABLE_STAGES` in `figment_train.py` and wire a manifest
   builder for it — a code change; `GRADEABLE_STAGES`'s own comment names the three functions
   (`build_grade`, `apply_rulings`, `command_gate`) that must all agree. `detail` (F2) is the
-  worked example: `STAGE_PIN_PROFILES["detail"]`, a `build_plan` branch sourcing an upstream
+  worked example: the `detail` entry of each recipe profile in `tensor-pins.yaml` `profiles` (`_stage_pin_groups`), a `build_plan` branch sourcing an upstream
   stage's approved images, an `_install_stage_config`/`run_planned_stage` freshness re-check,
   and a `pipeline` (F1) entry that plans it automatically once its upstream ruling exists.
   `video` (F6a) is the second: same shape, plus an existing compiler imported rather than

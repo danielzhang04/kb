@@ -127,6 +127,16 @@ def training_input_projection(training: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def pre_profile_compatible(recorded: Any, current: Any) -> Any:
+    """`current` with `recipe_profile` dropped when `recorded` predates the key and
+    `current` is "clean": records written before profiles existed were all clean-era.
+    Compatibility for old records only; new plans always record the key."""
+    if (isinstance(recorded, dict) and isinstance(current, dict)
+            and "recipe_profile" not in recorded and current.get("recipe_profile") == "clean"):
+        return {key: value for key, value in current.items() if key != "recipe_profile"}
+    return current
+
+
 def persona_input_projection(persona: dict[str, Any]) -> dict[str, Any]:
     projected = deepcopy(persona)
     projected.pop("_persona_path", None)
@@ -205,6 +215,14 @@ def assert_current(record: dict[str, Any], current_subject: dict[str, Any], *, l
     recorded = record.get("subject_sha256")
     if recorded != canonical_sha256(record["subject"]):
         raise LineageError(f"{label} has a corrupt recorded subject digest")
+    current_subject = dict(current_subject)
+    if "training" in current_subject:
+        current_subject["training"] = pre_profile_compatible(
+            record["subject"].get("training"), current_subject["training"])
+    persona = current_subject.get("persona")
+    if isinstance(persona, dict) and "training" in persona:
+        current_subject["persona"] = {**persona, "training": pre_profile_compatible(
+            (record["subject"].get("persona") or {}).get("training"), persona["training"])}
     current = canonical_sha256(current_subject)
     if recorded != current:
         raise LineageError(

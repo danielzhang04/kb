@@ -6613,7 +6613,8 @@ def _validated_accepted_checkpoint(
     source_projection = lineage.training_input_projection(source_plan["training"])
     if accepted.get("training_inputs") != source_projection:
         raise FigmentTrainError("training inputs changed after checkpoint promotion")
-    current_projection = lineage.training_input_projection(training)
+    current_projection = lineage.pre_profile_compatible(
+        source_projection, lineage.training_input_projection(training))
     if accepted.get("origin") == "imported":
         # P4i: an imported checkpoint's provenance is the training config the tester
         # plan recorded at import time (`source_plan["imported_training_config"]`), not
@@ -6634,7 +6635,7 @@ def _validated_accepted_checkpoint(
         reloaded_projection = _reload_imported_training_projection(
             persona["id"], imported_config_path, reads=reads,
         )
-        if reloaded_projection != source_projection:
+        if lineage.pre_profile_compatible(source_projection, reloaded_projection) != source_projection:
             raise FigmentTrainError(
                 "imported training config changed since the checkpoint ladder was "
                 "screened; re-run --import-checkpoints with the current file"
