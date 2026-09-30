@@ -85,9 +85,6 @@ VIDEO_FRAME_SAMPLE_EVERY = 8
 # Compatibility export for older callers. New plans resolve through the pod harness's
 # configured_ledger_dir() so they cannot silently bind this worktree-local fallback.
 LEDGER_DIR = ROOT / "ledgers" / "cost"
-# Operator approval 2026-09-15 (Daniel): +$20 for the passport-set rebuild + 3000-step
-# train; arc cap 50 -> 60.
-ARC_CAP_USD = "60.00"
 ARC_LEDGER_GLOB = "figment-*.tsv"
 STAGES = ("anchor", "dataset", "smoke", "train", "tester", "gen", "detail", "video")
 # Track-2 Task D2 (review H3): the one, single source of truth for "which stages have a
@@ -216,6 +213,16 @@ def _build_expansion_set_module():
 
 def _pod_runner_module():
     return _load_module("_figment_train_pod_runpod_run", POD_RUNNER)
+
+
+def _arc_cap_usd() -> str:
+    """The one arc cap (pod/runpod_run.py DEFAULT_ARC_CAP_USD, or KB_ARC_CAP_USD),
+    frozen into each plan as a string the same way ledger_dir is."""
+    pod = _pod_runner_module()
+    try:
+        return f"{pod.configured_arc_cap_usd():.2f}"
+    except pod.HarnessError as exc:
+        raise FigmentTrainError(str(exc)) from exc
 
 
 def _verify_pins_module():
@@ -2769,7 +2776,7 @@ def _planned_run(
         "--max-usd", ceiling,
         "--max-minutes", str(manifest["max_minutes"]),
         "--ledger-dir", str(ledger_dir),
-        "--arc-cap-usd", ARC_CAP_USD,
+        "--arc-cap-usd", _arc_cap_usd(),
         "--arc-ledger-glob", ARC_LEDGER_GLOB,
     ]
     result = {
@@ -3564,7 +3571,7 @@ def build_plan(
             }
 
     budget_preflight = _budget_preflight(
-        plan_stages, ledger_dir=resolved_ledger_dir, arc_cap_usd=ARC_CAP_USD,
+        plan_stages, ledger_dir=resolved_ledger_dir, arc_cap_usd=_arc_cap_usd(),
         accept_budget=accept_budget,
     )
     print(budget_preflight["table"])
@@ -3582,7 +3589,7 @@ def build_plan(
             "train": _relative(full_config, out),
         },
         "ledger_dir": str(resolved_ledger_dir),
-        "arc_cap_usd": ARC_CAP_USD,
+        "arc_cap_usd": _arc_cap_usd(),
         "arc_ledger_glob": ARC_LEDGER_GLOB,
         "budget_preflight": budget_preflight,
         "stages": plan_stages,
@@ -3836,7 +3843,7 @@ def build_train_first_plan(
     # M2: a real-spend planning path exactly like `build_plan`'s -- same preflight,
     # same --accept-budget contract.
     budget_preflight = _budget_preflight(
-        stages, ledger_dir=resolved_ledger_dir, arc_cap_usd=ARC_CAP_USD,
+        stages, ledger_dir=resolved_ledger_dir, arc_cap_usd=_arc_cap_usd(),
         accept_budget=accept_budget,
     )
     print(budget_preflight["table"])
@@ -3851,7 +3858,7 @@ def build_train_first_plan(
         "assets": assets,
         "configs": {"train": _relative(plan_dataset_dir / "training.json", out)},
         "ledger_dir": str(resolved_ledger_dir),
-        "arc_cap_usd": ARC_CAP_USD,
+        "arc_cap_usd": _arc_cap_usd(),
         "arc_ledger_glob": ARC_LEDGER_GLOB,
         "budget_preflight": budget_preflight,
         "stages": stages,

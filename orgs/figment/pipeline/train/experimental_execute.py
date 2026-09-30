@@ -31,7 +31,6 @@ ROOT = HERE.parents[3]
 PRIVATE_ROOT = ROOT / "_private"
 OPS_LEDGER_DIR = Path("C:/Users/danie/kb/_private/codex-worktrees/figment-analysis-ops-2026-09-07/ledgers/cost")
 DAILY_BUDGET_PATH = ROOT / "governance" / "budget.yaml"
-ARC_CAP_USD = 50.0
 ARC_LEDGER_GLOB = "figment-*.tsv"
 EXPERIMENTAL_PATH = HERE / "experimental_train.py"
 FIGMENT_TRAIN_PATH = PIPELINE / "figment_train.py"
@@ -200,14 +199,14 @@ def _accounting_context(runner_module: Any) -> dict[str, str]:
             budget_path=budget_path, ledger_dir=ledger_root,
         )
         arc_cap, arc_spent = runner_module.arc_budget_state(
-            arc_cap_usd=ARC_CAP_USD, ledger_dir=ledger_root, ledger_glob=ARC_LEDGER_GLOB,
+            arc_cap_usd=runner_module.DEFAULT_ARC_CAP_USD, ledger_dir=ledger_root, ledger_glob=ARC_LEDGER_GLOB,
         )
     except Exception as exc:
         raise ExperimentalExecuteError(f"cannot compute current Figment accounting context: {type(exc).__name__}") from exc
     if _money(daily_limit, "daily limit") != _money(10.0, "expected daily limit"):
         raise ExperimentalExecuteError("studio daily budget context is not the strict $10.00 limit")
-    if _money(arc_cap, "arc cap") != _money(ARC_CAP_USD, "configured arc cap"):
-        raise ExperimentalExecuteError("canonical Figment Ops arc cap is not $50.00")
+    if _money(arc_cap, "arc cap") != _money(runner_module.DEFAULT_ARC_CAP_USD, "configured arc cap"):
+        raise ExperimentalExecuteError("canonical Figment Ops arc cap is not the runner's DEFAULT_ARC_CAP_USD")
     return {
         "ledger_dir": str(ledger_root),
         "daily_budget_path": str(budget_path),

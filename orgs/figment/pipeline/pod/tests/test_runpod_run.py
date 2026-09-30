@@ -2050,19 +2050,16 @@ def test_N3_daily_budget_sums_mixed_usd_headers_and_skips_headerless(tmp_path):
 def test_P1n_arc_budget_sums_all_matching_ledgers_with_mixed_headers(tmp_path):
     ledgers = tmp_path / "ledgers"
     ledgers.mkdir()
-    (ledgers / "figment-first.tsv").write_text(
+    (ledgers / "figment-2026-09-30.tsv").write_text(
         "model\tstep\tusd\nrunpod\tfirst\t1.250000\n", encoding="utf-8"
     )
-    (ledgers / "figment-second.tsv").write_text(
+    (ledgers / "figment-seed-2026-09-30.tsv").write_text(
         "note\tusd\nprior work\t0.500000\n", encoding="utf-8"
     )
-    (ledgers / "figment-notes.tsv").write_text(
-        "note\tdetail\nprior work\tno spend\n", encoding="utf-8"
-    )
-    (ledgers / "other.tsv").write_text(
+    (ledgers / "other-2026-09-30.tsv").write_text(
         "model\tstep\tusd\nother\twork\t9.000000\n", encoding="utf-8"
     )
-    logger, stream = logger_and_stream()
+    logger, _stream = logger_and_stream()
 
     cap, spent = rr.arc_budget_state(
         arc_cap_usd=50.0, ledger_dir=ledgers, logger=logger,
@@ -2070,13 +2067,18 @@ def test_P1n_arc_budget_sums_all_matching_ledgers_with_mixed_headers(tmp_path):
 
     assert cap == 50.0
     assert spent == pytest.approx(1.75)
-    assert "skipping arc ledger without usd column" in stream.getvalue()
+
+    (ledgers / "figment-notes-2026-09-30.tsv").write_text(
+        "note\tdetail\nprior work\tno spend\n", encoding="utf-8"
+    )
+    with pytest.raises(rr.HarnessError, match="no usd column"):
+        rr.arc_budget_state(arc_cap_usd=50.0, ledger_dir=ledgers, logger=logger)
 
 
 def test_P1n_arc_cap_refuses_before_create_and_records_just_under_cap(tmp_path):
     ledgers = tmp_path / "ledgers"
     ledgers.mkdir()
-    (ledgers / "figment-prior.tsv").write_text(
+    (ledgers / "figment-2026-09-30.tsv").write_text(
         "model\tstep\tusd\nrunpod\tprior\t0.750000\n", encoding="utf-8"
     )
 
@@ -2162,7 +2164,7 @@ def test_P1n_ready_price_over_arc_cap_terminates_and_records_cap(tmp_path):
 def test_P1n_status_prints_arc_total_and_cap(tmp_path, monkeypatch, capsys):
     ledgers = tmp_path / "ledgers"
     ledgers.mkdir()
-    (ledgers / "figment-prior.tsv").write_text(
+    (ledgers / "figment-2026-09-30.tsv").write_text(
         "model\tstep\tusd\nrunpod\tprior\t1.250000\n", encoding="utf-8"
     )
     session = StubSession([StubResponse(200, [])])
@@ -5752,3 +5754,90 @@ def test_transient_poll_tolerance_terminates_even_if_the_clock_never_advances():
         )
 
     assert sum(sleeper.delays) <= rr.TRANSIENT_NETWORK_TOLERANCE_SECONDS
+
+
+def _arc_ledger(ledgers: Path, name: str, usd: str) -> None:
+    ledgers.mkdir(exist_ok=True)
+    (ledgers / name).write_text(
+        f"model\tstep\tusd\nrunpod:l40s\tpod-create fixture\t{usd}\n", encoding="utf-8",
+    )
+
+
+def test_arc_counts_only_ledger_files_dated_on_or_after_the_arc_start(tmp_path, monkeypatch):
+    monkeypatch.delenv("KB_ARC_CAP_USD", raising=False)
+    ledgers = tmp_path / "ledgers"
+    _arc_ledger(ledgers, "figment-2026-09-28.tsv", "40.000000")
+    _arc_ledger(ledgers, "figment-2026-09-29.tsv", "1.250000")
+    _arc_ledger(ledgers, "figment-gemini-2026-09-30.tsv", "0.500000")
+    assert rr.ARC_START_DAY == "2026-09-29"
+    assert rr.arc_budget_state(ledger_dir=ledgers) == (75.0, pytest.approx(1.75))
+
+
+def test_pre_arc_history_is_never_opened(tmp_path):
+    ledgers = tmp_path / "ledgers"
+    ledgers.mkdir()
+    (ledgers / "figment-2026-09-15.tsv").write_text("note\nnot a ledger at all\n", encoding="utf-8")
+    assert rr.arc_budget_state(arc_cap_usd=75.0, ledger_dir=ledgers) == (75.0, 0.0)
+
+
+def test_arc_cap_default_is_75_and_cli_and_env_still_override(monkeypatch):
+    monkeypatch.delenv("KB_ARC_CAP_USD", raising=False)
+    assert rr.DEFAULT_ARC_CAP_USD == 75.0
+    assert rr.configured_arc_cap_usd() == 75.0
+    monkeypatch.setenv("KB_ARC_CAP_USD", "12.5")
+    assert rr.configured_arc_cap_usd() == 12.5
+    assert rr.configured_arc_cap_usd(3.0) == 3.0
+
+
+def test_arc_cap_enforced_at_75(tmp_path, monkeypatch):
+    monkeypatch.delenv("KB_ARC_CAP_USD", raising=False)
+    ledgers = tmp_path / "ledgers"
+    _arc_ledger(ledgers, "figment-2026-09-30.tsv", "74.000000")
+    assert rr.enforce_arc_cap(1.0, ledger_dir=ledgers) == (75.0, 74.0)
+    with pytest.raises(rr.HarnessError, match="ARC CAP REFUSED"):
+        rr.enforce_arc_cap(1.01, ledger_dir=ledgers)
+
+
+def test_run_that_would_exceed_the_arc_is_refused_before_create(tmp_path, monkeypatch):
+    monkeypatch.delenv("KB_ARC_CAP_USD", raising=False)
+    ledgers = tmp_path / "ledgers"
+    _arc_ledger(ledgers, "figment-2026-09-30.tsv", "74.600000")
+    budget = tmp_path / "budget.yaml"
+    budget.write_text("daily_usd_limit: 1000\n", encoding="utf-8")
+
+    class NeverCreateAPI(FakeAPI):
+        def __init__(self):
+            super().__init__(False)
+            self.creates = 0
+
+        def create_pod(self, payload):
+            self.creates += 1
+            return super().create_pod(payload)
+
+    refused = manifest()
+    refused["price_usd_per_hour"] = 0.50
+    api = NeverCreateAPI()
+    with pytest.raises(rr.HarnessError, match="ARC CAP REFUSED"):
+        rr.run_harness(
+            refused, tmp_path / "m.yaml", tmp_path / "refused",
+            max_usd=1, max_minutes=60, dry_run=False, api=api,
+            logger=logger_and_stream()[0], ledger_dir=ledgers, budget_path=budget,
+        )
+    assert api.creates == 0
+
+
+@pytest.mark.parametrize(("name", "body"), [
+    ("figment-2026-09-30.tsv", "model\tstep\tusd\nrunpod\tx\tnot-a-number\n"),
+    ("figment-2026-09-30.tsv", "model\tstep\tusd\nrunpod\tx\t-1.0\n"),
+    ("figment-2026-09-30.tsv", "model\tstep\tusd\nrunpod\tx\tnan\n"),
+    ("figment-2026-09-30.tsv", "model\tstep\tusd\nrunpod\tx\n"),
+    ("figment-2026-09-30.tsv", "model\tstep\tnote\nrunpod\tx\t1.0\n"),
+    ("figment-notes.tsv", "model\tstep\tusd\nrunpod\tx\t1.0\n"),
+    ("figment-2026-13-45.tsv", "model\tstep\tusd\nrunpod\tx\t1.0\n"),
+])
+def test_malformed_arc_ledger_fails_closed(tmp_path, name, body):
+    ledgers = tmp_path / "ledgers"
+    ledgers.mkdir()
+    (ledgers / name).write_text(body, encoding="utf-8")
+    with pytest.raises(rr.HarnessError):
+        rr.arc_budget_state(arc_cap_usd=75.0, ledger_dir=ledgers)

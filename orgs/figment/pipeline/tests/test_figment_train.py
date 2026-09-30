@@ -2775,7 +2775,7 @@ def test_planning_freezes_explicit_ledger_for_both_plan_entrypoints_and_harness_
     stale = tmp_path / "stale-worktree" / "cost"
     for directory, usd in ((reconciled, "49.000000"), (stale, "1.000000")):
         directory.mkdir(parents=True)
-        (directory / "figment-fixture.tsv").write_text(
+        (directory / "figment-2026-09-30.tsv").write_text(
             f"model\tstep\tusd\nrunpod:test\tprior\t{usd}\n", encoding="utf-8",
         )
     monkeypatch.setenv("KB_LEDGER_DIR", str(stale))
@@ -2874,9 +2874,9 @@ def test_ledger_dir_resolution_follows_documented_precedence_e3(
     )
     assert plan["ledger_dir"] == str(pod_module.repo_ledger_dir().resolve())
     cap, spent = pod_module.arc_budget_state(
-        arc_cap_usd=float(command.ARC_CAP_USD), ledger_dir=Path(plan["ledger_dir"]),
+        arc_cap_usd=float(command._arc_cap_usd()), ledger_dir=Path(plan["ledger_dir"]),
     )
-    assert cap == float(command.ARC_CAP_USD)
+    assert cap == float(command._arc_cap_usd())
     assert spent == 0.0, "this repo checkout carries no real ledger rows (M3): they live on ops"
 
 
@@ -2889,7 +2889,7 @@ def test_creator001_live_3000_step_train_ceiling_still_clears_the_arc_cap_f5(
     $10.00 daily cap on its own (a separate, deliberate consequence -- see
     train/tests/test_tensor_track.py's
     test_train_manifest_ceiling_exceeds_the_daily_cap_and_is_refused_by_it) but must still
-    clear the much larger whole-arc cap (`ARC_CAP_USD`) -- this is the actual gate
+    clear the much larger whole-arc cap (`_arc_cap_usd()`) -- this is the actual gate
     `run --stage train` checks before ever creating a pod.
 
     M3: this repo carries no real ledger rows of its own (that history lives on ops), so
@@ -2907,7 +2907,7 @@ def test_creator001_live_3000_step_train_ceiling_still_clears_the_arc_cap_f5(
     assert len(checkpoints) == 11, "11 intermediates (250..2750) plus the final = 12 total"
 
     ceiling = float(budget["ceiling_usd"])
-    arc_cap_usd = float(command.ARC_CAP_USD)
+    arc_cap_usd = float(command._arc_cap_usd())
     # A realistic near-cap scenario: seed a synthetic ledger with a deliberately narrow
     # $0.50 margin so this still proves train's own ceiling can clear the arc cap by a
     # real, narrow amount -- not trivially against an oversized cap or an emptied ledger.
@@ -2916,7 +2916,7 @@ def test_creator001_live_3000_step_train_ceiling_still_clears_the_arc_cap_f5(
     assert spent_seed > 0, "train's ceiling plus the intended margin must fit under the cap"
     ledger_dir = tmp_path / "ledger"
     ledger_dir.mkdir()
-    (ledger_dir / "figment-2026-01-01.tsv").write_text(
+    (ledger_dir / "figment-2026-09-30.tsv").write_text(
         f"model\tstep\tusd\nl40s\tpod-create seed\t{spent_seed:.6f}\n", encoding="utf-8",
     )
 
@@ -2941,10 +2941,10 @@ def test_build_plan_refuses_when_planned_ceilings_exceed_remaining_arc_and_recor
     passed, and record the numbers on the plan when it is."""
     ledger_dir = tmp_path / "ledger"
     ledger_dir.mkdir()
-    # Seed the arc ledger so only $1.00 remains of ARC_CAP_USD -- any nonzero multi-stage
+    # Seed the arc ledger so only $1.00 remains of _arc_cap_usd() -- any nonzero multi-stage
     # synthetic plan's summed ceilings exceed that.
-    seed_spent = float(command.ARC_CAP_USD) - 1.0
-    (ledger_dir / "figment-2026-01-01.tsv").write_text(
+    seed_spent = float(command._arc_cap_usd()) - 1.0
+    (ledger_dir / "figment-2026-09-30.tsv").write_text(
         f"model\tstep\tusd\nl40s\tpod-create seed\t{seed_spent:.6f}\n", encoding="utf-8",
     )
     personas_root = tmp_path / "personas"
@@ -4215,3 +4215,26 @@ def test_prior_attempt_never_created_refuses_a_non_create_call_error(command, tm
     reason = command._prior_attempt_never_created(run_out)
     assert reason is not None
     assert "CreateCallError" in reason
+
+
+def test_plan_argv_carries_the_one_arc_cap_and_its_env_override(command, tmp_path, monkeypatch):
+    personas = tmp_path / "personas"
+    _synthetic_persona(personas)
+    monkeypatch.delenv("KB_ARC_CAP_USD", raising=False)
+    assert not hasattr(command, "ARC_CAP_USD")
+    plan = command.build_plan(
+        "creator-002", "smoke", tmp_path / "a", personas_root=personas,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    run = plan["stages"]["smoke"]["runs"][0]
+    assert run["argv"][run["argv"].index("--arc-cap-usd") + 1] == "75.00"
+    assert plan["arc_cap_usd"] == "75.00"
+    # Relaunch recomputes `_planned_run` and refuses on any argv difference
+    # (figment_train.py run_planned_stage): a plan recorded under another cap is stale.
+    monkeypatch.setenv("KB_ARC_CAP_USD", "40")
+    recomputed = command._planned_run(
+        tmp_path / "a", tmp_path / "a" / run["manifest"], tmp_path / "a" / run["out"],
+        ledger_dir=Path(plan["ledger_dir"]),
+    )
+    assert recomputed["argv"] != run["argv"]
+    assert recomputed["argv"][recomputed["argv"].index("--arc-cap-usd") + 1] == "40.00"

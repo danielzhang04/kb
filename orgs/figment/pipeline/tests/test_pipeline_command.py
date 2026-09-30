@@ -701,13 +701,13 @@ def test_pipeline_reaching_video_with_accept_budget_records_acceptance_in_the_vi
 
     # Seed the arc ledger so only a sliver remains -- video's own ceiling alone must
     # exceed it, so reaching GATE video at all proves --accept-budget was honoured.
-    arc_cap = float(command.ARC_CAP_USD)
-    already_spent = sum(
-        float(row.split("\t")[2])
-        for path in ledger_dir.glob("figment-*.tsv")
-        for row in path.read_text(encoding="utf-8").splitlines()[1:] if row
+    arc_cap = float(command._arc_cap_usd())
+    # The fake harness ledgers LEDGER_DAY (pre-arc) rows, which the arc never counts:
+    # measure what remains the way the harness does.
+    _, already_spent = command._pod_runner_module().arc_budget_state(
+        arc_cap_usd=arc_cap, ledger_dir=ledger_dir,
     )
-    (ledger_dir / "figment-2026-01-01-seed.tsv").write_text(
+    (ledger_dir / "figment-seed-2026-09-30.tsv").write_text(
         f"model\tstep\tusd\nl40s\tpod-create seed\t{arc_cap - already_spent - 0.01:.6f}\n",
         encoding="utf-8",
     )

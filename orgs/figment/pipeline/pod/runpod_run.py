@@ -168,7 +168,13 @@ BOOTSTRAP_LOG_TAIL_LINES = 20
 OPS_LEDGER_DIR = Path("C:/Users/danie/kb-worktrees/dashboard-ops/ledgers/cost")
 LEDGER_LOCK_TIMEOUT = 5.0
 DEFAULT_COMFY_SOURCE_URL = "https://github.com/comfyanonymous/ComfyUI"
-DEFAULT_ARC_CAP_USD = 50.0
+# The one arc-cap source (operator ruling 2026-09-29): figment_train.py and
+# train/experimental_execute.py read it from here. The creator-003 tensor arc counts
+# from $0 on ledger files dated on/after ARC_START_DAY (America/New_York governance
+# day); earlier figment-*.tsv files stay on ops as history and are never opened.
+DEFAULT_ARC_CAP_USD = 75.0
+ARC_START_DAY = "2026-09-29"
+LEDGER_DAY_RE = re.compile(r"(\d{4}-\d{2}-\d{2})\.tsv$")
 DEFAULT_ARC_LEDGER_GLOB = "figment-*.tsv"
 TRAINING_IDENTIFIER_PLACEHOLDERS = {"trigger", "git_ref", "diffusion_pipe_git_ref"}
 ENV_SECRET_NAME_RE = re.compile(r"[A-Z][A-Z0-9_]*")
@@ -2477,6 +2483,18 @@ def enforce_daily_budget(estimate: float, *, budget_path: Path | None = None,
     return daily_limit, spent
 
 
+def ledger_file_day(path: Path) -> str:
+    """The YYYY-MM-DD day a ledger file is named for; fail closed when it has none."""
+    match = LEDGER_DAY_RE.search(path.name)
+    if match is None:
+        raise HarnessError(f"arc ledger file name carries no YYYY-MM-DD day: {path.name}")
+    try:
+        datetime.strptime(match.group(1), "%Y-%m-%d")
+    except ValueError as exc:
+        raise HarnessError(f"arc ledger file name carries an invalid day: {path.name}") from exc
+    return match.group(1)
+
+
 def configured_arc_cap_usd(explicit: float | None = None) -> float:
     """Return the operator's whole-arc cap, validating CLI and environment values."""
     raw_value: float | str = (
@@ -2496,7 +2514,9 @@ def arc_budget_state(*, arc_cap_usd: float | None = None,
                      ledger_dir: Path | None = None,
                      ledger_glob: str = DEFAULT_ARC_LEDGER_GLOB,
                      logger: logging.Logger | None = None) -> tuple[float, float]:
-    """Return the arc cap and all matching Figment ledger spend, regardless of date."""
+    """Return the arc cap and the spend in every matching ledger file dated on or after
+    ARC_START_DAY. Earlier files are history and are never opened; every in-arc file
+    must carry a `usd` column of finite, non-negative values or this fails closed."""
     cap = configured_arc_cap_usd(arc_cap_usd)
     if not isinstance(ledger_glob, str) or not ledger_glob:
         raise HarnessError("--arc-ledger-glob must be a non-empty glob")
@@ -2507,13 +2527,13 @@ def arc_budget_state(*, arc_cap_usd: float | None = None,
     except (OSError, ValueError) as exc:
         raise HarnessError(f"could not enumerate arc cost ledgers: {exc}") from exc
     for path in paths:
+        if ledger_file_day(path) < ARC_START_DAY:
+            continue
         try:
             with path.open("r", encoding="utf-8", newline="") as handle:
                 reader = csv.DictReader(handle, delimiter="\t")
                 if not reader.fieldnames or "usd" not in reader.fieldnames:
-                    if logger:
-                        logger.warning("skipping arc ledger without usd column: %s", path)
-                    continue
+                    raise HarnessError(f"arc cost ledger has no usd column: {path}")
                 for row in reader:
                     value = float(row["usd"])
                     if not math.isfinite(value) or value < 0:
@@ -5345,7 +5365,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run.add_argument(
         "--arc-cap-usd", type=float,
-        help="whole-arc spending cap (fallback: KB_ARC_CAP_USD, then 50.0)",
+        help=f"whole-arc spending cap (fallback: KB_ARC_CAP_USD, then {DEFAULT_ARC_CAP_USD})",
     )
     run.add_argument(
         "--arc-ledger-glob", default=DEFAULT_ARC_LEDGER_GLOB,
@@ -5370,7 +5390,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     status.add_argument(
         "--arc-cap-usd", type=float,
-        help="whole-arc spending cap (fallback: KB_ARC_CAP_USD, then 50.0)",
+        help=f"whole-arc spending cap (fallback: KB_ARC_CAP_USD, then {DEFAULT_ARC_CAP_USD})",
     )
     status.add_argument(
         "--forget-bad-host", default=None,
