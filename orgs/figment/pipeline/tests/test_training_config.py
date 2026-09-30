@@ -161,3 +161,16 @@ def test_gen_denoise_keys_accept_the_full_0_to_1_range(key):
 def test_gen_denoise_keys_reject_out_of_range_or_non_numeric(key, bad):
     with pytest.raises(tc.TrainingConfigError, match=key):
         tc.validate_training({key: bad}, "creator-002")
+
+
+def test_recipe_profile_defaults_to_tensor_and_rejects_unknown_values():
+    assert tc.validate_training(None, "creator-003")["recipe_profile"] == "tensor"
+    assert tc.validate_training({"recipe_profile": "clean"}, "creator-002")["recipe_profile"] == "clean"
+    with pytest.raises(tc.TrainingConfigError, match="recipe_profile"):
+        tc.validate_training({"recipe_profile": "hybrid"}, "creator-003")
+
+
+def test_creator001_must_name_its_recipe_profile_explicitly():
+    with pytest.raises(tc.TrainingConfigError, match="creator-001 must name"):
+        tc.validate_training({"steps": 3000, "save_every": 250}, "creator-001")
+    assert tc.validate_training({"recipe_profile": "clean"}, "creator-001")["recipe_profile"] == "clean"

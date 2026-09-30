@@ -1,5 +1,9 @@
 {
   "schema": "figment/tensor-pins@1",
+  "profiles": {
+    "clean": {"anchor": ["anchor", "anchor_edit"], "dataset": ["dataset"], "smoke": ["train"], "train": ["train"], "tester": ["tester"], "gen": ["gen"], "detail": ["detail"], "video": []},
+    "tensor": {}
+  },
   "pod_classes": {
     "l40s": {
       "gpu": {"type": "NVIDIA L40S", "count": 1, "cloud": "SECURE"},

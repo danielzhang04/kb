@@ -275,6 +275,7 @@ def _synthetic_persona(
         # "person" (training_config.py).
         "dop_class": "woman",
         "dataset_source": dataset_source,
+        "recipe_profile": "clean",
     }
     path = target / "persona.yaml"
     path.write_text(json.dumps(source, indent=2) + "\n", encoding="utf-8")

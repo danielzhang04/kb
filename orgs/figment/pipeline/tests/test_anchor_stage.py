@@ -123,6 +123,7 @@ def _synthetic_persona(
         "caption_mode": "provided",
         "pod_class": "l40s",
         "price_ceiling_usd_per_hour": 1.30,
+        "recipe_profile": "clean",
     }
     path = target / "persona.yaml"
     path.write_text(json.dumps(source, indent=2) + "\n", encoding="utf-8")
@@ -521,3 +522,23 @@ def test_run_stage_all_skips_completed_and_already_graded_stages(command, tmp_pa
     joined = [" ".join(a) for a in launched]
     assert not any("dataset" in a for a in joined)
     assert not any("tester" in a for a in joined)
+
+
+def test_clean_profile_pin_groups_equal_the_old_stage_table(command):
+    pins = load_json(PIPELINE / "train" / "tensor-pins.yaml")
+    clean = {"recipe_profile": "clean"}
+    assert not hasattr(command, "STAGE_PIN_PROFILES")
+    assert command._stage_pin_groups(pins, clean, "anchor") == ["anchor", "anchor_edit"]
+    for stage, groups in (("dataset", ["dataset"]), ("smoke", ["train"]), ("train", ["train"]),
+                          ("tester", ["tester"]), ("gen", ["gen"]), ("detail", ["detail"]),
+                          ("video", [])):
+        assert command._stage_pin_groups(pins, clean, stage) == groups
+
+
+def test_tensor_profile_refuses_stages_not_built_yet_even_without_pin_verify(command, tmp_path):
+    personas = tmp_path / "personas"
+    _synthetic_persona(personas, creator_id="creator-002")
+    _set_training(personas / "creator-002", recipe_profile="tensor")
+    with pytest.raises(command.FigmentTrainError, match="not built for recipe profile 'tensor'"):
+        command.build_plan("creator-002", "dataset", tmp_path / "p", personas_root=personas,
+                           skip_pin_verify=True, ledger_dir=tmp_path / "ledger")

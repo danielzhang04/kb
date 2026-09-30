@@ -22,6 +22,7 @@ TRAINING_KEYS = {
     "chosen_checkpoint_sha256", "chosen_checkpoint_approval",
     "dop_enabled", "dop_multiplier", "dop_class", "dataset_source",
     "dataset_replicates", "gen_prompt_style", "gen_refine_denoise", "gen_detailer_denoise",
+    "recipe_profile",
 }
 ALLOWED_GEN_PROMPT_STYLES = {"look-clause", "trigger-scene", "look-clause-close"}
 DEFAULT_TRAINING = {
@@ -98,8 +99,13 @@ DEFAULT_TRAINING = {
     # denoise 0.15. 0.0 removes the detailer entirely (SaveImage reads node 33's own
     # image input directly) -- default reproduces today's workflow byte-for-byte.
     "gen_detailer_denoise": 0.15,
+    # Spec 2026-09-29 §6: which recipe a stage runs -- "tensor" (the 10sorlabs package
+    # copied exactly, the default) or "clean" (the licence-clean substitutes every
+    # creator-001 plan was built with). Decides pixels, so it is a TRAIN_TIME_KEY.
+    "recipe_profile": "tensor",
 }
 ALLOWED_ARCHES = {"krea2"}
+ALLOWED_RECIPE_PROFILES = {"tensor", "clean"}
 ALLOWED_DATASET_SOURCES = {"qwen-edit", "klein-multiref"}
 # M4: "qwen3vl" is an operator-facing declaration only -- apply_rulings' dataset-stage
 # assembly (figment_train.py) routes it through the live pinned qwen3vl captioning pod
@@ -171,6 +177,11 @@ def validate_training(raw: Any, creator_id: str) -> dict[str, Any]:
     unknown = sorted(set(raw) - TRAINING_KEYS)
     if unknown:
         raise TrainingConfigError(f"persona.training has unknown key(s): {unknown}")
+    if creator_id == "creator-001" and "recipe_profile" not in raw:
+        raise TrainingConfigError(
+            "creator-001 must name persona.training.recipe_profile explicitly (its recorded "
+            "plans were built with the clean profile)"
+        )
     config = dict(DEFAULT_TRAINING)
     config.update(raw)
 
@@ -194,6 +205,10 @@ def validate_training(raw: Any, creator_id: str) -> dict[str, Any]:
     if config["dataset_source"] not in ALLOWED_DATASET_SOURCES:
         raise TrainingConfigError(
             f"persona.training.dataset_source must be one of {sorted(ALLOWED_DATASET_SOURCES)}"
+        )
+    if config["recipe_profile"] not in ALLOWED_RECIPE_PROFILES:
+        raise TrainingConfigError(
+            f"persona.training.recipe_profile must be one of {sorted(ALLOWED_RECIPE_PROFILES)}"
         )
     replicates = config["dataset_replicates"]
     if isinstance(replicates, bool) or not isinstance(replicates, int) or replicates < 1:

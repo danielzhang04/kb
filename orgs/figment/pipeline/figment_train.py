@@ -123,23 +123,23 @@ PIN_ENFORCEMENT_NOTE = (
     "ref, so these pins are RECORDED, NOT ENFORCED. Tightening this means changing "
     "runpod_run.py, not this file."
 )
-# Which `pins.pins` profile(s) each STAGES entry consumes -- the anchor stage alone spans
-# two profiles (passport + edit arms); "smoke" reuses the "train" profile exactly as
-# `_train_manifest` does. Drives the `plan` preflight's pin verification (HIGH-1 / LOW-15):
-# only the profiles an actual `--stage` selection will use are HEAD-checked.
-STAGE_PIN_PROFILES = {
-    "anchor": ("anchor", "anchor_edit"),
-    "dataset": ("dataset",),
-    "smoke": ("train",),
-    "train": ("train",),
-    "tester": ("tester",),
-    "gen": ("gen",),
-    "detail": ("detail",),
-    # "video" is deliberately absent: its pins live in
-    # video/wan22_ti2v_5b.model-pins.json, which verify_pins.py does not cover today
-    # (AUDIT-2026-09-15.md E5) -- unchanged by F6, which is scoped to the stage entry,
-    # not a new pin-verification path.
-}
+def _stage_pin_groups(pins: dict[str, Any], training: dict[str, Any], stage: str) -> list[str]:
+    """The `pins.pins` groups `stage` consumes under the persona's recipe profile
+    (`tensor-pins.yaml` `profiles`, spec 2026-09-29 §6). A stage the profile does not map
+    is not built for that profile yet: refused, never served by another profile's groups.
+    `detail`'s legacy `--detail-images` side mode and `style_loras` are added by the
+    callers exactly as before."""
+    profile = training["recipe_profile"]
+    try:
+        stages = pins["profiles"][profile]
+    except (KeyError, TypeError) as exc:
+        raise FigmentTrainError(f"tensor-pins.yaml has no recipe profile {profile!r}") from exc
+    if stage not in stages:
+        raise FigmentTrainError(
+            f"stage {stage!r} is not built for recipe profile {profile!r} yet "
+            "(docs/superpowers/specs/2026-09-29-figment-tensor-parity-design.md §10)"
+        )
+    return list(stages[stage])
 SHARD_NOTES = (
     "face-row and half-body-row cells (framing: half), part 1 of 3",
     "face-row and half-body-row cells (framing: half), part 2 of 3",
@@ -281,9 +281,9 @@ def _default_pipeline_out(creator_id: str) -> Path:
 
 
 def _verify_pins_preflight(
-    pins: dict[str, Any], selected_stages: list[str], training: dict[str, Any] | None = None,
+    pins: dict[str, Any], selected_stages: list[str], training: dict[str, Any],
 ) -> None:
-    """Run `verify_pins.verify_pins` for every pin profile `selected_stages` will actually
+    """Run `verify_pins.verify_pins` for every pin group the recipe profile maps each selected stage to
     consume, before a single model is ever bootstrapped on a pod (review HIGH-1: all four
     `pins.anchor` sha256 digests were wrong and only failed at pod readiness, burning the
     full cost ceiling for zero images). Raises `FigmentTrainError` on any mismatch.
@@ -298,22 +298,22 @@ def _verify_pins_preflight(
     `training["dataset_source"] == "klein-multiref"` -- the two pin profiles carry
     different models (klein-base-4b vs. the qwen-edit + klein-4b-edit chain), so
     verifying the wrong one would silently pass while the plan itself pulls the other."""
-    profiles: list[str] = []
+    groups: list[str] = []
     for stage in selected_stages:
-        for profile in STAGE_PIN_PROFILES.get(stage, ()):
-            if (stage == "dataset" and profile == "dataset"
-                    and training and training.get("dataset_source") == "klein-multiref"):
-                profile = "dataset_multiref"
-            if profile not in profiles:
-                profiles.append(profile)
-        if (stage in ("gen", "detail") and training and training.get("style_lora")
-                and "style_loras" not in profiles):
-            profiles.append("style_loras")
-    if not profiles:
+        for group in _stage_pin_groups(pins, training, stage):
+            if (stage == "dataset" and group == "dataset"
+                    and training.get("dataset_source") == "klein-multiref"):
+                group = "dataset_multiref"
+            if group not in groups:
+                groups.append(group)
+        if (stage in ("gen", "detail") and training.get("style_lora")
+                and "style_loras" not in groups):
+            groups.append("style_loras")
+    if not groups:
         return
     module = _verify_pins_module()
     try:
-        results = module.verify_pins(pins, stages=profiles)
+        results = module.verify_pins(pins, stages=groups)
     except module.VerifyPinsError as exc:
         raise FigmentTrainError(f"pin verification could not run: {exc}") from exc
     if results:
@@ -3328,6 +3328,8 @@ def build_plan(
         if stage == "all" and _later_stage in selected:
             selected.remove(_later_stage)
 
+    for current in selected:
+        _stage_pin_groups(pins, training, current)
     if not skip_pin_verify:
         preflight_training = training
         if detail_upstream_style_lora is not None:
@@ -3335,7 +3337,7 @@ def build_plan(
         _verify_pins_preflight(pins, selected, preflight_training)
         if detail_images and "gen" in selected:
             # `detail` is not a top-level STAGES entry (it rides along with a "gen"
-            # plan when --detail-images is given), so STAGE_PIN_PROFILES's per-stage
+            # plan when --detail-images is given), so `_stage_pin_groups`'s per-stage
             # lookup never reaches it -- verify it directly, same fail-closed contract.
             module = _verify_pins_module()
             try:
@@ -3781,8 +3783,10 @@ def build_train_first_plan(
     # this extra key rides along harmlessly wherever `training` is passed on below.
     training = {**training, "dataset_dir": str(dataset_dir)}
 
+    for current in ("train", "tester"):
+        _stage_pin_groups(pins, training, current)
     if not skip_pin_verify:
-        _verify_pins_preflight(pins, ["train", "tester"])
+        _verify_pins_preflight(pins, ["train", "tester"], training)
 
     # Same anchor files `build_plan` stages via `_copy_support_files` -- `grade --stage
     # tester` (`build_grade`) needs `plan["assets"]["anchors"]` to resolve to real,

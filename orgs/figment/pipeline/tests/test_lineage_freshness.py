@@ -438,3 +438,7 @@ def test_gen_refine_and_detailer_denoise_are_gen_time_only_like_gen_prompt_style
     assert lineage.training_input_projection(base) == lineage.training_input_projection(changed)
     assert "gen_refine_denoise" not in lineage.training_input_projection(base)
     assert "gen_detailer_denoise" not in lineage.training_input_projection(base)
+
+
+def test_recipe_profile_is_a_train_time_key(command):
+    assert "recipe_profile" in command._lineage_module().TRAIN_TIME_KEYS

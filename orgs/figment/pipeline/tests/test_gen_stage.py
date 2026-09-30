@@ -1426,7 +1426,7 @@ def test_revalidate_planned_gen_authority_survives_a_style_lora_flag(command, tm
 def test_verify_pins_preflight_includes_style_loras_for_gen_and_detail_when_set(
     command, monkeypatch,
 ):
-    """m8: STAGE_PIN_PROFILES itself never lists "style_loras" (it is opt-in per
+    """m8: `_stage_pin_groups` itself never lists "style_loras" (it is opt-in per
     persona/plan, unlike every other fixed stage profile) -- `_verify_pins_preflight`
     adds it for `gen`/`detail` only when `training["style_lora"]` names one."""
     calls = []
@@ -1441,18 +1441,18 @@ def test_verify_pins_preflight_includes_style_loras_for_gen_and_detail_when_set(
             return {}
 
     monkeypatch.setattr(command, "_verify_pins_module", lambda: FakeVerifyPins)
-    pins = {}
+    pins = {"profiles": {"clean": {"gen": ["gen"], "detail": ["detail"], "dataset": ["dataset"]}}}
 
-    command._verify_pins_preflight(pins, ["gen"], {"style_lora": None})
+    command._verify_pins_preflight(pins, ["gen"], {"style_lora": None, "recipe_profile": "clean"})
     assert "style_loras" not in calls[-1]
 
-    command._verify_pins_preflight(pins, ["gen"], {"style_lora": "inline-skin"})
+    command._verify_pins_preflight(pins, ["gen"], {"style_lora": "inline-skin", "recipe_profile": "clean"})
     assert "style_loras" in calls[-1]
 
-    command._verify_pins_preflight(pins, ["detail"], {"style_lora": "gokay-realism"})
+    command._verify_pins_preflight(pins, ["detail"], {"style_lora": "gokay-realism", "recipe_profile": "clean"})
     assert "style_loras" in calls[-1]
 
-    command._verify_pins_preflight(pins, ["dataset"], {"style_lora": "inline-skin"})
+    command._verify_pins_preflight(pins, ["dataset"], {"style_lora": "inline-skin", "recipe_profile": "clean"})
     assert "style_loras" not in calls[-1], "style_loras is only meaningful for gen/detail"
 
 

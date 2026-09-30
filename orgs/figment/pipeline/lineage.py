@@ -92,7 +92,7 @@ GEN_TIME_ONLY_KEYS = frozenset({
 # dataset was never produced by this pipeline's own `dataset` stage to begin with.
 TRAIN_TIME_KEYS = frozenset({
     "steps", "save_every", "skin_lora", "dop_enabled", "dop_multiplier", "dop_class",
-    "dataset_source",
+    "dataset_source", "recipe_profile",
 })
 
 

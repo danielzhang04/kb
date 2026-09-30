@@ -15,6 +15,7 @@
     "dataset_replicates": 2,
     "chosen_checkpoint_step": 2000,
     "chosen_checkpoint_sha256": "b5ce8195d4543d98428a8653af2fd47c590273cb2f994886b87c82054c42a5ab",
-    "chosen_checkpoint_approval": "orgs/figment/runs/creator-001/live-20260916b/grade/tester/accepted-checkpoint.json"
+    "chosen_checkpoint_approval": "orgs/figment/runs/creator-001/live-20260916b/grade/tester/accepted-checkpoint.json",
+    "recipe_profile": "clean"
   }
 }
