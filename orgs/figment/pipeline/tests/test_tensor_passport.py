@@ -110,3 +110,40 @@ def test_plan_runs_the_parity_preflight(command, tmp_path, monkeypatch):
     monkeypatch.setattr(command, "TENSOR_PASSPORT_WORKFLOW_PATH", tampered)
     with pytest.raises(command.FigmentTrainError, match="tensor parity failed"):
         _plan(command, tmp_path)
+
+
+def test_board_shows_every_group_expanded_with_counts(command, tmp_path):
+    images = [{"image_id": f"c003-passport-p{i:02d}", "path": str(tmp_path / f"{i}.png")} for i in range(1, 5)]
+    rows = [{"image_id": images[0]["image_id"], "pass": True, "group": "passed", "reasons": []},
+            {"image_id": images[1]["image_id"], "pass": False, "group": "age", "reasons": ["judge age 19 is under the age floor 20"]},
+            {"image_id": images[2]["image_id"], "pass": False, "group": "unscorable", "reasons": ["unavailable: face_px (no face detected)"]},
+            {"image_id": images[3]["image_id"], "pass": False, "group": "failed", "reasons": ["face_px 500 is below the required floor 600"]}]
+    board = command._grading_html("creator-003", "anchor", [], images, None, {"rows": rows})
+    assert "<details" not in board
+    for title in ("Cells passing the gate (1)", "held for age", "held unscorable", "failed gate"):
+        assert title in board
+    assert re.search(r"held for age[^<]*\(1\)</h2>", board)
+    assert "judge age 19 is under the age floor 20" in board
+
+
+@pytest.mark.parametrize(("stage", "profile", "expected"), [
+    ("anchor", "tensor", True), ("anchor", "clean", False), ("tester", "tensor", False),
+])
+def test_build_grade_gates_only_the_tensor_passport_reference_free(command, tmp_path, monkeypatch, stage, profile, expected):
+    plan = {"training": {"recipe_profile": profile}, "assets": {"anchors": []}}
+    monkeypatch.setattr(command, "_load_plan", lambda creator, path: (plan, tmp_path))
+    monkeypatch.setattr(command, "_grading_images", lambda plan, root, stage: [])
+    monkeypatch.setattr(command, "_score_cells_module", lambda: type("S", (), {"score": staticmethod(lambda *a: None)}))
+    captured = {}
+
+    class Stop(Exception):
+        pass
+
+    def fake_gate(plan, anchors, images, grade_dir, **kwargs):
+        captured.update(kwargs)
+        raise Stop
+
+    monkeypatch.setattr(command, "_run_identity_gate", fake_gate)
+    with pytest.raises(Stop):
+        command.build_grade("creator-003", stage, tmp_path / "plan.json", skip_judge=True)
+    assert captured["reference_free"] is expected

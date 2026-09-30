@@ -423,6 +423,7 @@ def run_two_stage_gate(
     workers: int = DEFAULT_GATE_WORKERS,
     model: str | None = None,
     judge_backend: str = "claude",
+    reference_free: bool = False,
 ) -> dict[str, Any]:
     """The one fail-closed two-stage gate composition EVERY caller of this module uses
     to gate a set of images against a persona's identity references -- extracted so
@@ -444,9 +445,16 @@ def run_two_stage_gate(
     `model`, when given, is forwarded to the stage-2 judge call
     (`vlm_judge.judge_images_for_stage`'s own `model=` kwarg); left unset, that
     function's own default model is used unchanged -- `build_grade`'s callers never
-    pass this, so their behaviour is identical to before this function existed."""
+    pass this, so their behaviour is identical to before this function existed.
+
+    `reference_free` (tensor passport stage) takes no anchors, judges only cells with a
+    detected face, reference-free, and sorts with `passport_verdict`. Every row then
+    carries `group` and the summary carries `groups`; an outage holds every cell
+    `unscorable`. Nothing is culled -- every row stays in the document."""
     if judge_backend not in JUDGE_BACKENDS:
         raise IdentityGateError(f"judge_backend must be one of {JUDGE_BACKENDS}")
+    if reference_free and anchors:
+        raise IdentityGateError("reference-free gating takes no identity anchors")
     anchors_by_stem = {path.stem: path for path in anchors}
     # REVIEW-2026-09-07 finding #5: judge rows are keyed by image_id = path.stem, but
     # `_resolve_images` de-duplicates by PATH, not stem -- a shared stem across two
@@ -475,7 +483,22 @@ def run_two_stage_gate(
         rows = score_cells_for_stage(images, anchors_by_stem, own_anchor=own_anchor)
         stage1_list = [identity_floor_gate(row, thresholds) for row in rows]
 
-        if skip_judge:
+        if reference_free:
+            faced = [image for image, row in zip(images, rows) if row.get("face_px") is not None]
+            if faced and not skip_judge and judge_backend == "claude":
+                judge_kwargs = {"cache_dir": Path(out_dir) / "judge-cache", "workers": workers,
+                                "reference_free": True}
+                if model is not None:
+                    judge_kwargs["model"] = model
+                judge_by_id = {
+                    row["image_id"]: row
+                    for row in _vlm_judge_module().judge_images_for_stage(faced, [], **judge_kwargs)
+                }
+            verdicts = [
+                passport_verdict(row, judge_by_id.get(row["image_id"]), thresholds, judge_thresholds)
+                for row in rows
+            ]
+        elif skip_judge:
             # Never even LOAD the judge module under --skip-judge (offline/test use
             # only) -- a stage-1-passing cell still fails overall, exactly the same
             # "unavailable: judge" verdict `two_stage_gate` would give a cell whose
@@ -529,6 +552,9 @@ def run_two_stage_gate(
         verdicts = [
             {"pass": False, "reasons": [reason], "stage1": None, "stage2": None} for _ in rows
         ]
+        if reference_free:
+            for verdict in verdicts:
+                verdict["group"] = "unscorable"
 
     result_rows = []
     for row, verdict in zip(rows, verdicts):
@@ -538,6 +564,8 @@ def run_two_stage_gate(
         merged["stage1"] = verdict.get("stage1")
         merged["stage2"] = verdict.get("stage2")
         merged["judge"] = judge_by_id.get(row["image_id"])
+        if "group" in verdict:
+            merged["group"] = verdict["group"]
         if judge_backend == "codex-diagnostic":
             merged["codex_diagnostic"] = codex_by_id.get(row["image_id"])
         result_rows.append(merged)
@@ -558,6 +586,11 @@ def run_two_stage_gate(
     }
     if judge_backend in ("codex-diagnostic", "local-research"):
         document["judge_backend"] = judge_backend
+    if reference_free:
+        groups: dict[str, int] = {}
+        for row in result_rows:
+            groups[row.get("group", "failed")] = groups.get(row.get("group", "failed"), 0) + 1
+        document["summary"]["groups"] = groups
     return document
 
 
@@ -591,6 +624,51 @@ def two_stage_gate(
         "stage1": stage1,
         "stage2": stage2,
     }
+
+
+def passport_verdict(
+    scores: dict[str, Any], judge_row: dict[str, Any] | None,
+    thresholds: dict[str, Any], judge_thresholds: dict[str, Any],
+) -> dict[str, Any]:
+    """Reference-free verdict for the tensor passport stage (spec 2026-09-29 §7, phase 1):
+    no identity reference exists before the operator's pick, so identity/same_person/
+    age_delta are never computed. Sorts a cell into a board group -- unscorable, age,
+    failed or passed -- and never culls: every cell still needs an operator ruling."""
+    def verdict(group: str, reasons: list[str]) -> dict[str, Any]:
+        return {"pass": group == "passed", "group": group, "reasons": reasons,
+                "stage1": None, "stage2": None}
+
+    face_px = scores.get("face_px")
+    if face_px is None:
+        return verdict("unscorable", ["unavailable: face_px (no face detected)"])
+    reasons: list[str] = []
+    floor = thresholds.get("age_floor_years")
+    if floor is None:
+        reasons.append("unavailable: age_floor_years")
+    judge_age = (judge_row or {}).get("apparent_age_candidate")
+    for label, value in (("vit age", scores.get("age_value")), ("judge age", judge_age)):
+        if value is None:
+            reasons.append(f"unavailable: {label}")
+        elif floor is not None and value < floor:
+            reasons.append(f"{label} {value:.4g} is under the age floor {floor:.4g}")
+    if reasons:
+        return verdict("age", reasons)
+    face_min = thresholds.get("face_px_min")
+    if face_min is None:
+        reasons.append("unavailable: face_px_min")
+    elif face_px < face_min:
+        reasons.append(f"face_px {face_px:.4g} is below the required floor {face_min:.4g}")
+    for metric, key, is_floor in (("skin_realism", "skin_realism_min", True),
+                                  ("gloss", "gloss_max", False),
+                                  ("artifacts", "artifacts_max", False)):
+        value, limit = judge_row.get(metric), judge_thresholds.get(key)
+        if value is None or limit is None:
+            reasons.append(f"unavailable: {metric if value is None else key}")
+        elif is_floor and value < limit:
+            reasons.append(f"{metric} {value:.4g} is below the required floor {limit:.4g}")
+        elif not is_floor and value > limit:
+            reasons.append(f"{metric} {value:.4g} exceeds the allowed ceiling {limit:.4g}")
+    return verdict("failed" if reasons else "passed", reasons)
 
 
 # ---------------------------------------------------------------------------
@@ -1383,6 +1461,11 @@ def calibrate(
     models = models or _default_models()
     persona_dir = Path(persona["_persona_path"]).resolve().parent if persona.get("_persona_path") else None
     references = persona["identity"]["references"]
+    if not references:
+        raise IdentityGateError(
+            "persona has no identity references yet -- calibration needs them "
+            "(a pre-passport persona is gated reference-free, never calibrated)"
+        )
     anchors = {
         Path(reference).stem: (persona_dir / reference).resolve() if persona_dir else Path(reference)
         for reference in references

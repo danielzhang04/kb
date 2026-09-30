@@ -1309,3 +1309,70 @@ def test_summarize_can_consume_run_gates_output_on_a_fixture(gate_module, tmp_pa
     assert by_arm["a"]["pass_count"] == 1
     assert by_arm["b"]["pass_count"] == 1
     assert by_arm["c"]["n"] == 0
+
+
+PASSPORT_JUDGE_THRESHOLDS = {"same_person_min": 70.2, "age_delta_max": 1.5, "skin_realism_min": 31.5,
+                             "gloss_max": 67.5, "artifacts_max": 45.0}
+PASSPORT_THRESHOLDS = {"age_floor_years": 20, "face_px_min": 600.0}
+PASSPORT_JUDGE = {"apparent_age_candidate": 24, "skin_realism": 60, "gloss": 20, "artifacts": 10}
+
+
+@pytest.mark.parametrize(("scores", "judge", "thresholds", "group"), [
+    ({"face_px": None, "age_value": 25.0}, PASSPORT_JUDGE, PASSPORT_THRESHOLDS, "unscorable"),
+    ({"face_px": 800, "age_value": 25.0}, {**PASSPORT_JUDGE, "apparent_age_candidate": 19}, PASSPORT_THRESHOLDS, "age"),
+    ({"face_px": 800, "age_value": 18.0}, PASSPORT_JUDGE, PASSPORT_THRESHOLDS, "age"),
+    ({"face_px": 800, "age_value": None}, PASSPORT_JUDGE, PASSPORT_THRESHOLDS, "age"),
+    ({"face_px": 800, "age_value": 25.0}, None, PASSPORT_THRESHOLDS, "age"),
+    ({"face_px": 800, "age_value": 25.0}, PASSPORT_JUDGE, {"face_px_min": 600.0}, "age"),
+    ({"face_px": 500, "age_value": 25.0}, PASSPORT_JUDGE, PASSPORT_THRESHOLDS, "failed"),
+    ({"face_px": 800, "age_value": 25.0}, {**PASSPORT_JUDGE, "skin_realism": 20}, PASSPORT_THRESHOLDS, "failed"),
+    ({"face_px": 800, "age_value": 25.0}, {**PASSPORT_JUDGE, "artifacts": 80}, PASSPORT_THRESHOLDS, "failed"),
+    ({"face_px": 800, "age_value": 25.0}, PASSPORT_JUDGE, PASSPORT_THRESHOLDS, "passed"),
+])
+def test_passport_verdict_groups_without_ever_culling(gate_module, scores, judge, thresholds, group):
+    verdict = gate_module.passport_verdict(scores, judge, thresholds, PASSPORT_JUDGE_THRESHOLDS)
+    assert verdict["group"] == group
+    assert verdict["pass"] is (group == "passed")
+    assert (verdict["reasons"] == []) is (group == "passed")
+
+
+def test_reference_free_gate_judges_only_faced_cells_with_no_references(gate_module, tmp_path, monkeypatch):
+    images = [{"image_id": "p01", "path": str(tmp_path / "p01.png")},
+              {"image_id": "p02", "path": str(tmp_path / "p02.png")}]
+    monkeypatch.setattr(gate_module, "score_cells_for_stage", lambda imgs, anchors, own_anchor: [
+        {"image_id": "p01", "face_px": 900, "age_value": 26.0},
+        {"image_id": "p02", "face_px": None, "age_value": None},
+    ])
+    calls = []
+
+    class FakeJudge:
+        @staticmethod
+        def judge_images_for_stage(to_judge, references, **kwargs):
+            calls.append(([i["image_id"] for i in to_judge], list(references), kwargs["reference_free"]))
+            return [{"image_id": "p01", **PASSPORT_JUDGE, "same_person": None}]
+
+        judge_gate = None
+
+    monkeypatch.setattr(gate_module, "_vlm_judge_module", lambda: FakeJudge)
+    document = gate_module.run_two_stage_gate(lambda: {}, [], images, tmp_path, reference_free=True)
+    assert calls == [(["p01"], [], True)]
+    assert [row["group"] for row in document["rows"]] == ["passed", "unscorable"]
+    assert document["summary"]["groups"] == {"passed": 1, "unscorable": 1}
+    with pytest.raises(gate_module.IdentityGateError, match="no identity anchors"):
+        gate_module.run_two_stage_gate(lambda: {}, [tmp_path / "a.png"], images, tmp_path, reference_free=True)
+
+
+def test_calibrate_refuses_a_persona_with_no_references(gate_module):
+    with pytest.raises(gate_module.IdentityGateError, match="no identity references"):
+        gate_module.calibrate({"identity": {"references": []}}, {}, models=object())
+
+
+def test_reference_free_gate_outage_holds_every_cell_unscorable(gate_module, tmp_path):
+    images = [{"image_id": "p01", "path": str(tmp_path / "p01.png")}]
+
+    def broken_persona():
+        raise OSError("persona unreadable")
+
+    document = gate_module.run_two_stage_gate(broken_persona, [], images, tmp_path, reference_free=True)
+    assert [row["group"] for row in document["rows"]] == ["unscorable"]
+    assert document["summary"]["groups"] == {"unscorable": 1}

@@ -5415,23 +5415,34 @@ def _grading_html(
         for path in anchors
     )
 
-    passed_rows: list[dict[str, Any]] = []
-    failed_rows: list[tuple[dict[str, Any], list[str]]] = []
+    groups: dict[str, list[tuple[dict[str, Any], list[str]]]] = {
+        "passed": [], "age": [], "unscorable": [], "failed": [],
+    }
     for row in images:
         gate_row = gate_by_id.get(row["image_id"])
-        if gate_row is not None and gate_row.get("pass"):
-            passed_rows.append(row)
-        else:
-            reasons = list((gate_row or {}).get("reasons") or ["gate did not run for this cell"])
-            failed_rows.append((row, reasons))
-
+        if gate_row is None:
+            groups["failed"].append((row, ["gate did not run for this cell"]))
+            continue
+        group = gate_row.get("group") or ("passed" if gate_row.get("pass") else "failed")
+        groups.get(group, groups["failed"]).append((row, list(gate_row.get("reasons") or [])))
+    passed_rows = [row for row, _reasons in groups["passed"]]
     passed_cells = "\n".join(
         _figure_html(row, advisory_by_id, gate_by_id=gate_by_id, number=index)
         for index, row in enumerate(passed_rows, start=1)
     )
-    failed_cells = "\n".join(
-        _figure_html(row, advisory_by_id, gate_by_id=gate_by_id, reasons=reasons)
-        for row, reasons in failed_rows
+    held_sections = "".join(
+        f'<section class="gate-{key}"><h2>{html.escape(title)} ({len(groups[key])})</h2>'
+        '<div class="grid">'
+        + "\n".join(
+            _figure_html(row, advisory_by_id, gate_by_id=gate_by_id, reasons=reasons)
+            for row, reasons in groups[key]
+        )
+        + "</div></section>"
+        for key, title in (
+            ("age", "held for age — rule release (keep + gate_override) or cull"),
+            ("unscorable", "held unscorable — a required metric could not be computed"),
+            ("failed", "failed gate — shown in full; every cell still needs a ruling"),
+        )
     )
     research_note = ""
     local_research = (gate_document or {}).get("review_mode") == "local-research"
@@ -5458,11 +5469,13 @@ def _grading_html(
         )
     else:
         cells_section = (
-            f'<main><h2>Cells passing the gate ({len(passed_rows)})</h2><div class="grid">{passed_cells}</div></main>'
-            f'<details class="failed-gate"><summary>failed gate ({len(failed_rows)})</summary>'
-            f'<div class="grid">{failed_cells}</div></details>'
+            f'<main><h2>Cells passing the gate ({len(passed_rows)})</h2>'
+            f'<div class="grid">{passed_cells}</div></main>{held_sections}'
         )
-        gate_summary = "The gate below IS fail-closed: only PASS cells are numbered for the ruling sheet."
+        gate_summary = (
+            "The gate scores and sorts; it never culls (operator ruling 2026-09-29). Every "
+            "cell below needs a ruling; only PASS cells are numbered."
+        )
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -5780,6 +5793,7 @@ def validate_approved_detail_still(
 def _run_identity_gate(
     plan: dict[str, Any], anchors: list[Path], images: list[dict[str, Any]],
     grade_dir: Path, *, skip_judge: bool = False, judge_backend: str = "claude",
+    reference_free: bool = False,
 ) -> dict[str, Any]:
     """Fail-closed per-cell TWO-STAGE gate (operator ruling 2026-09-03: no board reaches
     the operator until every shown cell holds identity, age and realism; ruling
@@ -5811,6 +5825,7 @@ def _run_identity_gate(
     return gate_module.run_two_stage_gate(
         lambda: _load_persona_document_for_gate(plan),
         anchors, images, grade_dir, skip_judge=skip_judge, judge_backend=judge_backend,
+        reference_free=reference_free,
     )
 
 
@@ -5853,9 +5868,12 @@ def build_grade(
     # Operator ruling 2026-09-03: no board reaches the operator until this fail-closed
     # gate has scored every cell -- see _run_identity_gate's own docstring for how a
     # total scoring outage still fails every cell closed rather than skipping the gate.
+    reference_free = (
+        stage == "anchor" and plan.get("training", {}).get("recipe_profile") == "tensor"
+    )
     gate_document = _run_identity_gate(
         plan, anchors, images, grade_dir,
-        skip_judge=skip_judge, judge_backend=judge_backend,
+        skip_judge=skip_judge, judge_backend=judge_backend, reference_free=reference_free,
     )
     local_research = judge_backend == "local-research"
     if local_research:

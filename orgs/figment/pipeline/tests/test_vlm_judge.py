@@ -1206,3 +1206,64 @@ def test_cli_calibrate_parses_call_timeout_flag(judge_module):
         "calibrate", "--creator", "creator-001", "--out", "out", "--call-timeout", "90",
     ])
     assert args.timeout == 90.0
+
+
+REFERENCE_FREE_PAYLOAD = {"apparent_age_candidate": 24, "skin_realism": 61, "gloss": 20,
+                          "artifacts": 12, "notes": "plausible adult, clean skin"}
+
+
+def test_reference_free_judge_asks_for_no_identity_and_never_reports_same_person(judge_module, tmp_path):
+    candidate = _png(tmp_path, "candidate")
+    prompts = []
+
+    def fake_runner(prompt, *, model, timeout=None):
+        prompts.append(prompt)
+        return _envelope(json.dumps(REFERENCE_FREE_PAYLOAD))
+
+    result = judge_module.judge_image(candidate, [], runner=fake_runner, reference_free=True,
+                                      cache_dir=tmp_path / "cache")
+    # The candidate's path line is dropped before the word check: pytest names tmp_path
+    # after this test, so the path itself contains "reference".
+    instructions = "\n".join(line for line in prompts[0].splitlines() if "judge-inputs" not in line)
+    assert "same_person" not in prompts[0] and "reference" not in instructions.lower()
+    assert result["apparent_age_candidate"] == 24 and result["skin_realism"] == 61
+    assert result["same_person"] is None and result["age_delta"] is None
+    assert not result["unavailable"]
+    again = judge_module.judge_image(candidate, [], runner=fake_runner, reference_free=True,
+                                     cache_dir=tmp_path / "cache")
+    assert again["cache_hit"] is True and len(prompts) == 1
+
+
+def test_reference_free_judge_refuses_references_and_fails_closed_on_missing_age(judge_module, tmp_path):
+    candidate, reference = _png(tmp_path, "candidate"), _png(tmp_path, "g01")
+    result = judge_module.judge_image(candidate, [reference], reference_free=True,
+                                      runner=lambda *a, **k: pytest.fail("no call"))
+    assert "judge" in result["unavailable"]
+    payload = {k: v for k, v in REFERENCE_FREE_PAYLOAD.items() if k != "apparent_age_candidate"}
+    result = judge_module.judge_image(candidate, [], reference_free=True,
+                                      runner=lambda *a, **k: _envelope(json.dumps(payload)))
+    assert result["apparent_age_candidate"] is None and "judge" in result["unavailable"]
+
+
+def test_reference_free_cache_never_serves_an_identity_judgement(judge_module, tmp_path):
+    candidate = _png(tmp_path, "candidate")
+    calls = []
+
+    def fake_runner(prompt, *, model, timeout=None):
+        calls.append(prompt)
+        return _envelope(json.dumps(REFERENCE_FREE_PAYLOAD))
+
+    key_args = dict(candidate=candidate, references=[], model="m", prompt_version="v1")
+    assert (judge_module._cache_key("a", [], **key_args, reference_free=True)
+            != judge_module._cache_key("a", [], **key_args))
+    cache = tmp_path / "cache"
+    judge_module.judge_image(candidate, [], runner=fake_runner, reference_free=True, cache_dir=cache)
+    [entry] = list(cache.glob("*.json"))
+    entry.write_text(json.dumps({**json.loads(entry.read_text()), "same_person": 90}), encoding="utf-8")
+    result = judge_module.judge_image(candidate, [], runner=fake_runner, reference_free=True, cache_dir=cache)
+    assert len(calls) == 2 and result["same_person"] is None and result["cache_hit"] is False
+
+
+def test_calibrate_refuses_a_persona_with_no_references(judge_module):
+    with pytest.raises(judge_module.JudgeError, match="no identity references"):
+        judge_module.calibrate({"identity": {"references": []}}, {})

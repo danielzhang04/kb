@@ -100,6 +100,14 @@ gloss_max: 0.08
 niqe_max: 6.5
 face_px_min: 600
 
+# --- OPERATOR RULING 2026-09-29: absolute age floor (spec 2026-09-29 §7) -------------
+# A FLAG, never a cull: a cell whose ViT `age_value` or judge `apparent_age_candidate` is
+# under this floor -- or either cannot be computed -- goes to the board's "held for age"
+# group and needs an operator release/cull ruling. Phase 1 applies it at the passport
+# stage (`identity_gate.passport_verdict`). Revisit once rulings show how far the age
+# judge runs off.
+age_floor_years: 20
+
 # --- stage 2: vlm_judge.py (Claude vision judge) -----------------------------------
 # judge_gate() reads exactly these five keys, same fail-closed convention as gate()
 # above ("unavailable: <threshold name>" on a missing key, never a silent pass):

@@ -1929,7 +1929,9 @@ def test_build_grade_writes_gate_json_and_a_pass_fail_board(command, tmp_path):
     assert gate_document["summary"]["failed"] == 30
 
     page_text = Path(grade["page"]).read_text(encoding="utf-8")
-    assert "failed gate (30)" in page_text
+    # Spec 2026-09-29 §7: the failed group is shown expanded, never collapsed.
+    assert re.search(r"failed gate[^<]*\(30\)</h2>", page_text)
+    assert "<details" not in page_text
     assert "Cells passing the gate (0)" in page_text
 
 
@@ -2223,7 +2225,7 @@ def test_run_identity_gate_threads_explicit_codex_backend(command, tmp_path, mon
     command._run_identity_gate(
         {}, [], [], tmp_path / "grade", judge_backend="codex-diagnostic",
     )
-    assert captured == {"skip_judge": False, "judge_backend": "codex-diagnostic"}
+    assert captured == {"skip_judge": False, "judge_backend": "codex-diagnostic", "reference_free": False}
 
 
 def test_grade_parser_defaults_to_claude_and_accepts_explicit_codex(command):
