@@ -572,3 +572,25 @@ def test_passport_tensor_pins_follow_module_03_installer():
     assert round(stage["max_minutes"] / 60 * 1.30, 2) == 1.97 <= 2.00
     assert "330 s per job" in group["_note"]
     assert pins["profiles"]["tensor"] == {"anchor": ["passport_tensor"]}
+
+
+def test_pickle_weights_appear_only_in_the_passport_tensor_pin_group():
+    """Final review F6b: pickles are admitted only where module 03 ships them."""
+    pins = load_json(PIPELINE / "train" / "tensor-pins.yaml")
+    found = []
+
+    def walk(value, path):
+        if isinstance(value, dict):
+            name = value.get("filename") or value.get("local") or ""
+            if value.get("pickle_ack") or (isinstance(name, str)
+                                          and name.lower().endswith((".pt", ".pth", ".ckpt", ".bin", ".pkl", ".pickle"))):
+                found.append((path, name))
+            for key, item in value.items():
+                walk(item, (*path, key))
+        elif isinstance(value, list):
+            for index, item in enumerate(value):
+                walk(item, (*path, index))
+
+    walk(pins, ())
+    assert sorted(name.rsplit("/", 1)[-1] for _path, name in found) == ["face_yolov8m.pt", "sam_vit_b_01ec64.pth"]
+    assert {path[:2] for path, _name in found} == {("pins", "passport_tensor")}

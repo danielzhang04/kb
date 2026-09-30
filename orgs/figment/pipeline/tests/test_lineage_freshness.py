@@ -462,3 +462,76 @@ def test_pre_profile_record_stays_current_for_clean_and_refuses_tensor(command):
     assert lineage.pre_profile_compatible(base, {**base, "recipe_profile": "clean"}) == base
     keyed = {**base, "recipe_profile": "clean"}
     assert lineage.pre_profile_compatible(keyed, {**base, "recipe_profile": "tensor"})["recipe_profile"] == "tensor"
+
+
+def _accepted_checkpoint_sites(command, tmp_path, monkeypatch, *, recorded, reloaded=None):
+    """Drive `_validated_accepted_checkpoint` directly (final review F6a) with a
+    pre-profile recorded projection. Everything outside its two projection comparison
+    sites is stubbed to pass, so a refusal can only come from those sites."""
+    lineage = command._lineage_module()
+    review = tmp_path / "review"
+    tester = review / "grade" / "tester"
+    tester.mkdir(parents=True)
+    plan_path = review / "plan.json"
+    plan_path.write_text("{}", encoding="utf-8")
+    lineage_path = tester / "approval-lineage.json"
+    lineage_path.write_text("{}", encoding="utf-8")
+    candidate = {"step": 250, "filename": "c.safetensors", "tester_image_id": "t01", "path": "p",
+                 "bytes": 1, "sha256": "a" * 64, "train_manifest": "m", "train_manifest_sha256": "b" * 64}
+    accepted = {
+        "schema": lineage.CHECKPOINT_SCHEMA, "creator": "creator-002",
+        "source_plan": str(plan_path), "source_plan_sha256": command._sha256(plan_path),
+        "approval_lineage": str(lineage_path), "approval_lineage_sha256": command._sha256(lineage_path),
+        "training_inputs": dict(recorded), "checkpoint": dict(candidate),
+    }
+    source_plan = {"training": dict(recorded)}
+    if reloaded is not None:
+        accepted["origin"] = "imported"
+        source_plan["imported_training_config"] = {"path": str(plan_path), "sha256": "c" * 64}
+        monkeypatch.setattr(command, "_reload_imported_training_projection",
+                            lambda *a, **k: dict(reloaded))
+    approval = tester / "accepted-checkpoint.json"
+    approval.write_text(json.dumps(accepted), encoding="utf-8")
+    monkeypatch.setattr(command, "_load_plan", lambda *a, **k: (source_plan, review))
+    monkeypatch.setattr(command, "_load_current_approval", lambda *a, **k: None)
+    monkeypatch.setattr(command, "_checkpoint_candidate", lambda *a, **k: dict(candidate))
+    monkeypatch.setattr(command, "_imported_checkpoint_candidate", lambda *a, **k: dict(candidate))
+
+    def validate(current):
+        training = {**current, "chosen_checkpoint_step": 250, "chosen_checkpoint_sha256": "a" * 64,
+                    "chosen_checkpoint_approval": str(approval)}
+        return command._validated_accepted_checkpoint({"id": "creator-002"}, training)
+    return validate
+
+
+def test_accepted_checkpoint_in_plan_site_keeps_pre_profile_clean_and_refuses_tensor(command, tmp_path, monkeypatch):
+    base = {"steps": 3000, "save_every": 250, "trigger": "t", "base_arch": "krea2"}
+    validate = _accepted_checkpoint_sites(command, tmp_path, monkeypatch, recorded=base)
+    assert validate({**base, "recipe_profile": "clean"})["step"] == 250
+    with pytest.raises(command.FigmentTrainError, match="training inputs changed after checkpoint promotion"):
+        validate({**base, "recipe_profile": "tensor"})
+    # `current` lacking the key: equal to a pre-profile record, so it stays current.
+    assert validate(dict(base))["step"] == 250
+
+
+def test_accepted_checkpoint_in_plan_site_refuses_current_lacking_a_recorded_profile(command, tmp_path, monkeypatch):
+    base = {"steps": 3000, "save_every": 250, "trigger": "t", "base_arch": "krea2"}
+    validate = _accepted_checkpoint_sites(command, tmp_path, monkeypatch,
+                                          recorded={**base, "recipe_profile": "clean"})
+    assert validate({**base, "recipe_profile": "clean"})["step"] == 250
+    with pytest.raises(command.FigmentTrainError, match="training inputs changed after checkpoint promotion"):
+        validate(dict(base))
+
+
+@pytest.mark.parametrize(("reloaded_profile", "passes"), [("clean", True), ("tensor", False), (None, True)])
+def test_accepted_checkpoint_imported_site_keeps_pre_profile_clean_and_refuses_tensor(
+    command, tmp_path, monkeypatch, reloaded_profile, passes,
+):
+    base = {"steps": 3000, "save_every": 250, "trigger": "t", "base_arch": "krea2"}
+    reloaded = dict(base) if reloaded_profile is None else {**base, "recipe_profile": reloaded_profile}
+    validate = _accepted_checkpoint_sites(command, tmp_path, monkeypatch, recorded=base, reloaded=reloaded)
+    if passes:
+        assert validate({**base, "recipe_profile": "clean"})["step"] == 250
+    else:
+        with pytest.raises(command.FigmentTrainError, match="imported training config changed"):
+            validate({**base, "recipe_profile": "clean"})
