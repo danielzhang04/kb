@@ -5473,7 +5473,7 @@ def _grading_html(
         )
         + "</div></section>"
         for key, title in (
-            ("age", "held for age — rule release (keep + gate_override) or cull"),
+            ("age", "held for age — set age_ruling: release or cull; keep is the pick"),
             ("unscorable", "held unscorable — a required metric could not be computed"),
             ("failed", "failed gate — shown in full; every cell still needs a ruling"),
         )
