@@ -35,6 +35,10 @@ RunPod-template ComfyUI; we run the same graphs through the harness. Our graphs 
 exports of their editor-format files. The harness does the prompt and seed fan-out that their
 `CR Prompt List` nodes and `control_after_generate: increment` do.
 
+**Slim.** Every file this work adds or changes stays as small as correctness allows: no
+parallel systems, no speculative options, no prose that does not change behaviour. Accuracy and
+effectiveness are never traded for size.
+
 **Bar.** No stage counts as done until it passes all four tests:
 
 | Test | Passes when |
@@ -431,17 +435,17 @@ The test **fails** on any of these:
 
 ## 10. Phases (one task per phase)
 
-The arc stands at about $54.3 of the $60 `ARC_CAP_USD`, leaving about $5.7. Every live pod run is T2: a card, an estimate and operator approval.
+This work is a new arc (operator ruling 2026-09-29): cap **$75**, total counted from **$0** starting 2026-09-29. Earlier ledger rows stay on `ops` as history and are not counted. The cap lives in one constant; today three disagree (`figment_train.py` 60, `runpod_run.py` 50, `experimental_execute.py` 50). Phase 1 also reconciles the ledger against RunPod's own billing for the pods it ran, because the operator doubts the ledger matches. Every live pod run is T2: a card, an estimate and operator approval.
 
 | Phase | The one task | Spend | Operator gate |
 |---|---|---|---|
 | 0 | Write this spec and the ledger. | $0 | approve the spec and rule on the section 12 items |
 | 1 | Build the passport stage (tensor profile mechanism, m03 graph and pins, parity test for it), dry-run it, then run it live: 12 seeds on one L40S pod. | ≤ $2.00 ceiling (≈ 30 min readiness + 12 short jobs at $1.30/h) | approve the T2 card; pick the passport; creator-003 is created from it |
-| 2 | Build the dataset stage with the age hold and the trait axes, including the train and tester reversion that consumes it (DOP off, no trigger, their tester prompt form). Calibrate the axes on creator-001's ruled boards. Dry-run only. | $0 | supply the body photo; set the axis thresholds and the age floor |
+| 2 | Build the dataset stage with the age hold and the trait axes, including the train and tester reversion that consumes it (DOP off, no trigger, their tester prompt form). Calibrate the axes on creator-001's ruled boards. Dry-run only. | $0 | supply the body photo; accept the klein 9B terms on Hugging Face and set the HF token variable for the harness; set the axis thresholds |
 | 3 | Build the edit stage (m07 graph, pins, parity test). Dry-run only. | $0 | review the dry-run plan and the image-slot mapping |
 | 4 | Build the video stage (m08 graph, pins, mp4 upload and download fix, parity test). Dry-run only. | $0 | supply one driving clip |
 | 5 | Build photo-to-prompt intake and the m09 stills stage (FaceDetailer, style LoRAs, NMKD, close-up rule). Dry-run only. | $0 | supply scene photos; approve the generated prompts |
-| 6 | Run once end to end, live: a dependency smoke per stage, then dataset → captions → train → tester → stills → edit → video, stopping at each eye gate. | est. $10–14 (dataset ≈ $2.5, captions $0.15, train ≈ $4.8, tester ≈ $1.2, stills ≈ $1.5, edit ≈ $0.8, video ≈ $1.5) | raise the arc cap first; approve each T2 card; all eye gates |
+| 6 | Run once end to end, live: a dependency smoke per stage, then dataset → captions → train → tester → stills → edit → video, stopping at each eye gate. | est. $10–14 (dataset ≈ $2.5, captions $0.15, train ≈ $4.8, tester ≈ $1.2, stills ≈ $1.5, edit ≈ $0.8, video ≈ $1.5) | approve each T2 card; all eye gates |
 
 Phases 2–5 do not spend, so a failed build cannot burn cap. All major spend waits for one
 end-to-end run the operator funds explicitly.
@@ -453,7 +457,7 @@ end-to-end run the operator funds explicitly.
 - The legacy modules 12, 13 and 14 (Higgsfield, ChatGPT and Kling services), and the ChatGPT start-frame option in module 08.
 - Video interpolation and upscaling. The module 08 transcript mentions them but ships no graph.
 - Operator-owned GPU host design, beyond the address setting.
-- Resolving the klein 9B licence.
+- Buying a klein 9B commercial licence (analysis is in section 12).
 - Any re-run of creator-001.
 - Posting.
 
@@ -470,10 +474,19 @@ end-to-end run the operator funds explicitly.
 - **P3.** Passport detailers run at 0.23/0.23, the author's spoken instruction. The saved 0.4/0.27 is treated as a leftover widget value.
 - **Phase mapping.** The train/tester reversion is folded into phase 2 and stills into phase 5.
 
+**Cap and arc (ruled 2026-09-29).** $75, counted from $0; see section 10. `_index.md` and GOAL.md are brought in line in phase 1.
+
+**FLUX.2 klein 9B licence (FLUX Non-Commercial License v2.1, read 2026-09-29).** Used in dataset refine and edit.
+- **Access.** Gated on Hugging Face. The operator accepts the terms in his own account and supplies the token as an environment variable; agents never create or read it. No HF token variable is set on this machine today.
+- **Allowed now.** Personal testing and evaluation with no revenue (s.1.c).
+- **Outputs.** May be used for any purpose including commercial (s.2.d), but not to train a model "competitive with a FLUX Model".
+- **Not allowed without a paid licence.** Using the model for revenue-generating activity, or to train or fine-tune other models for commercial use (s.1.c). Our dataset refine feeds a LoRA for a monetised persona, so it falls here once she earns.
+- **Duties.** Review outputs for unlawful content before distribution, and disclose AI generation where law requires (s.2.e). Both already hold.
+- **Before monetising, one of:** a commercial licence from bfl.ai/licensing, or switch those two slots to klein 4B (Apache-2.0, already in the clean profile) and retrain.
+
 **Rulings still owed by the operator**
-1. **Cap.** Raise `ARC_CAP_USD` before phase 6 (about $10-14 against about $5.7 remaining; phase 1 fits inside the current cap). Separately, `orgs/figment/_index.md` and GOAL.md on `ops` still say "$50 hard cap" while STATE and the code use $60.
-2. **Licence.** FLUX.2 klein 9B (dataset refine and edit) is non-commercial. It is usable for build and test, and must be resolved before any monetised output.
-3. **Trait-axis thresholds**, after the phase 2 calibration.
+1. **Klein 9B route before monetising**: commercial licence or klein 4B.
+2. **Trait-axis thresholds**, after the phase 2 calibration.
 
 **Unknowns (not verifiable from the package files)**
 - **Module 11 settings.** rank, LR, optimizer, buckets, quantization, caption dropout, and the caption instruction string are absent from the package text. They come from r15b's reading of video frames, and the videos are not in the snapshot. Resolves by re-reading the lesson video or accepting the toolkit defaults.
