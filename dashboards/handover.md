@@ -1,29 +1,16 @@
 # System Handover
-_Generated: 2026-09-29 06:22 UTC_
+_Generated: 2026-09-30T06:19:16Z_
 
-Quiet night. The nightly cloud dispatcher ran on schedule, the preamble passed, and
-the skills registry is in sync. One `nightly-review` card was dispatched and executed
-(this dashboard regeneration); $0 spent against the $30/day ceiling, since everything
-runs on subscription billing.
+The nightly cloud dispatcher ran cleanly. Preamble passed (STOP absent, no API key in the fleet env, budget fine), the skills mirror is in sync, and one nightly-review cadence card was dispatched and executed. Spend was $0.00 against the $30/day budget. Dashboards were regenerated and coordination writes committed to ops via the routine's configured push path.
 
-**Waiting on you:**
-- **figment T3 gate** (`65d8f246`) — an operator ruling on the creator-001 expansion-02
-  blind board (seven axes) is needed before curation to 40 can proceed.
-- **atlas** — the adversarial remediation on `codex/atlas-enhancements-20260820` is ready
-  for your review. The diff exceeds 400 lines, so the contract requires your sign-off
-  before commit, and the remote push still needs your `origin` approval.
-- **A T1 wake card** (`6ab76543`) sits in inbox for a decision.
-- **The recurring daemon-dir issue.** `scripts/sync_daemon_dirs.py` lives on `main` but not
-  `ops`, so the nightly drift-check can only run in fallback mode. It keeps finding one
-  ops-only file (`orgs/kb-ops/workflows/acceptance-run.md`). This has produced 13
-  near-identical wake cards since 2026-08-15; I did not add a 14th tonight, since the inbox
-  is already saturated with them (standing decision). The desktop fix — restore the script
-  to `ops`, rule on that one file, and stop the nightly duplication — is owed and would
-  clear a lot of inbox noise.
+**Waiting on you (2 items):**
+1. **figment T3 GATE A eye-gate** (`65d8f246`) — you need to rule the creator-001 expansion-02 blind board (seven axes) before curation to 40 can proceed.
+2. **kb T1 wake:human-decision** (`6ab76543`) — a human decision card in approvals.
 
-**Heads-up:** two cards are stranded in `working/` — a kb-ops smoke card marked `halted`
-since July 30, and a figment replication card open since September 7. Both want a sweep to
-a terminal state. Inbox holds 117 cards and could use a triage pass.
+**Longstanding, still owed:** The daemon-dir drift keeps recurring — `scripts/sync_daemon_dirs.py` is missing from the `ops` branch and `orgs/kb-ops/workflows/acceptance-run.md` is ops-only. The fix is a desktop `sync_daemon_dirs.py --sync` from the dashboard-ops worktree, plus deciding whether that file belongs on main. Thirteen near-identical wake-me cards (through 09-25) already track this; per a standing decision no new duplicate is filed each night — it stays a health-line note only. Also: atlas remediation on `codex/atlas-enhancements-20260820` is green and waiting on your review (diff >400 lines, contract-gated); prospecting P1–P8 remain unpushed.
 
-**Next unattended:** the production VM keeps its 5-minute daemon schedule tick running, and
-the nightly cadence fires again tomorrow. Nothing else moves without you.
+**What the system does next unattended:** the production VM keeps its 5-minute daemon tick; the next nightly dispatcher run will repeat this cadence. Two stale `working/` cards (figment replicate since 09-07, a halted kb-ops smoke card since 07-30) are not being worked and may want archiving or closing.
+
+## Latest handoffs
+- figment — [2026-09-23-figment-live-chain.md](../handoffs/2026-09-23-figment-live-chain.md) (2026-09-23)
+- prospecting — [2026-09-07-prospecting-p8-live-tested.md](../handoffs/2026-09-07-prospecting-p8-live-tested.md) (2026-09-07)
