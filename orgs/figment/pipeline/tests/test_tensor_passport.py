@@ -357,6 +357,19 @@ def test_a_retry_after_a_failed_rulings_write_never_duplicates_hold_rows(command
     assert _holds(persona_dir) == [("c003-passport-p01", "cull"), ("c003-passport-p02", "cull")]
 
 
+def test_picking_a_held_cell_age_ruled_cull_is_refused_before_any_write(command, tmp_path, monkeypatch):
+    """Coordinator ruling: keep + age_ruling cull is contradictory ("not adult" and
+    "this is the identity" at once); keep + release is the normal pick of a held cell."""
+    persona_dir, plan_path, filled = _graded_passport(command, tmp_path, monkeypatch, {1},
+                                                      age_rulings={0: "release", 1: "cull"})
+    with pytest.raises(command.FigmentTrainError, match="picked cell c003-passport-p02 is age-ruled cull"):
+        command.apply_rulings("creator-003", "anchor", plan_path, filled)
+    assert not (persona_dir / "anchors" / "passport.png").exists()
+    assert _holds(persona_dir) == []
+    assert load_json(persona_dir / "persona.yaml")["identity"]["references"] == []
+    assert not (plan_path.parent / "grade" / "anchor" / "rulings.json").exists()
+
+
 def test_hold_rows_are_built_before_any_identity_write(command, tmp_path, monkeypatch):
     persona_dir, plan_path, filled = _graded_passport(command, tmp_path, monkeypatch, {1})
     real_sha256 = command._sha256

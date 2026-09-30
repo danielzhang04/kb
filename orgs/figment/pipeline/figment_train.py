@@ -6374,6 +6374,8 @@ def _age_hold_rows(
         if age_ruling not in ("release", "cull"):
             raise FigmentTrainError(
                 f"held-for-age cell {row['image_id']} has no age_ruling (release|cull)")
+        if ruling["decision"] == "keep" and age_ruling == "cull":
+            raise FigmentTrainError(f"picked cell {row['image_id']} is age-ruled cull")
         rows.append({
             "creator": plan["creator"], "stage": stage, "image_id": row["image_id"],
             "image_sha256": _sha256(Path(row["path"])),
