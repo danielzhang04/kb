@@ -459,16 +459,21 @@ end-to-end run the operator funds explicitly.
 
 ## 12. Rulings owed and unknowns
 
-**Rulings owed by the operator**
-1. **Cap.** Raise `ARC_CAP_USD` for phase 6 (about $10–14 against about $5.7 remaining). Separately, `orgs/figment/_index.md` still says "$50 hard cap" while STATE records $60. GOAL.md is not present in this worktree; check it on `ops`.
-2. **Age floor value.** Hold semantics are ruled (2026-09-29): GUARDRAILS #2 now says the operator makes the adult call by eye on every image, automated checks flag and never cull, and an image the operator finds ambiguous is not kept. Still owed: the floor value that triggers a flag (precedent: 20).
-3. **Age term.** Decision 6 adopts "youthful young woman" (m10) and "young woman" (m03, m09, m11). D13 recorded this wording as a GUARDRAILS #2 defect. The age hold is the mitigation. Confirm that GUARDRAILS needs no amendment.
-4. **Pickle hatch as the default path.** The hatch flag is named `diagnostic_non_commercial`. Confirm using it for tensor manifests, or approve renaming it as a blocking fix.
-5. **Provenance.** `realistic_snapshot_lora`, `zit_upscaler`, `bfs_head_v5`, `RealisticSnapshotKrea2`, `pawg_krea2` and the NMKD `.pt` come from an anonymous account with no licence (r20, r25). Decision 3 reinstates them. `pawg_krea2` is a body-shape LoRA whose effect on the clothed register is unaudited.
-6. **Licence.** FLUX.2 klein 9B (dataset refine and edit) is non-commercial. It is usable for build and test, and must be resolved before any monetised output.
-7. **P3.** Passport detailers at 0.23/0.23 (the spoken instruction) versus the saved 0.4/0.27.
-8. **Phase mapping.** The approved phase list does not name train/tester or stills. This spec folds the train/tester reversion into phase 2 and stills into phase 5.
-9. **Trait-axis thresholds**, after the phase 2 calibration.
+**Ruled by the operator (2026-09-29)**
+- **Hold semantics.** GUARDRAILS #2 now says the operator makes the adult call by eye on every image, automated checks flag and never cull, and an image the operator finds ambiguous is not kept.
+- **Age floor value: 20.** It only decides which images carry an age flag on the board. Revisit once rulings show how far the age judge runs off.
+
+**Settled by the design rule (operator may veto at spec review)**
+- **Age term.** Their wording as written: "youthful young woman" (m10) and "young woman" (m03, m09, m11). GUARDRAILS #2 keeps the adult-output requirement and is enforced at the eye gate.
+- **Pickle hatch.** Tensor manifests use the existing `diagnostic_non_commercial` plus `pickle_ack` hatch. No harness code change; a rename is not a blocking fix.
+- **Provenance.** `realistic_snapshot_lora`, `zit_upscaler`, `bfs_head_v5`, `RealisticSnapshotKrea2`, `pawg_krea2` and the NMKD `.pt` come from an anonymous account with no licence (r20, r25). Decision 3 reinstates them on disposable pods. `pawg_krea2` is a body-shape LoRA whose effect on the clothed register is unaudited; it is reinstated at the package strength and watched at the stills eye gate.
+- **P3.** Passport detailers run at 0.23/0.23, the author's spoken instruction. The saved 0.4/0.27 is treated as a leftover widget value.
+- **Phase mapping.** The train/tester reversion is folded into phase 2 and stills into phase 5.
+
+**Rulings still owed by the operator**
+1. **Cap.** Raise `ARC_CAP_USD` before phase 6 (about $10-14 against about $5.7 remaining; phase 1 fits inside the current cap). Separately, `orgs/figment/_index.md` and GOAL.md on `ops` still say "$50 hard cap" while STATE and the code use $60.
+2. **Licence.** FLUX.2 klein 9B (dataset refine and edit) is non-commercial. It is usable for build and test, and must be resolved before any monetised output.
+3. **Trait-axis thresholds**, after the phase 2 calibration.
 
 **Unknowns (not verifiable from the package files)**
 - **Module 11 settings.** rank, LR, optimizer, buckets, quantization, caption dropout, and the caption instruction string are absent from the package text. They come from r15b's reading of video frames, and the videos are not in the snapshot. Resolves by re-reading the lesson video or accepting the toolkit defaults.
