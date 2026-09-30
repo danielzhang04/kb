@@ -335,10 +335,7 @@ temporary file, atomically moved into place, and verified to exist with non-zero
 A live `run` requires `--max-usd`. Before create, the harness computes the manifest estimate,
 reads `governance/budget.yaml` `daily_usd_limit`, sums the `usd` column in today's
 cost ledgers, and refuses when existing spend plus the estimate exceeds the daily limit.
-It also applies the independent whole-arc cap: `--arc-cap-usd` defaults from
-`KB_ARC_CAP_USD`, otherwise `$50.00`, and sums every `figment-*.tsv` in the selected ledger
-directory (override with `--arc-ledger-glob`). Files without a `usd` column are skipped with a
-warning; malformed values in a declared `usd` column still fail closed. The ledger directory is selected in this order:
+It also applies the independent whole-arc cap: `--arc-cap-usd` defaults from `KB_ARC_CAP_USD`, otherwise `DEFAULT_ARC_CAP_USD` ($75.00), and sums every `figment-*.tsv` in the selected ledger directory (override with `--arc-ledger-glob`) whose file-name day is on or after `ARC_START_DAY` (2026-09-29); earlier files are never opened. A file with no YYYY-MM-DD day in its name, an in-arc file with no `usd` column, or a malformed value fails closed. The ledger directory is selected in this order:
 `--ledger-dir`, `KB_LEDGER_DIR`,
 `C:/Users/danie/kb-worktrees/dashboard-ops/ledgers/cost` when that directory exists, then the
 repo's `ledgers/cost`. `governance/budget.yaml` always comes from the harness repo root. Before
@@ -401,7 +398,7 @@ try {
 List Pods or force verified termination:
 
 ```powershell
-py -3 runpod_run.py status --arc-cap-usd 50 --arc-ledger-glob 'figment-*.tsv'
+py -3 runpod_run.py status
 py -3 runpod_run.py status --forget-bad-host l03vqknv0x0c
 py -3 runpod_run.py probe
 py -3 runpod_run.py terminate --pod-id POD_ID
@@ -451,6 +448,8 @@ replacement journal.
 `probe` is read-only: it makes only `GET /pods?includeMachine=true` and prints response keys,
 type placeholders, and status values. It suppresses IDs, IPs, ports, prices, names, and other
 values so an operator can compare a live account's response shape without creating a Pod.
+
+`reconcile` is read-only: for each pod with `pod-create <id>` ledger rows (default: first seen on/after `ARC_START_DAY`; or `--pod-id`), it calls `GET /billing/pods` (podId, day buckets, grouped by pod) and prints ledger vs RunPod USD, billed seconds, the difference and `MATCH`/`MISMATCH`/`NO-PROVIDER-RECORD` (tolerance max($0.01, 2%)); exit 1 unless every pod matches. RunPod's docs do not say whether billing rows survive pod deletion, so `NO-PROVIDER-RECORD` is reported, never counted as a match.
 
 ## Readiness and bootstrap diagnostics
 

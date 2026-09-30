@@ -400,8 +400,7 @@ side mode, so this open surface is exercised by default, not opt-in — read GUA
 
 - Daily: `governance/budget.yaml` `daily_usd_limit: 10.00` (subscription-billed steps, e.g.
   `vlm_judge`, log $0.00 against this).
-- Arc: `ARC_CAP_USD = "60.00"` in `figment_train.py` (raised from `"50.00"` by operator
-  ruling 2026-09-15), checked against every `figment-*.tsv` ledger row before a live `run`.
+- Arc: `DEFAULT_ARC_CAP_USD = 75.0` in `pod/runpod_run.py` is the one source (operator ruling 2026-09-29; `--arc-cap-usd`/`KB_ARC_CAP_USD` override), summing only `figment-*.tsv` files dated on or after `ARC_START_DAY` (2026-09-29); earlier rows are history. `figment_train.py` freezes it into each plan's argv (`_arc_cap_usd()`).
 - Per-stage ceilings (`--max-usd`; `train/TENSOR-TRAINING.md`'s cost table): train-smoke
   $2.28, tester $2.82 (F5: `max_minutes` raised 115 -> 130 to cover the 12-job ladder a
   3000-step/save_every-250 checkpoint schedule now tests), gen $3.58; dataset shard
@@ -421,7 +420,7 @@ side mode, so this open surface is exercised by default, not opt-in — read GUA
   daily limit on its own**, even on a day with zero prior Figment spend — DOP's ~3.6x
   per-step rate (9.0s vs 2.5s, r21) times 3000 steps is the real cost of training-to-3000
   screened-by-tester rather than defaulting to a shorter run (F5 ruling, r25 causes #4/#6);
-  train's OWN ceiling clears the $60.00 arc cap by itself against any realistic already-spent
+  train's OWN ceiling clears the $75.00 arc cap by itself against any realistic already-spent
   total (M3: read `spent`/`remaining` live off the resolved ledger at plan time --
   `configured_ledger_dir`'s precedence -- never a fixed figure quoted here) but a live
   `run --stage train` still needs its own calendar day with no other Figment spend, checked
@@ -429,7 +428,7 @@ side mode, so this open surface is exercised by default, not opt-in — read GUA
   day" constraint the arc cap and per-stage ceilings above already impose on `gen`.
   **The FULL `--stage all` chain can still fail to clear the arc** if enough has already been
   spent: summed ceilings at these numbers (anchor $4.90 + dataset $10.47 + smoke $2.28 +
-  train $15.73 + tester $2.82 = $36.20) can exceed what remains of the $60.00 cap —
+  train $15.73 + tester $2.82 = $36.20) can exceed what remains of the $75.00 cap —
   `enforce_arc_cap` only ever compares ONE run's ceiling at RUN time, so a chain like this used
   to be
   accepted for planning and only fail mid-chain, after anchor+dataset already spent (M2).

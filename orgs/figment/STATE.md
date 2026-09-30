@@ -1,8 +1,17 @@
 # figment — STATE
 
-_Updated: 2026-09-23_
+_Updated: 2026-09-29_
 
 ## Now
+
+- **New arc (2026-09-29): tensor parity, creator-003.** Spec
+  `docs/superpowers/specs/2026-09-29-figment-tensor-parity-design.md`; phase 1 plan
+  `docs/superpowers/plans/2026-09-29-figment-tensor-phase1-passport.md`. Phase 1 is built
+  (tasks 1-8), not yet run live. Arc cap $75 counted from $0 on ledger files dated >= 2026-09-29
+  (one constant, `pod/runpod_run.py` `DEFAULT_ARC_CAP_USD`); `runpod_run.py reconcile` compares
+  ledger pod rows with RunPod billing. Default `training.recipe_profile` is `tensor`;
+  creator-001/002 are pinned to `clean`. creator-003 plans only the module-03 passport until
+  the operator picks one. The history below is the prior creator-001 arc, under the old $60 cap.
 
 - **The full chain is now live-proven end to end, anchor through video.** As of 2026-09-23 every
   stage in `anchor → dataset → train → tester → gen → detail → video` has produced real evidence
@@ -145,6 +154,11 @@ _Updated: 2026-09-23_
 ## Next
 
 Recommended angles, in order:
+
+0. **Phase 1 live passport run (T2).** Approve the card, run 12 seeds on one L40S
+   (<= $2.00), pick the passport on the four-group board, then plan phase 2 (dataset + train/
+   tester reversion, dry-run only). The creator-001 angles below are paused: its re-run is
+   out of scope for this arc.
 
 1. **Adopt `gen`'s proven-better recipe as the default**: refine denoise off (0), detailer
    denoise ≤0.20, `gen_prompt_style: "look-clause-close"`. Live-proven by run1 (3/12 PASS, the
