@@ -174,3 +174,69 @@ def test_build_grade_gates_only_the_tensor_passport_reference_free(command, tmp_
     with pytest.raises(Stop):
         command.build_grade("creator-003", stage, tmp_path / "plan.json", skip_judge=True)
     assert captured["reference_free"] is expected
+
+
+def _axes() -> dict:
+    return {"identity": "pass", "realism": "pass", "hands": "pass", "lighting": "pass",
+            "adult_read": "pass", "garment_integrity": "pass",
+            "real_person_resemblance": "clear",
+            "gate_override": "fixture: synthetic 8x8 image; release after operator review"}
+
+
+def _fake_stage_outputs(out: Path, plan: dict, stage: str) -> None:
+    for run in plan["stages"][stage]["runs"]:
+        manifest = load_json(out / run["manifest"])
+        (out / run["out"]).mkdir(parents=True, exist_ok=True)
+        for job in manifest["jobs"]:
+            Image.new("RGB", (8, 8)).save(out / run["out"] / f"{job['output_name']}.png")
+
+
+def _gate_for(images, groups):
+    rows = []
+    for index, image in enumerate(images):
+        group = groups.get(index, "passed")
+        rows.append({"image_id": image["image_id"], "pass": group == "passed", "group": group,
+                     "reasons": [] if group == "passed" else [f"fixture {group}"],
+                     "age_value": 18.0 if group == "age" else 27.0,
+                     "judge": {"apparent_age_candidate": 19 if group == "age" else 26},
+                     "stage1": None, "stage2": None})
+    return {"schema": "figment/gate@1", "own_anchor": None, "thresholds": {"age_floor_years": 20},
+            "judge_thresholds": {}, "judge_skipped": False, "outage": None, "rows": rows,
+            "summary": {"total": len(rows), "passed": 0, "failed": 0}}
+
+
+def test_pick_creates_the_identity_and_logs_age_hold_rulings(command, tmp_path, monkeypatch):
+    personas = tmp_path / "personas"
+    persona_dir = _pre_passport_persona(personas)
+    out = tmp_path / "plan"
+    plan = _plan(command, tmp_path, personas)
+    _fake_stage_outputs(out, plan, "anchor")
+    monkeypatch.setattr(command, "_run_identity_gate",
+                        lambda plan, anchors, images, grade_dir, **_kw:
+                        _gate_for(images, {0: "age", 1: "age", 2: "unscorable"}))
+    grade = command.build_grade("creator-003", "anchor", out / "plan.json")
+    assert re.search(r"held for age[^<]*\(2\)</h2>", Path(grade["page"]).read_text("utf-8"))
+    template = load_json(Path(grade["rulings_template"]))
+    assert len(template["rulings"]) == 12
+    for index, row in enumerate(template["rulings"]):
+        row.update(_axes(), decision="keep" if index == 1 else "cull",
+                   why="the pick" if index == 1 else "not picked")
+    template.update(decided_by="operator-fixture", decided_at="2026-09-30T00:00:00Z")
+    filled = out / "filled.json"
+    filled.write_text(json.dumps(template), "utf-8")
+
+    command.apply_rulings("creator-003", "anchor", out / "plan.json", filled)
+
+    persona = load_json(persona_dir / "persona.yaml")
+    assert persona["identity"]["references"] == ["anchors/passport.png"]
+    assert (persona_dir / "anchors" / "passport.png").is_file()
+    assert persona["identity"]["look"]["hair"] == "long, straight platinum blonde hair"
+    assert load_json(persona_dir / "training.yaml")["training"]["recipe_profile"] == "tensor"
+    holds = [json.loads(line) for line in
+             (persona_dir / "calibration" / "age-holds.jsonl").read_text("utf-8").splitlines()]
+    assert [(h["image_id"], h["ruling"]) for h in holds] == [
+        (template["rulings"][0]["image_id"], "cull"), (template["rulings"][1]["image_id"], "release")]
+    assert (holds[1]["vit_age"], holds[1]["judge_age"], holds[1]["age_floor_years"]) == (18.0, 19, 20)
+    assert holds[1]["decided_by"] == "operator-fixture" and len(holds[1]["image_sha256"]) == 64
+    with pytest.raises(command.FigmentTrainError, match="already has its passport"):
+        _plan(command, tmp_path, personas, name="again")

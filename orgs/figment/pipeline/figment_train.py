@@ -6344,6 +6344,35 @@ def _write_accepted_checkpoint(
     )
 
 
+def _append_age_holds(
+    plan: dict[str, Any], stage: str, normalized: dict[str, Any],
+    gate_document: dict[str, Any], images: list[dict[str, Any]],
+) -> None:
+    """Spec 2026-09-29 §7: every ruling on a held-for-age cell is also a labelled example
+    for tuning the age judge, appended to personas/<id>/calibration/age-holds.jsonl.
+    `keep` (with its required gate_override) is a release; `cull` is a cull."""
+    gate_by_id = {row["image_id"]: row for row in gate_document.get("rows", [])}
+    held = [row for row in images if (gate_by_id.get(row["image_id"]) or {}).get("group") == "age"]
+    if not held:
+        return
+    rulings = {row["image_id"]: row for row in normalized["rulings"]}
+    path = (ROOT / plan["assets"]["persona_dir"]).resolve() / "calibration" / "age-holds.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        for row in held:
+            gate_row, ruling = gate_by_id[row["image_id"]], rulings[row["image_id"]]
+            handle.write(json.dumps({
+                "creator": plan["creator"], "stage": stage, "image_id": row["image_id"],
+                "image_sha256": _sha256(Path(row["path"])),
+                "vit_age": gate_row.get("age_value"),
+                "judge_age": (gate_row.get("judge") or {}).get("apparent_age_candidate"),
+                "age_floor_years": (gate_document.get("thresholds") or {}).get("age_floor_years"),
+                "ruling": "release" if ruling["decision"] == "keep" else "cull",
+                "why": ruling.get("why", ""),
+                "decided_by": normalized["decided_by"], "decided_at": normalized["decided_at"],
+            }, sort_keys=True) + "\n")
+
+
 def apply_rulings(
     creator_id: str, stage: str, plan_path: Path, rulings_path: Path,
     checkpoint_step: int | None = None, *, reads=None,
@@ -6473,6 +6502,7 @@ def apply_rulings(
             )
         )):
             raise FigmentTrainError("refusing to overwrite previously applied rulings")
+        _append_age_holds(plan, stage, normalized, gate_document, grading["images"])
         _write_json(rulings_out, normalized)
         _write_json(review_out, review)
         _write_json(
@@ -6626,7 +6656,9 @@ def apply_rulings(
         # Review LOW-13: take the extension from the actual source file rather than
         # hardcoding .png -- safe today only because SaveImage always emits PNG.
         extension = source.suffix.lower() or ".png"
-        destination = anchors_dir / f"{image_id}{extension}"
+        # Spec 2026-09-29 §4.1: on the tensor profile the pick IS the identity passport.
+        tensor = plan.get("training", {}).get("recipe_profile") == "tensor"
+        destination = anchors_dir / (f"passport{extension}" if tensor else f"{image_id}{extension}")
         if destination.exists():
             raise FigmentTrainError(f"anchor destination already exists: {destination}")
         shutil.copy2(source, destination)
@@ -6643,7 +6675,7 @@ def apply_rulings(
         persona_document = _read_json(persona_path)
         identity = persona_document.setdefault("identity", {})
         identity["history"] = identity.get("history", []) + identity.get("references", [])
-        identity["references"] = [f"anchors/{image_id}{extension}"]
+        identity["references"] = [f"anchors/{destination.name}"]
         _write_json(persona_path, persona_document)
 
     approved_document = {
@@ -6652,6 +6684,7 @@ def apply_rulings(
         "stage": stage,
         "images": approved_rows,
     }
+    _append_age_holds(plan, stage, normalized, gate_document, grading["images"])
     _write_json(rulings_out, normalized)
     _write_json(review_out, review)
     _write_json(approved_out, approved_document)
