@@ -2849,6 +2849,9 @@ def _planned_run(
     }
     if "_budget" in manifest:
         result["budget"] = manifest["_budget"]
+    if Path(str(manifest.get("workflow", ""))).name == TENSOR_PASSPORT_WORKFLOW_PATH.name:
+        # Final review F5: pin the plan's parity-checked workflow copy; launch re-hashes it.
+        result["workflow_sha256"] = _sha256(manifest_path.parent / manifest["workflow"])
     return result
 
 
@@ -5087,8 +5090,8 @@ def run_planned_stage(
                 root, manifest_path, root / run["out"], ledger_dir=plan_ledger_dir,
                 external_manifest=current == "video",
             )
-            for field in ("ceiling_usd", "out", "argv", "cli"):
-                if run.get(field) != expected_run[field]:
+            for field in ("ceiling_usd", "out", "argv", "cli", "workflow_sha256"):
+                if run.get(field) != expected_run.get(field):
                     raise FigmentTrainError(
                         f"planned run field {field!r} no longer matches the bounded harness command"
                     )

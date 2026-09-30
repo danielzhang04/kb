@@ -91,6 +91,24 @@ def test_tensor_passport_manifest_dry_runs(command, tmp_path):
     assert "PICKLE MODEL LOADED (diagnostic)" in result.stderr
 
 
+def test_passport_workflow_copy_is_pinned_and_an_edit_refuses_launch(command, tmp_path, monkeypatch):
+    """Final review F5: editing the plan's workflow copy after `plan` must not bypass parity."""
+    plan = _plan(command, tmp_path)
+    run, = plan["stages"]["anchor"]["runs"]
+    copy = tmp_path / "plan" / "expand" / "workflows" / "tensor_passport_m03_api.json"
+    assert run["workflow_sha256"] == hashlib.sha256(copy.read_bytes()).hexdigest()
+    workflow = load_json(copy)
+    workflow["4"]["inputs"]["text"] = "edited after plan"
+    copy.write_text(json.dumps(workflow), "utf-8")
+
+    def no_launch(*_a, **_kw):
+        raise AssertionError("harness launched despite an edited workflow copy")
+
+    monkeypatch.setattr(command.subprocess, "run", no_launch)
+    with pytest.raises(command.FigmentTrainError, match="workflow_sha256"):
+        command.run_planned_stage("creator-003", "anchor", tmp_path / "plan" / "plan.json")
+
+
 def test_pre_passport_persona_refuses_every_other_stage(command, tmp_path):
     personas = tmp_path / "personas"
     persona_dir = _pre_passport_persona(personas)
