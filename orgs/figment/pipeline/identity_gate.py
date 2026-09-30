@@ -647,7 +647,8 @@ def passport_verdict(
         reasons.append("unavailable: age_floor_years")
     judge_age = (judge_row or {}).get("apparent_age_candidate")
     for label, value in (("vit age", scores.get("age_value")), ("judge age", judge_age)):
-        if value is None:
+        # NaN compares False against the floor, so a non-finite age is unavailable, not adult.
+        if value is None or not math.isfinite(value):
             reasons.append(f"unavailable: {label}")
         elif floor is not None and value < floor:
             reasons.append(f"{label} {value:.4g} is under the age floor {floor:.4g}")

@@ -1376,3 +1376,13 @@ def test_reference_free_gate_outage_holds_every_cell_unscorable(gate_module, tmp
     document = gate_module.run_two_stage_gate(broken_persona, [], images, tmp_path, reference_free=True)
     assert [row["group"] for row in document["rows"]] == ["unscorable"]
     assert document["summary"]["groups"] == {"unscorable": 1}
+
+
+@pytest.mark.parametrize("scores,judge", [
+    ({"face_px": 800, "age_value": float("nan")}, PASSPORT_JUDGE),
+    ({"face_px": 800, "age_value": 25.0}, {**PASSPORT_JUDGE, "apparent_age_candidate": float("nan")}),
+])
+def test_passport_verdict_holds_a_non_finite_age_for_age(gate_module, scores, judge):
+    verdict = gate_module.passport_verdict(scores, judge, PASSPORT_THRESHOLDS, PASSPORT_JUDGE_THRESHOLDS)
+    assert verdict["group"] == "age" and verdict["pass"] is False
+    assert any(reason.startswith("unavailable:") for reason in verdict["reasons"])

@@ -5365,23 +5365,46 @@ def _judge_annotation(judge_row: dict[str, Any] | None) -> str:
     gloss = _fmt(judge_row.get("gloss"))
     artifacts = _fmt(judge_row.get("artifacts"))
     notes = judge_row.get("notes") or ""
+    # A reference-free (passport) judgement has no identity slots -- omit them.
+    identity = (
+        "" if judge_row.get("same_person") is None and judge_row.get("apparent_age_reference") is None
+        else f"same {same} · age {age_ref}→"
+    )
+    age = f"{age_cand} (Δ{delta})" if identity else f"age {age_cand}"
     return (
-        f"judge: same {same} · age {age_ref}→{age_cand} (Δ{delta}) · "
+        f"judge: {identity}{age} · "
         f"skin {skin} · gloss {gloss} · artifacts {artifacts}"
         + (f' · "{notes}"' if notes else "")
     )
 
 
+def _passport_age_annotation(gate_row: dict[str, Any] | None, age_floor: Any) -> str:
+    """Spec 2026-09-29 §7: every reference-free board cell shows both ages and the floor,
+    `vit age X · judge age Y · floor F` (`n/a` for any value that is missing or not finite)."""
+    def _fmt(value: Any, template: str) -> str:
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
+            return template.format(value)
+        return "n/a"
+
+    gate_row = gate_row or {}
+    vit = _fmt(gate_row.get("age_value"), "{:.1f}")
+    judge = _fmt((gate_row.get("judge") or {}).get("apparent_age_candidate"), "{:g}")
+    return f"vit age {vit} · judge age {judge} · floor {_fmt(age_floor, '{:g}')}"
+
+
 def _figure_html(
     row: dict[str, Any], advisory_by_id: dict[str, Any], *,
     gate_by_id: dict[str, Any] | None = None, number: int | None = None,
-    reasons: list[str] | None = None,
+    reasons: list[str] | None = None, passport_floor: tuple[Any] | None = None,
 ) -> str:
     annotation = _advisory_annotation(advisory_by_id.get(row["image_id"]))
     gate_row = (gate_by_id or {}).get(row["image_id"])
     judge_annotation = _judge_annotation((gate_row or {}).get("judge"))
     caption = f"{number}. {html.escape(row['image_id'])}" if number is not None else html.escape(row["image_id"])
     extra = ""
+    if passport_floor is not None:
+        age_line = _passport_age_annotation(gate_row, passport_floor[0])
+        extra += f'<br><span class="judge">{html.escape(age_line)}</span>'
     if annotation:
         extra += f'<br><span class="advisory">{html.escape(annotation)}</span>'
     if judge_annotation:
@@ -5426,15 +5449,23 @@ def _grading_html(
         group = gate_row.get("group") or ("passed" if gate_row.get("pass") else "failed")
         groups.get(group, groups["failed"]).append((row, list(gate_row.get("reasons") or [])))
     passed_rows = [row for row, _reasons in groups["passed"]]
+    # Reference-free (passport) gate rows carry `group`; each cell then shows both ages
+    # and the floor. The 1-tuple keeps a missing floor distinct from "not a passport board".
+    passport_floor = (
+        ((gate_document or {}).get("thresholds", {}).get("age_floor_years"),)
+        if any("group" in row for row in gate_by_id.values()) else None
+    )
     passed_cells = "\n".join(
-        _figure_html(row, advisory_by_id, gate_by_id=gate_by_id, number=index)
+        _figure_html(row, advisory_by_id, gate_by_id=gate_by_id, number=index,
+                     passport_floor=passport_floor)
         for index, row in enumerate(passed_rows, start=1)
     )
     held_sections = "".join(
         f'<section class="gate-{key}"><h2>{html.escape(title)} ({len(groups[key])})</h2>'
         '<div class="grid">'
         + "\n".join(
-            _figure_html(row, advisory_by_id, gate_by_id=gate_by_id, reasons=reasons)
+            _figure_html(row, advisory_by_id, gate_by_id=gate_by_id, reasons=reasons,
+                         passport_floor=passport_floor)
             for row, reasons in groups[key]
         )
         + "</div></section>"

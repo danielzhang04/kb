@@ -124,6 +124,33 @@ def test_board_shows_every_group_expanded_with_counts(command, tmp_path):
         assert title in board
     assert re.search(r"held for age[^<]*\(1\)</h2>", board)
     assert "judge age 19 is under the age floor 20" in board
+    for image in images:
+        assert image["image_id"] in board
+    orphan = {"image_id": "c003-passport-p05", "path": str(tmp_path / "5.png")}
+    board = command._grading_html("creator-003", "anchor", [], [*images, orphan], None, {"rows": rows})
+    failed_section = board[board.index('<section class="gate-failed">'):]
+    assert orphan["image_id"] in failed_section
+    assert "gate did not run for this cell" in failed_section
+    assert re.search(r"failed gate[^<]*\(2\)</h2>", board)
+
+
+def test_passport_board_shows_both_ages_and_the_floor_on_every_cell(command, tmp_path):
+    images = [{"image_id": f"c003-passport-p{i:02d}", "path": str(tmp_path / f"{i}.png")} for i in (1, 2)]
+    judge = {"same_person": None, "apparent_age_reference": None, "apparent_age_candidate": 24,
+             "age_delta": None, "skin_realism": 60, "gloss": 20, "artifacts": 10, "notes": "ok",
+             "unavailable": {}}
+    rows = [{"image_id": images[0]["image_id"], "pass": True, "group": "passed", "reasons": [],
+             "age_value": 26.4, "judge": judge},
+            {"image_id": images[1]["image_id"], "pass": False, "group": "age", "age_value": None,
+             "reasons": ["unavailable: vit age"], "judge": {**judge, "apparent_age_candidate": 19}}]
+    board = command._grading_html("creator-003", "anchor", [], images, None,
+                                  {"rows": rows, "thresholds": {"age_floor_years": 20}})
+    passed = board[board.index(images[0]["image_id"]):board.index('<section class="gate-age">')]
+    held = board[board.index('<section class="gate-age">'):board.index('<section class="gate-unscorable">')]
+    assert "vit age 26.4 · judge age 24 · floor 20" in passed
+    assert "vit age n/a · judge age 19 · floor 20" in held
+    assert "judge: age 24 · skin 60" in passed
+    assert "same n/a" not in board and "(Δ" not in board
 
 
 @pytest.mark.parametrize(("stage", "profile", "expected"), [
