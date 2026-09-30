@@ -5899,3 +5899,33 @@ def test_reconcile_http_error_fails_without_echoing_the_body(tmp_path, monkeypat
     captured = capsys.readouterr()
     assert "returned HTTP 403" in captured.err
     assert "secret-runpod-key" not in captured.out + captured.err
+
+
+def test_reconcile_ledger_header_without_usd_fails_closed(tmp_path):
+    ledgers = tmp_path / "ledgers"
+    ledgers.mkdir()
+    (ledgers / "figment-2026-09-30.tsv").write_text(
+        "model\tstep\tcost\nrunpod:l40s\tpod-create podx\t0.5\n", encoding="utf-8")
+    with pytest.raises(rr.HarnessError, match="lacks a step or usd column"):
+        rr.ledger_pod_totals(ledgers)
+
+
+def test_reconcile_blank_pod_id_row_fails_closed(tmp_path):
+    ledgers = tmp_path / "ledgers"
+    ledgers.mkdir()
+    (ledgers / "figment-2026-09-30.tsv").write_text(
+        "model\tstep\tusd\nrunpod:l40s\tpod-create \t0.5\n", encoding="utf-8")
+    with pytest.raises(rr.HarnessError, match="blank pod id"):
+        rr.ledger_pod_totals(ledgers)
+
+
+def test_reconcile_pod_without_ledger_row_is_no_ledger_row(tmp_path, monkeypatch, capsys):
+    ledgers = tmp_path / "ledgers"
+    _billing_ledger(ledgers)
+    session = StubSession([])
+    monkeypatch.setattr(rr, "build_authenticated_session",
+                        lambda: (session, rr.ApiKeyRedactionFilter(session)))
+    code = rr.main(["reconcile", "--ledger-dir", str(ledgers), "--pod-id", "ghost"])
+    assert code == 1
+    assert "ghost\t-\t-\t-\t-\tNO-LEDGER-ROW" in capsys.readouterr().out.splitlines()
+    assert session.calls == []

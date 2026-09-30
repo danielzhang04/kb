@@ -2585,14 +2585,16 @@ def ledger_pod_totals(ledger_dir: Path,
         day = ledger_file_day(path)
         try:
             with path.open("r", encoding="utf-8", newline="") as handle:
-                reader = csv.DictReader(handle, delimiter="	")
+                reader = csv.DictReader(handle, delimiter="\t")
                 if not reader.fieldnames or not {"step", "usd"} <= set(reader.fieldnames):
-                    continue
+                    raise HarnessError(f"cost ledger {path} lacks a step or usd column")
                 for row in reader:
                     step = row.get("step") or ""
                     if not step.startswith("pod-create "):
                         continue
                     pod_id = step.removeprefix("pod-create ").strip()
+                    if not pod_id:
+                        raise HarnessError(f"cost ledger {path} has a pod-create row with a blank pod id")
                     entry = totals.setdefault(pod_id, {"ledger_usd": 0.0, "first_day": day})
                     entry["ledger_usd"] += float(row["usd"])
                     entry["first_day"] = min(entry["first_day"], day)
@@ -5406,9 +5408,13 @@ def command_reconcile(args: argparse.Namespace) -> int:
         api = RunPodAPI(session)
         end = utc_now().strftime("%Y-%m-%dT%H:%M:%SZ")
         failures = 0
-        print("pod_id	ledger_usd	runpod_usd	runpod_billed_s	diff_usd	status")
+        print("pod_id\tledger_usd\trunpod_usd\trunpod_billed_s\tdiff_usd\tstatus")
         for pod_id in pod_ids:
-            entry = totals.get(pod_id, {"ledger_usd": 0.0, "first_day": args.since})
+            entry = totals.get(pod_id)
+            if entry is None:
+                failures += 1
+                print(redactor.redact(f"{pod_id}\t-\t-\t-\t-\tNO-LEDGER-ROW"))
+                continue
             start_day = datetime.strptime(entry["first_day"], "%Y-%m-%d") - timedelta(days=1)
             records = [
                 record for record in api.pod_billing(
@@ -5420,7 +5426,7 @@ def command_reconcile(args: argparse.Namespace) -> int:
             if not records:
                 failures += 1
                 print(redactor.redact(
-                    f"{pod_id}	{ledger_usd:.4f}	-	-	-	NO-PROVIDER-RECORD"))
+                    f"{pod_id}\t{ledger_usd:.4f}\t-\t-\t-\tNO-PROVIDER-RECORD"))
                 continue
             runpod_usd = sum(float(record.get("amount") or 0.0) for record in records)
             billed_s = sum(float(record.get("timeBilledMs") or 0.0) for record in records) / 1000.0
@@ -5428,7 +5434,7 @@ def command_reconcile(args: argparse.Namespace) -> int:
             match = abs(diff) <= max(RECONCILE_TOLERANCE_USD, 0.02 * runpod_usd)
             failures += 0 if match else 1
             print(redactor.redact(
-                f"{pod_id}	{ledger_usd:.4f}	{runpod_usd:.4f}	{billed_s:.0f}	{diff:+.4f}	"
+                f"{pod_id}\t{ledger_usd:.4f}\t{runpod_usd:.4f}\t{billed_s:.0f}\t{diff:+.4f}\t"
                 f"{'MATCH' if match else 'MISMATCH'}"))
         return 0 if failures == 0 else 1
     finally:
