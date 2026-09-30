@@ -75,8 +75,9 @@ def test_creator003_plans_only_the_tensor_passport(command, tmp_path, monkeypatc
     prompt = manifest["jobs"][0]["substitutions"][0]["value"]
     assert "long, straight platinum blonde hair" in prompt and "bright light blue-grey eyes" in prompt
     argv = run["argv"]
-    assert argv[argv.index("--max-usd") + 1] == "2.00"
-    assert argv[argv.index("--max-minutes") + 1] == "92"
+    # 91 min x $1.30/h = $1.9717, cent-ceiled to 1.98 -- inside the $2.00 passport ceiling.
+    assert argv[argv.index("--max-usd") + 1] == "1.98"
+    assert argv[argv.index("--max-minutes") + 1] == "91"
     assert argv[argv.index("--arc-cap-usd") + 1] == "75.00"
     assert plan["assets"]["anchors"] == []
 

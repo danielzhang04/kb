@@ -566,5 +566,9 @@ def test_passport_tensor_pins_follow_module_03_installer():
         "ComfyUI-Impact-Subpack": "50c7b71a6a224734cc9b21963c6d1926816a97f1",
     }
     stage = pins["pod_classes"]["l40s"]["stages"]["passport_tensor"]
-    assert (stage["max_minutes"], stage["readiness_timeout_seconds"], stage["job_timeout_seconds"]) == (92, 1800, 285)
+    # Rebalanced inside the $2.00 ceiling (final review F1): 20 + 12*330/60 + 5 = 91 min; 91/60*1.30 = $1.97.
+    assert (stage["max_minutes"], stage["readiness_timeout_seconds"], stage["job_timeout_seconds"]) == (91, 1200, 330)
+    assert stage["max_minutes"] == stage["readiness_timeout_seconds"] / 60 + 12 * stage["job_timeout_seconds"] / 60 + 5
+    assert round(stage["max_minutes"] / 60 * 1.30, 2) == 1.97 <= 2.00
+    assert "330 s per job" in group["_note"]
     assert pins["profiles"]["tensor"] == {"anchor": ["passport_tensor"]}
