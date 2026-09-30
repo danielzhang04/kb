@@ -6344,33 +6344,50 @@ def _write_accepted_checkpoint(
     )
 
 
-def _append_age_holds(
+def _age_hold_rows(
     plan: dict[str, Any], stage: str, normalized: dict[str, Any],
     gate_document: dict[str, Any], images: list[dict[str, Any]],
-) -> None:
+) -> list[dict[str, Any]]:
     """Spec 2026-09-29 §7: every ruling on a held-for-age cell is also a labelled example
-    for tuning the age judge, appended to personas/<id>/calibration/age-holds.jsonl.
-    `keep` (with its required gate_override) is a release; `cull` is a cull."""
+    for tuning the age judge. `keep` (with its required gate_override) is a release;
+    `cull` is a cull. Built (image hashes included) before apply_rulings writes anything,
+    so an unreadable held image refuses the whole apply rather than orphaning an identity."""
     gate_by_id = {row["image_id"]: row for row in gate_document.get("rows", [])}
-    held = [row for row in images if (gate_by_id.get(row["image_id"]) or {}).get("group") == "age"]
-    if not held:
-        return
     rulings = {row["image_id"]: row for row in normalized["rulings"]}
+    rows = []
+    for row in images:
+        gate_row = gate_by_id.get(row["image_id"]) or {}
+        if gate_row.get("group") != "age":
+            continue
+        ruling = rulings[row["image_id"]]
+        rows.append({
+            "creator": plan["creator"], "stage": stage, "image_id": row["image_id"],
+            "image_sha256": _sha256(Path(row["path"])),
+            "vit_age": gate_row.get("age_value"),
+            "judge_age": (gate_row.get("judge") or {}).get("apparent_age_candidate"),
+            "age_floor_years": (gate_document.get("thresholds") or {}).get("age_floor_years"),
+            "ruling": "release" if ruling["decision"] == "keep" else "cull",
+            "why": ruling.get("why", ""),
+            "decided_by": normalized["decided_by"], "decided_at": normalized["decided_at"],
+        })
+    return rows
+
+
+def _append_age_holds(plan: dict[str, Any], rows: list[dict[str, Any]]) -> None:
+    """Append age-hold rows to personas/<id>/calibration/age-holds.jsonl, skipping any
+    row already logged (same image_id + image_sha256 + decided_at), so a retry after a
+    failed later write never duplicates the operator's rulings."""
+    if not rows:
+        return
     path = (ROOT / plan["assets"]["persona_dir"]).resolve() / "calibration" / "age-holds.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
+    key = lambda row: (row.get("image_id"), row.get("image_sha256"), row.get("decided_at"))
+    logged = ({key(json.loads(line)) for line in path.read_text("utf-8").splitlines() if line.strip()}
+              if path.is_file() else set())
     with path.open("a", encoding="utf-8") as handle:
-        for row in held:
-            gate_row, ruling = gate_by_id[row["image_id"]], rulings[row["image_id"]]
-            handle.write(json.dumps({
-                "creator": plan["creator"], "stage": stage, "image_id": row["image_id"],
-                "image_sha256": _sha256(Path(row["path"])),
-                "vit_age": gate_row.get("age_value"),
-                "judge_age": (gate_row.get("judge") or {}).get("apparent_age_candidate"),
-                "age_floor_years": (gate_document.get("thresholds") or {}).get("age_floor_years"),
-                "ruling": "release" if ruling["decision"] == "keep" else "cull",
-                "why": ruling.get("why", ""),
-                "decided_by": normalized["decided_by"], "decided_at": normalized["decided_at"],
-            }, sort_keys=True) + "\n")
+        for row in rows:
+            if key(row) not in logged:
+                handle.write(json.dumps(row, sort_keys=True) + "\n")
 
 
 def apply_rulings(
@@ -6450,6 +6467,7 @@ def apply_rulings(
     ungated = [image_id for image_id in image_ids if image_id not in gate_by_id]
     if ungated:
         raise FigmentTrainError(f"gate.json does not cover every graded cell: {ungated}")
+    age_holds = _age_hold_rows(plan, stage, normalized, gate_document, grading["images"])
 
     review = deepcopy(grading)
     try:
@@ -6502,7 +6520,7 @@ def apply_rulings(
             )
         )):
             raise FigmentTrainError("refusing to overwrite previously applied rulings")
-        _append_age_holds(plan, stage, normalized, gate_document, grading["images"])
+        _append_age_holds(plan, age_holds)
         _write_json(rulings_out, normalized)
         _write_json(review_out, review)
         _write_json(
@@ -6684,7 +6702,7 @@ def apply_rulings(
         "stage": stage,
         "images": approved_rows,
     }
-    _append_age_holds(plan, stage, normalized, gate_document, grading["images"])
+    _append_age_holds(plan, age_holds)
     _write_json(rulings_out, normalized)
     _write_json(review_out, review)
     _write_json(approved_out, approved_document)

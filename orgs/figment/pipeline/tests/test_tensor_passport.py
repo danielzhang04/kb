@@ -240,3 +240,91 @@ def test_pick_creates_the_identity_and_logs_age_hold_rulings(command, tmp_path, 
     assert holds[1]["decided_by"] == "operator-fixture" and len(holds[1]["image_sha256"]) == 64
     with pytest.raises(command.FigmentTrainError, match="already has its passport"):
         _plan(command, tmp_path, personas, name="again")
+
+
+def _graded_passport(command, tmp_path, monkeypatch, keeps):
+    """Plan + fake outputs + grade creator-003 (cells 0,1 held for age, 2 unscorable);
+    return (persona_dir, plan_path, filled_rulings_path) with `keeps` kept, the rest culled."""
+    personas = tmp_path / "personas"
+    persona_dir = _pre_passport_persona(personas)
+    out = tmp_path / "plan"
+    plan = _plan(command, tmp_path, personas)
+    _fake_stage_outputs(out, plan, "anchor")
+    monkeypatch.setattr(command, "_run_identity_gate",
+                        lambda plan, anchors, images, grade_dir, **_kw:
+                        _gate_for(images, {0: "age", 1: "age", 2: "unscorable"}))
+    grade = command.build_grade("creator-003", "anchor", out / "plan.json")
+    template = load_json(Path(grade["rulings_template"]))
+    for index, row in enumerate(template["rulings"]):
+        row.update(_axes(), decision="keep" if index in keeps else "cull", why=f"ruling {index}")
+    template.update(decided_by="operator-fixture", decided_at="2026-09-30T00:00:00Z")
+    filled = out / "filled.json"
+    filled.write_text(json.dumps(template), "utf-8")
+    return persona_dir, out / "plan.json", filled
+
+
+def _holds(persona_dir: Path) -> list[tuple[str, str]]:
+    path = persona_dir / "calibration" / "age-holds.jsonl"
+    if not path.is_file():
+        return []
+    return [(row["image_id"], row["ruling"]) for row in
+            map(json.loads, path.read_text("utf-8").splitlines())]
+
+
+def test_two_keeps_are_refused_before_any_identity_or_log_write(command, tmp_path, monkeypatch):
+    persona_dir, plan_path, filled = _graded_passport(command, tmp_path, monkeypatch, {0, 1})
+    with pytest.raises(command.FigmentTrainError, match="keep exactly one candidate"):
+        command.apply_rulings("creator-003", "anchor", plan_path, filled)
+    assert not (persona_dir / "anchors" / "passport.png").exists()
+    assert _holds(persona_dir) == []
+    assert load_json(persona_dir / "persona.yaml")["identity"]["references"] == []
+
+
+def test_all_cull_writes_no_identity_but_logs_the_age_hold_culls(command, tmp_path, monkeypatch):
+    persona_dir, plan_path, filled = _graded_passport(command, tmp_path, monkeypatch, set())
+    result = command.apply_rulings("creator-003", "anchor", plan_path, filled)
+    assert "rejection_lineage" in result
+    assert not (persona_dir / "anchors" / "passport.png").exists()
+    assert load_json(persona_dir / "persona.yaml")["identity"]["references"] == []
+    assert _holds(persona_dir) == [("c003-passport-p01", "cull"), ("c003-passport-p02", "cull")]
+
+
+def test_keeping_a_passed_cell_still_logs_the_held_cells_as_culls(command, tmp_path, monkeypatch):
+    persona_dir, plan_path, filled = _graded_passport(command, tmp_path, monkeypatch, {3})
+    command.apply_rulings("creator-003", "anchor", plan_path, filled)
+    assert load_json(persona_dir / "persona.yaml")["identity"]["references"] == ["anchors/passport.png"]
+    assert _holds(persona_dir) == [("c003-passport-p01", "cull"), ("c003-passport-p02", "cull")]
+
+
+def test_a_retry_after_a_failed_rulings_write_never_duplicates_hold_rows(command, tmp_path, monkeypatch):
+    persona_dir, plan_path, filled = _graded_passport(command, tmp_path, monkeypatch, set())
+    real_write = command._write_json
+
+    def failing_write(path, document):
+        if Path(path).name == "rulings.json":
+            raise OSError("fixture: rulings.json write failed")
+        return real_write(path, document)
+
+    monkeypatch.setattr(command, "_write_json", failing_write)
+    with pytest.raises(OSError, match="rulings.json write failed"):
+        command.apply_rulings("creator-003", "anchor", plan_path, filled)
+    assert _holds(persona_dir) == [("c003-passport-p01", "cull"), ("c003-passport-p02", "cull")]
+    monkeypatch.setattr(command, "_write_json", real_write)
+    command.apply_rulings("creator-003", "anchor", plan_path, filled)
+    assert _holds(persona_dir) == [("c003-passport-p01", "cull"), ("c003-passport-p02", "cull")]
+
+
+def test_hold_rows_are_built_before_any_identity_write(command, tmp_path, monkeypatch):
+    persona_dir, plan_path, filled = _graded_passport(command, tmp_path, monkeypatch, {1})
+    real_sha256 = command._sha256
+
+    def failing_sha256(path, **kwargs):
+        if Path(path).name == "c003-passport-p01.png":
+            raise OSError("fixture: held image unreadable")
+        return real_sha256(path, **kwargs)
+
+    monkeypatch.setattr(command, "_sha256", failing_sha256)
+    with pytest.raises(OSError, match="held image unreadable"):
+        command.apply_rulings("creator-003", "anchor", plan_path, filled)
+    assert not (persona_dir / "anchors" / "passport.png").exists()
+    assert load_json(persona_dir / "persona.yaml")["identity"]["references"] == []
