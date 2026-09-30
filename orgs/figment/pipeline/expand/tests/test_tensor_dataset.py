@@ -615,6 +615,7 @@ def test_framing_policy_skin_clause_and_no_unused_subpack(command, tmp_path):
     # composed look clause) -- verbatim, regardless of what look words precede it.
     skin_texture_clause = "fine vellus hair, and natural micro-texture, no retouching"
     pins = json.loads((PIPELINE / "train" / "tensor-pins.yaml").read_text("utf-8"))
+    pins["pins"].pop("passport_tensor")  # module 03 passport group carries the Subpack by design
     assert "Impact-Subpack" not in json.dumps(pins)
     personas = tmp_path / "personas"
     persona_path = _synthetic_persona(personas, creator_id="creator-002")

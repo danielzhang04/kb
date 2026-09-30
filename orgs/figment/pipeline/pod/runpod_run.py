@@ -2289,7 +2289,7 @@ def require_manifest(
     for model in manifest.get("models", []):
         if not isinstance(model, dict) or not all(model.get(k) for k in ("repo_id", "filename", "destination_dir")):
             raise HarnessError("each model needs repo_id, filename, and destination_dir")
-        if not re.fullmatch(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", str(model["repo_id"])):
+        if not re.fullmatch(r"(?:datasets/)?[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", str(model["repo_id"])):
             raise HarnessError(f"invalid public Hugging Face repo id: {model['repo_id']!r}")
         filename = PurePosixPath(str(model["filename"]))
         if filename.is_absolute() or ".." in filename.parts:

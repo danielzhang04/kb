@@ -5929,3 +5929,18 @@ def test_reconcile_pod_without_ledger_row_is_no_ledger_row(tmp_path, monkeypatch
     assert code == 1
     assert "ghost\t-\t-\t-\t-\tNO-LEDGER-ROW" in capsys.readouterr().out.splitlines()
     assert session.calls == []
+
+
+@pytest.mark.parametrize(("repo_id", "ok"), [
+    ("datasets/Gourieff/ReActor", True), ("Comfy-Org/z_image_turbo", True),
+    ("a/b/c", False), ("datasets/a/b/c", False), ("noslash", False),
+])
+def test_require_manifest_accepts_hugging_face_dataset_repo_ids(tmp_path, repo_id, ok):
+    candidate = manifest()
+    candidate["models"] = [{"repo_id": repo_id, "filename": "x.safetensors",
+                            "destination_dir": "/workspace/ComfyUI/models/x"}]
+    if ok:
+        rr.require_manifest(candidate, tmp_path / "m.yaml", allow_missing_uploads=True)
+    else:
+        with pytest.raises(rr.HarnessError, match="invalid public Hugging Face repo id"):
+            rr.require_manifest(candidate, tmp_path / "m.yaml", allow_missing_uploads=True)

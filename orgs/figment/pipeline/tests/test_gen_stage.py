@@ -317,7 +317,9 @@ def test_gen_pins_have_no_subpack_and_no_pickle():
 def test_pins_document_has_no_pickle_or_subpack_anywhere():
     """Whole-document guard (the outer task's "no ultralytics/SAM/.pt anywhere in
     pins" requirement) -- not just the gen profile."""
-    blob = PINS_PATH.read_text("utf-8")
+    doc = json.loads(PINS_PATH.read_text("utf-8"))
+    doc["pins"].pop("passport_tensor")  # module 03 ships SAM/YOLO pickles + Impact-Subpack; admitted there only
+    blob = json.dumps(doc)
     assert "Impact-Subpack" not in blob
     assert "ultralytics" not in blob.lower()
     assert '.pt"' not in blob and ".pth" not in blob

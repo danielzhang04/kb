@@ -542,3 +542,29 @@ def test_tensor_profile_refuses_stages_not_built_yet_even_without_pin_verify(com
     with pytest.raises(command.FigmentTrainError, match="not built for recipe profile 'tensor'"):
         command.build_plan("creator-002", "dataset", tmp_path / "p", personas_root=personas,
                            skip_pin_verify=True, ledger_dir=tmp_path / "ledger")
+
+
+def test_passport_tensor_pins_follow_module_03_installer():
+    pins = load_json(PIPELINE / "train" / "tensor-pins.yaml")
+    group = pins["pins"]["passport_tensor"]
+    by_name = {Path(m["filename"]).name: m for m in group["models"]}
+    assert set(by_name) == {
+        "z_image_turbo_bf16.safetensors", "qwen_3_4b.safetensors", "ae.safetensors",
+        "realistic_snapshot_lora.safetensors", "zit_upscaler.safetensors",
+        "sam_vit_b_01ec64.pth", "face_yolov8m.pt",
+    }
+    assert by_name["zit_upscaler.safetensors"]["sha256"] == "009671cec5a384db31052b52e344e5989b0c51a5ad4d25a8c2c629f658754d13"
+    assert by_name["sam_vit_b_01ec64.pth"]["sha256"] == "ec2df62732614e57411cdcf32a23ffdf28910380d03139ee0f4fcbe91eb8c912"
+    assert {n for n, m in by_name.items() if m.get("pickle_ack")} == {"sam_vit_b_01ec64.pth", "face_yolov8m.pt"}
+    assert by_name["face_yolov8m.pt"]["destination_dir"] == "/workspace/ComfyUI/models/ultralytics/bbox"
+    assert by_name["sam_vit_b_01ec64.pth"]["destination_dir"] == "/workspace/ComfyUI/models/sams"
+    for model in group["models"]:
+        assert len(model["revision"]) == 40 and len(model["sha256"]) == 64, model
+    assert {n["name"]: n["installer_pin"] for n in group["custom_nodes"]} == {
+        "RES4LYF": "e716cd1cb2c5cff90131bf4914b75b75a0489d48",
+        "ComfyUI-Impact-Pack": "429d0159ad429e64d2b3916e6e7be9c22d025c3c",
+        "ComfyUI-Impact-Subpack": "50c7b71a6a224734cc9b21963c6d1926816a97f1",
+    }
+    stage = pins["pod_classes"]["l40s"]["stages"]["passport_tensor"]
+    assert (stage["max_minutes"], stage["readiness_timeout_seconds"], stage["job_timeout_seconds"]) == (92, 1800, 285)
+    assert pins["profiles"]["tensor"] == {"anchor": ["passport_tensor"]}

@@ -2,7 +2,7 @@
   "schema": "figment/tensor-pins@1",
   "profiles": {
     "clean": {"anchor": ["anchor", "anchor_edit"], "dataset": ["dataset"], "smoke": ["train"], "train": ["train"], "tester": ["tester"], "gen": ["gen"], "detail": ["detail"], "video": []},
-    "tensor": {}
+    "tensor": {"anchor": ["passport_tensor"]}
   },
   "pod_classes": {
     "l40s": {
@@ -114,11 +114,37 @@
           "upload_allowance_seconds": 300,
           "job_wait_for_seconds": 180,
           "comfyui": {"root": "/workspace/ComfyUI", "git_ref": "v0.34.0", "port": 8188, "start_command": "bash /workspace/start-comfy-lorapath.sh"}
+        },
+        "passport_tensor": {
+          "max_minutes": 92,
+          "container_disk_gb": 100,
+          "volume_gb": 0,
+          "avoid_machine_hosts": ["qvf79yutw3t2"],
+          "readiness_timeout_seconds": 1800,
+          "job_timeout_seconds": 285,
+          "comfyui": {"root": "/workspace/ComfyUI", "git_ref": "v0.20.1", "port": 8188, "start_command": "python main.py"}
         }
       }
     }
   },
   "pins": {
+    "passport_tensor": {
+      "_note": "Spec 2026-09-29 §4.1: module 03 (03_generating_your_character/image_generation_models.bat) as the package ships it. Revisions/sha256 read live 2026-09-29 from huggingface.co resolve/main X-Repo-Commit/X-Linked-ETag; zit_upscaler and sam_vit_b equal the sha256 the module 10/09 installers state for the same URLs; realistic_snapshot_lora and the Gourieff face_yolov8m.pt copy have no installer-stated sha256 (module 09's Bingsu copy, 717923c1..., is a different file). zit_upscaler header: SwinIR/HAT family, two x2 pixel-shuffle stages = x4, so 1536x2048 base -> 6144x8192 final. Custom nodes: module 03's installer clones default branches; pinned to the SHAs modules 09/10's installers pin. rgthree omitted: no rgthree node in the API graph (D16/D18/D9). Pickles admitted via the manifest hatch (spec §6) on disposable pods only.",
+      "models": [
+        {"repo_id": "Comfy-Org/z_image_turbo", "filename": "split_files/diffusion_models/z_image_turbo_bf16.safetensors", "revision": "08d04455279082882deaabc8d0d09fc914c071e1", "sha256": "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6", "destination_dir": "/workspace/ComfyUI/models/diffusion_models"},
+        {"repo_id": "Comfy-Org/z_image_turbo", "filename": "split_files/text_encoders/qwen_3_4b.safetensors", "revision": "08d04455279082882deaabc8d0d09fc914c071e1", "sha256": "6c671498573ac2f7a5501502ccce8d2b08ea6ca2f661c458e708f36b36edfc5a", "destination_dir": "/workspace/ComfyUI/models/text_encoders"},
+        {"repo_id": "Comfy-Org/z_image_turbo", "filename": "split_files/vae/ae.safetensors", "revision": "08d04455279082882deaabc8d0d09fc914c071e1", "sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38", "destination_dir": "/workspace/ComfyUI/models/vae"},
+        {"repo_id": "gravedigga/loras", "filename": "realistic_snapshot_lora.safetensors", "revision": "82ac01152033628ed6d86714d70aa61270a41dcc", "sha256": "182d7f92475b8d7f792203127738d31270403e86e007fdc7792d324a3406e556", "destination_dir": "/workspace/ComfyUI/models/loras"},
+        {"repo_id": "gravedigga/loras", "filename": "zit_upscaler.safetensors", "revision": "82ac01152033628ed6d86714d70aa61270a41dcc", "sha256": "009671cec5a384db31052b52e344e5989b0c51a5ad4d25a8c2c629f658754d13", "destination_dir": "/workspace/ComfyUI/models/upscale_models"},
+        {"repo_id": "datasets/Gourieff/ReActor", "filename": "models/sams/sam_vit_b_01ec64.pth", "revision": "3b74a6611c59b7c01d1a05d353a56935c700ff44", "sha256": "ec2df62732614e57411cdcf32a23ffdf28910380d03139ee0f4fcbe91eb8c912", "destination_dir": "/workspace/ComfyUI/models/sams", "pickle_ack": "module 03 SAMLoader weight; pickle on a disposable pod per spec 2026-09-29 §6 (decision 3)"},
+        {"repo_id": "datasets/Gourieff/ReActor", "filename": "models/detection/bbox/face_yolov8m.pt", "revision": "3b74a6611c59b7c01d1a05d353a56935c700ff44", "sha256": "e3893a92c5c1907136b6cc75404094db767c1e0cfefe1b43e87dad72af2e4c9f", "destination_dir": "/workspace/ComfyUI/models/ultralytics/bbox", "pickle_ack": "module 03 UltralyticsDetectorProvider weight; pickle on a disposable pod per spec 2026-09-29 §6 (decision 3)"}
+      ],
+      "custom_nodes": [
+        {"name": "RES4LYF", "git_url": "https://github.com/ClownsharkBatwing/RES4LYF.git", "installer_pin": "e716cd1cb2c5cff90131bf4914b75b75a0489d48"},
+        {"name": "ComfyUI-Impact-Pack", "git_url": "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git", "installer_pin": "429d0159ad429e64d2b3916e6e7be9c22d025c3c"},
+        {"name": "ComfyUI-Impact-Subpack", "git_url": "https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git", "installer_pin": "50c7b71a6a224734cc9b21963c6d1926816a97f1"}
+      ]
+    },
     "anchor": {
       "models": [
         {"repo_id": "Comfy-Org/z_image_turbo", "filename": "split_files/diffusion_models/z_image_turbo_bf16.safetensors", "revision": "08d04455279082882deaabc8d0d09fc914c071e1", "sha256": "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6", "destination_dir": "/workspace/ComfyUI/models/diffusion_models"},
