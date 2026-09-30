@@ -359,8 +359,8 @@ def validate_persona(
 
     identity = _require_dict(data["identity"], "identity")
     references = _require_list(identity.get("references"), "identity.references")
-    if not references:
-        _fail("persona.identity.references must not be empty")
+    if not references and identity.get("history"):
+        _fail("persona.identity.references must not be empty once an anchor has been promoted")
     if reads is not None and len(references) > 64:
         _fail("persona.identity.references exceeds the observed list limit")
     if reads is not None:

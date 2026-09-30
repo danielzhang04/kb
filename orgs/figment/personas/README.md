@@ -9,6 +9,7 @@ source of truth `pipeline/persona.py` validates and every pipeline command
 1. `<creator-id>/persona.yaml` — copy an existing one (e.g. `creator-001/`) and edit:
    - `id` — matches the directory name.
    - `identity.references` — 2+ relative paths under `anchors/`.
+     (A tensor-profile persona starts with `[]` and plans only the passport stage; the operator's pick writes `anchors/passport.png` here.)
    - `identity.look` — this persona's own face/body words (the ONLY place they may
      live — never a shared template).
    - `identity.spec.{path,sha256}` / `register.spec.{path,sha256,section}` — `sha256`

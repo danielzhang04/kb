@@ -44,6 +44,8 @@ KLEIN_MULTIREF_WORKFLOW_PATH = TRAIN_DIR / "workflows" / "klein4b_multiref_api.j
 BUILD_EXPANSION_SET_MODULE = EXPAND_DIR / "build_expansion_set.py"
 ANCHOR_PROMPTS_PATH = EXPAND_DIR / "templates" / "anchor-prompts.yaml"
 ANCHOR_WORKFLOW_PATH = EXPAND_DIR / "workflows" / "zimage_passport_api.json"
+TENSOR_PASSPORT_WORKFLOW_PATH = EXPAND_DIR / "workflows" / "tensor_passport_m03_api.json"
+TENSOR_PARITY_MODULE = HERE / "tensor_parity.py"
 GEN_PROMPTS_PATH = EXPAND_DIR / "templates" / "gen-prompts.yaml"
 GEN_WORKFLOW_PATH = TRAIN_DIR / "workflows" / "krea2_gen_api.json"
 DETAIL_WORKFLOW_PATH = TRAIN_DIR / "workflows" / "krea2_detail_only_api.json"
@@ -227,6 +229,10 @@ def _arc_cap_usd() -> str:
 
 def _verify_pins_module():
     return _load_module("_figment_train_verify_pins", VERIFY_PINS_MODULE)
+
+
+def _tensor_parity_module():
+    return _load_module("_figment_train_tensor_parity", TENSOR_PARITY_MODULE)
 
 
 def _video_manifest_module():
@@ -1522,6 +1528,60 @@ def _anchor_manifests(
                  for i, row in enumerate(prompts["edit"]["rows"])],
     }
     return [passport, edit]
+
+
+TENSOR_PASSPORT_JOBS = 12
+
+
+def _passport_tensor_manifest(persona: dict, training: dict, pins: dict) -> dict[str, Any]:
+    """Module 03 on the tensor profile (spec 2026-09-29 §4.1): the copy-block passport
+    prompt with only its hair/eye slots filled from identity.look, seeds 148-159 (D19),
+    and the pickle hatch for the two Impact detector weights (spec §6)."""
+    groups = _stage_pin_groups(pins, training, "anchor")
+    if len(groups) != 1:
+        raise FigmentTrainError(f"tensor anchor must map to exactly one pin group, got {groups}")
+    group = groups[0]
+    parity = _tensor_parity_module()
+    look = persona["identity"]["look"]
+    try:
+        prompt = parity.render_passport_prompt(
+            parity.passport_prompt_template(), look["hair"], look["eyes"],
+        )
+    except parity.ParityError as exc:
+        raise FigmentTrainError(str(exc)) from exc
+    short = _creator_output_code(persona["id"])
+    return {
+        **_pod_base(pins, training["pod_class"], group),
+        "diagnostic_non_commercial": True,
+        "models": deepcopy(pins["pins"][group]["models"]),
+        "custom_nodes": deepcopy(pins["pins"][group]["custom_nodes"]),
+        "workflow": f"../workflows/{TENSOR_PASSPORT_WORKFLOW_PATH.name}",
+        "seed_fields": ["seed"],
+        "jobs": [{"seed": 148 + index, "output_name": f"{short}-passport-p{index + 1:02d}",
+                  "expected_images": 1,
+                  "substitutions": [{"node_id": "4", "field": "text", "value": prompt}]}
+                 for index in range(TENSOR_PASSPORT_JOBS)],
+    }
+
+
+def _check_passport_parity(manifest: dict[str, Any], persona: dict) -> None:
+    """Spec §9 preflight: the plan refuses a passport manifest that is not at parity."""
+    parity = _tensor_parity_module()
+    try:
+        problems = parity.check_passport(
+            _read_json(TENSOR_PASSPORT_WORKFLOW_PATH), manifest, persona["identity"]["look"],
+        )
+    except parity.ParityError as exc:
+        raise FigmentTrainError(f"tensor parity could not run: {exc}") from exc
+    if problems:
+        raise FigmentTrainError("tensor parity failed:\n" + "\n".join(problems))
+
+
+def _copy_passport_support_files(out: Path) -> dict[str, Any]:
+    """A pre-passport plan's only support file: the module-03 API workflow."""
+    target = out / "expand" / "workflows" / TENSOR_PASSPORT_WORKFLOW_PATH.name
+    _write_json(target, _read_json(TENSOR_PASSPORT_WORKFLOW_PATH))
+    return {"anchors": [], "passport_workflow": _relative(target, out)}
 
 
 def _training_runtime(trigger: str, caption_mode: str, steps: list[int], final: int) -> dict:
@@ -3264,6 +3324,17 @@ def build_plan(
     # days later. The return value is discarded here; this call exists for its
     # fail-closed validation side effect only.
     _identity_gate_module().load_thresholds(persona)
+    pre_passport = not persona["identity"]["references"]
+    tensor = training["recipe_profile"] == "tensor"
+    if pre_passport and (not tensor or stage not in ("anchor", "all")):
+        raise FigmentTrainError(
+            f"{creator_id} has no identity reference yet; only the tensor-profile anchor "
+            "(passport) stage can be planned until the operator picks a passport"
+        )
+    if tensor and not pre_passport and stage == "anchor":
+        raise FigmentTrainError(
+            f"{creator_id} already has its passport; the tensor anchor stage cannot be replanned"
+        )
 
     imported_training_config: dict[str, str] | None = None
     if import_checkpoints is not None:
@@ -3327,6 +3398,10 @@ def build_plan(
     for _later_stage in ("gen", "detail", "video"):
         if stage == "all" and _later_stage in selected:
             selected.remove(_later_stage)
+    if pre_passport:
+        selected = ["anchor"]
+    elif tensor and "anchor" in selected:
+        selected.remove("anchor")
 
     for current in selected:
         _stage_pin_groups(pins, training, current)
@@ -3351,9 +3426,12 @@ def build_plan(
                 ]
                 raise FigmentTrainError("pin verification failed:\n" + "\n".join(lines))
 
-    prompts = _generalized_prompts(persona)
-    workflow = _generalized_dataset_workflow(persona, prompts)
-    assets = _copy_support_files(out, persona, prompts, workflow)
+    if pre_passport:
+        assets = _copy_passport_support_files(out)
+    else:
+        prompts = _generalized_prompts(persona)
+        workflow = _generalized_dataset_workflow(persona, prompts)
+        assets = _copy_support_files(out, persona, prompts, workflow)
     # Review MED-8: store repo-relative (against ROOT), never an absolute machine path --
     # every other asset is `out`-relative, but the persona directory usually lives OUTSIDE
     # `out` entirely (a scratch/tmp plan dir vs. `orgs/figment/personas/<id>`), so it is
@@ -3377,7 +3455,11 @@ def build_plan(
     video_source: dict[str, Any] | None = None
     imported_checkpoints: list[dict[str, Any]] | None = None
     for current in selected:
-        if current == "anchor":
+        if current == "anchor" and tensor:
+            manifests = [_passport_tensor_manifest(persona, training, pins)]
+            _check_passport_parity(manifests[0], persona)
+            paths = [out / "expand" / "runs" / f"{creator_id}-tensor-passport.yaml"]
+        elif current == "anchor":
             manifests = _anchor_manifests(
                 persona, training, pins, _generalized_anchor_prompts(persona),
             )
