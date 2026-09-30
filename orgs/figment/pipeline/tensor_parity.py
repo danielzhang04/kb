@@ -141,18 +141,24 @@ def check_passport(workflow: dict[str, Any], manifest: dict[str, Any],
     extra, missing = sorted(set(workflow) - expected_ids), sorted(expected_ids - set(workflow))
     if extra or missing:
         problems.append(f"nodes: extra {extra}, missing {missing}")
+    for node_id, node in workflow.items():
+        for name, value in (node.get("inputs") or {}).items():
+            if isinstance(value, list) and not (
+                    len(value) == 2 and type(value[0]) is str and type(value[1]) is int):
+                problems.append(f"node {node_id}.{name}: list {value!r} is not a [node_id, slot] link")
     package_files: set[str] = set()
     for node_id in sorted(expected_ids & set(workflow), key=int):
         package, ours = package_nodes[node_id], workflow[node_id]
         inputs = ours.get("inputs", {})
+        linked = {item["name"] for item in package.get("inputs", []) if item.get("link") is not None}
         if node_id in PASSPORT_LEDGER["lora_loader"]:
             slot = _active_lora(package)
             package_files.add(slot["lora"])
-            scalars = {k for k, v in inputs.items() if not isinstance(v, list)}
+            allowed = linked | {"lora_name", "strength_model", "strength_clip"}
             if (ours.get("class_type") != "LoraLoader" or inputs.get("lora_name") != slot["lora"]
                     or not _same(inputs.get("strength_model"), slot["strength"])
                     or not _same(inputs.get("strength_clip"), slot["strength"])
-                    or scalars != {"lora_name", "strength_model", "strength_clip"}):
+                    or set(inputs) - allowed):
                 problems.append(f"node {node_id}: ours {ours!r} != D16 LoraLoader "
                                 f"{slot['lora']} {slot['strength']}/{slot['strength']}")
             continue
@@ -164,23 +170,32 @@ def check_passport(workflow: dict[str, Any], manifest: dict[str, Any],
             if isinstance(value, str) and value.endswith((".safetensors", ".pt", ".pth")):
                 package_files.add(PurePosixPath(value).name)
             if name in HARNESS_FIELDS or (node_id, name) == PASSPORT_LEDGER["prompt_node"]:
+                # Exempt in value only: the harness overwrites the key, so it must exist.
+                kind = int if name == "seed" else str
+                if type(inputs.get(name)) is not kind:
+                    problems.append(f"node {node_id}.{name}: harness-substituted field missing "
+                                    f"or not {kind.__name__}")
                 continue
             expected, row = PASSPORT_LEDGER["overrides"].get((node_id, name), (value, None))
             actual = inputs.get(name, "<missing>")
             if not _same(actual, expected):
                 source = f"ledger {row}" if row else "package"
                 problems.append(f"node {node_id}.{name}: ours {actual!r} != {source} {expected!r}")
-        unknown = sorted(k for k, v in inputs.items() if not isinstance(v, list) and k not in widgets)
+        unknown = sorted(k for k in inputs if k not in widgets and k not in linked)
         if unknown:
             problems.append(f"node {node_id}: extra inputs {unknown}")
     only_ours = _api_edges(workflow) - _package_edges(graph, skip)
     only_package = _package_edges(graph, skip) - _api_edges(workflow)
     if only_ours or only_package:
         problems.append(f"topology: only ours {sorted(only_ours)}; only package {sorted(only_package)}")
-    pinned = {PurePosixPath(model["filename"]).name: model for model in manifest.get("models", [])}
-    if set(pinned) != package_files:
-        problems.append(f"models: ours {sorted(pinned)} != package {sorted(package_files)}")
-    for name, model in pinned.items():
+    models = manifest.get("models", [])
+    names = [PurePosixPath(model["filename"]).name for model in models]
+    repeated = sorted({name for name in names if names.count(name) > 1})
+    if repeated:
+        problems.append(f"models: duplicate basenames {repeated}")
+    if set(names) != package_files:
+        problems.append(f"models: ours {sorted(set(names))} != package {sorted(package_files)}")
+    for name, model in zip(names, models):
         stated = INSTALLER_SHA256.get(name)
         if stated and model.get("sha256") != stated:
             problems.append(f"model {name}: sha256 {model.get('sha256')} != installer-stated {stated}")
