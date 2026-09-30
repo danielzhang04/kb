@@ -2010,7 +2010,7 @@ Boss-side coordination writes (not implementer tasks): `GOAL.md` on the `ops` br
 **Files:** none tracked. Outputs go under the gitignored run root `orgs/figment/runs/creator-003/passport-20260929/`.
 
 - [ ] **Step 1: Preconditions.** The full suite PASSES; `git status --short` shows only ` M governance/budget.yaml`; `py -3 orgs/figment/pipeline/train/verify_pins.py --stage passport_tensor` prints `verified 1 stage(s) clean: passport_tensor`.
-- [ ] **Step 2: Plan (pins verified, parity preflight, budget preflight).** `py -3 orgs/figment/pipeline/figment_train.py plan --creator creator-003 --stage anchor --out orgs/figment/runs/creator-003/passport-20260929`. Expected: a `BUDGET PREFLIGHT` table showing `arc: spent=$<X> + planned=$2.00 vs cap=$75.00 … clears`. Record `<X>` from `plan.json` `budget_preflight.arc_spent_usd`.
+- [ ] **Step 2: Plan (pins verified, parity preflight, budget preflight).** `py -3 orgs/figment/pipeline/figment_train.py plan --creator creator-003 --stage anchor --out orgs/figment/runs/creator-003/passport-20260929`. Expected: a `BUDGET PREFLIGHT` table showing `arc: spent=$<X> + planned=$1.98 vs cap=$75.00 … clears`. Record `<X>` from `plan.json` `budget_preflight.arc_spent_usd`.
 - [ ] **Step 3: Dry run.** `py -3 orgs/figment/pipeline/pod/runpod_run.py run --manifest orgs/figment/runs/creator-003/passport-20260929/expand/runs/creator-003-tensor-passport.yaml --out $SCRATCH/passport-dryrun --dry-run`. Expected: exit 0; stderr shows two `PICKLE MODEL LOADED (diagnostic)` lines (`sam_vit_b_01ec64.pth`, `face_yolov8m.pt`) and 12 simulated jobs.
 - [ ] **Step 4: History reconcile (read-only, ambient key).** Run `py -3 orgs/figment/pipeline/pod/runpod_run.py reconcile --since 2026-09-13` and keep its table. If `RUNPOD_API_KEY` is not in this environment, write "not run: no ambient RUNPOD_API_KEY" instead. Never echo or inspect the key.
 - [ ] **Step 5: Write the card content** to `orgs/figment/runs/creator-003/passport-20260929/t2-card.md` and fill every `<…>` from Steps 2-4:
@@ -2027,13 +2027,14 @@ Launch (boss, after operator approval), exactly the plan's recorded argv via:
 `py -3 orgs/figment/pipeline/figment_train.py pipeline --creator creator-003 --plan orgs/figment/runs/creator-003/passport-20260929/plan.json`
 - Manifest sha256: <plan.json stages.anchor.runs[0].sha256>
 - Cells: 12 (seeds 148-159), 1536x2048 base -> x4 zit_upscaler -> 6144x8192 final after 2x FaceDetailer at 0.23/0.23
-- `--max-usd 2.00`, `--max-minutes 92` (30 min readiness + 12 x 285 s + 5), one L40S at $1.30/h
-- Arc: $<X> spent (files dated >= 2026-09-29) + $2.00 ceiling vs $75.00 cap -> $<75 - X - 2.00> left
+- `--max-usd 1.98`, `--max-minutes 91` (20 min readiness + 12 x 330 s + 5 = 91 min; 91/60 x $1.30 = $1.97), one L40S at $1.30/h
+- Spend: ≤ $2.00 planned; worst case $2.19 if the harness host dies (pod dead-man at max_minutes + 10 = 101 min)
+- Arc: $<X> spent (files dated >= 2026-09-29) + $1.98 ceiling vs $75.00 cap -> $<75 - X - 1.98> left
 - Daily: <budget_preflight daily line>
 - Slot words to confirm or edit before launch (persona.yaml identity.look): hair "long, straight platinum blonde hair", eyes "bright light blue-grey"
 - Pickle hatch (disposable pod, spec §6): sam_vit_b_01ec64.pth, face_yolov8m.pt (Gourieff/ReActor dataset)
-- Known risks: 6144x8192 PNG outputs (download size, 285 s per-job ceiling); Impact nodes pinned to the m09/m10 installer SHAs on ComfyUI v0.20.1 (untested pairing); Ultralytics .pt load under torch 2.8 weights_only. The harness never retries; any job failure stops the run with teardown verified.
-After the run: `py -3 orgs/figment/pipeline/pod/runpod_run.py reconcile --pod-id <pod id from run.json>`; then grade (`pipeline --plan` prints the board and the apply-rulings command). Rule all 12; release a held-for-age image with keep + gate_override, or cull it; keep exactly one as the passport.
+- Known risks: 6144x8192 PNG outputs (download size, 330 s per-job ceiling; job 1 also pays the ~21 GB cold load); Impact nodes pinned to the m09/m10 installer SHAs on ComfyUI v0.20.1 (untested pairing); Ultralytics .pt load under torch 2.8 weights_only. The harness never retries; any job failure stops the run with teardown verified.
+After the run: `py -3 orgs/figment/pipeline/pod/runpod_run.py reconcile --pod-id <pod id from run.json>`; then grade (`pipeline --plan` prints the board and the apply-rulings command). Rule all 12; every held-for-age image also carries `age_ruling: release|cull` (the adult call, independent of the pick); keep exactly one as the passport (a held or failed pick also needs gate_override).
 ## Evidence
 > dry run: <exit code + one-line summary>
 > pins: verified 1 stage(s) clean: passport_tensor

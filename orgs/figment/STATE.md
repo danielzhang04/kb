@@ -144,7 +144,7 @@ _Updated: 2026-09-29_
   the complete manifest" — write the file BOM-free.
 
 - Spend as of 2026-09-23: work spend this arc ≈ $19.1; true arc total ≈ $54.3 of the $60
-  `ARC_CAP_USD`. The 2026-09-17 lost-ledger-row incident (see prior revisions of this file) is
+  arc cap then in force. The 2026-09-17 lost-ledger-row incident (see prior revisions of this file) is
   no longer blocking — `gen`, `detail`, and `video` have since all run live past the plan-time
   budget preflight.
 - `refused` covers any harness exit with no `run.json` and no recovery journal (nothing ran,

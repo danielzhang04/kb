@@ -449,7 +449,7 @@ replacement journal.
 type placeholders, and status values. It suppresses IDs, IPs, ports, prices, names, and other
 values so an operator can compare a live account's response shape without creating a Pod.
 
-`reconcile` is read-only: for each pod with `pod-create <id>` ledger rows (default: first seen on/after `ARC_START_DAY`; or `--pod-id`), it calls `GET /billing/pods` (podId, day buckets, grouped by pod) and prints ledger vs RunPod USD, billed seconds, the difference and `MATCH`/`MISMATCH`/`NO-PROVIDER-RECORD` (tolerance max($0.01, 2%)); exit 1 unless every pod matches. RunPod's docs do not say whether billing rows survive pod deletion, so `NO-PROVIDER-RECORD` is reported, never counted as a match.
+`reconcile` is read-only: for each pod with `pod-create <id>` ledger rows (default: first seen on/after `ARC_START_DAY`; or `--pod-id`), it calls `GET /billing/pods` (podId, day buckets, grouped by pod) and prints ledger vs RunPod USD, billed seconds, the difference and `MATCH`/`MISMATCH`/`NO-PROVIDER-RECORD`/`NO-LEDGER-ROW` (tolerance max($0.01, 2%); `NO-LEDGER-ROW` = a `--pod-id` with no `pod-create` ledger row); exit 1 unless every pod matches. RunPod's docs do not say whether billing rows survive pod deletion, so `NO-PROVIDER-RECORD` is reported, never counted as a match.
 
 ## Readiness and bootstrap diagnostics
 
