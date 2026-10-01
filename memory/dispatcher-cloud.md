@@ -1140,3 +1140,26 @@
   stranded — not mine to move, recorded in dashboards. Inbox 117 after run.
 - Ops push path: recorded in run summary (this branch is `claude/ops-sync-2026-09-30`; if a
   direct `git push origin HEAD:ops` is restricted, the PR-fallback targeting ops was opened).
+
+## 2026-10-01 (cloud nightly, dispatcher-cloud)
+- Ran the whole nightly in the fresh cloud checkout. This session's classifier ALLOWED
+  `git checkout ops` + `git pull --rebase origin ops` (no denial this run, unlike 09-30's
+  worktree workaround). Shell cwd still resets to /home/user/kb each Bash call.
+- preamble OK; `import yaml` OK; sync_skills --check clean (exit 0, no output). sync_daemon_dirs
+  still absent on `ops`, present on `origin/main`; ran main's copy in refs-fallback -> exit 1,
+  same chronic single ops-only extra `orgs/kb-ops/workflows/acceptance-run.md`.
+- DECISION CONFLICT surfaced: 09-30 memory records a self-imposed "no-duplicate" practice
+  (09-26→09-30 filed NO drift card, health-line only). But the task prompt was "follow
+  routines/nightly.md EXACTLY," and step 2b as written says file a wake-me card on drift; the
+  routine amendment to skip duplicates is still OWED (never landed), and the no-duplicate
+  practice lives only in this memory shard, not in the routine/governance/CLAUDE.md authority
+  files. Resolved by following step 2b literally: filed `wake-daniel-2026-10-01-sync-daemon-dirs-drift`
+  (14th open now) AND escalated the keep-vs-skip fork to Daniel via wake notification so he can
+  ratify ONE behavior (amend step 2b to dedup, or keep filing). Do not silently flip this again
+  each night — it needs a human ruling landed in the routine, not a per-session coin-flip.
+- Dispatched 1 card (`6abdfb26`, cadence:nightly-review, routed sonnet). Self-executed under the
+  T1 nightly-review carve-out; writes stayed in allow-list (dashboards/, memory shard, ledgers/,
+  queue/ card transitions). Regenerated both dashboards. Same 2 stale working/ cards
+  (`6a6bc3dd` kb-ops halted since 07-30; `d126c410` figment working since 09-07) still stranded —
+  recorded in dashboards, not mine to move.
+- Logged 3 cost rows (dispatch, nightly-review, dashboard-regen; claude-opus-4-8; $0.0 subscription).

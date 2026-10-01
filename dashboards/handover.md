@@ -1,16 +1,27 @@
 # System Handover
-_Generated: 2026-09-30T06:19:16Z_
+_Generated: 2026-10-01T06:19:57Z_
 
-The nightly cloud dispatcher ran cleanly. Preamble passed (STOP absent, no API key in the fleet env, budget fine), the skills mirror is in sync, and one nightly-review cadence card was dispatched and executed. Spend was $0.00 against the $30/day budget. Dashboards were regenerated and coordination writes committed to ops via the routine's configured push path.
+**What happened overnight.** The nightly cloud dispatcher ran cleanly. The preamble and
+the skills-sync check both passed. The daemon-directory drift check ran in its cloud
+refs-fallback mode (the checker script still isn't on the `ops` branch) and found the same
+single stray file as before — `orgs/kb-ops/workflows/acceptance-run.md` exists on `ops` but
+not on `main`. As the routine requires, it logged this as a wake-me card and continued; this
+is now the 14th open card for the same issue. One cadence card (`nightly-review`) was
+dispatched and executed, and both dashboards were regenerated.
 
-**Waiting on you (2 items):**
-1. **figment T3 GATE A eye-gate** (`65d8f246`) — you need to rule the creator-001 expansion-02 blind board (seven axes) before curation to 40 can proceed.
-2. **kb T1 wake:human-decision** (`6ab76543`) — a human decision card in approvals.
+**What's waiting on you.** Two items sit in the approvals queue: a figment GATE A eye-gate
+ruling (T3) that blocks curation to 40, and a T1 wake:human-decision card. Separately, the
+Atlas Omni-interface work on branch `codex/atlas-enhancements-20260820` is fully built,
+tested, and security-reviewed but needs your sign-off because the diff exceeds 400 lines.
+The recurring daemon-dir drift has a simple desktop fix owed (run
+`python scripts/sync_daemon_dirs.py --sync` from the dashboard-ops worktree, and re-add the
+checker script to `ops`); until then these cards will keep accumulating nightly.
 
-**Longstanding, still owed:** The daemon-dir drift keeps recurring — `scripts/sync_daemon_dirs.py` is missing from the `ops` branch and `orgs/kb-ops/workflows/acceptance-run.md` is ops-only. The fix is a desktop `sync_daemon_dirs.py --sync` from the dashboard-ops worktree, plus deciding whether that file belongs on main. Thirteen near-identical wake-me cards (through 09-25) already track this; per a standing decision no new duplicate is filed each night — it stays a health-line note only. Also: atlas remediation on `codex/atlas-enhancements-20260820` is green and waiting on your review (diff >400 lines, contract-gated); prospecting P1–P8 remain unpushed.
+**Housekeeping.** One figment card has been stuck in `working/` since 2026-09-07
+(`d126c410`, track1 replicate) and a halted codex card is parked in `working/` — both want a
+human or archiver sweep.
 
-**What the system does next unattended:** the production VM keeps its 5-minute daemon tick; the next nightly dispatcher run will repeat this cadence. Two stale `working/` cards (figment replicate since 09-07, a halted kb-ops smoke card since 07-30) are not being worked and may want archiving or closing.
-
-## Latest handoffs
-- figment — [2026-09-23-figment-live-chain.md](../handoffs/2026-09-23-figment-live-chain.md) (2026-09-23)
-- prospecting — [2026-09-07-prospecting-p8-live-tested.md](../handoffs/2026-09-07-prospecting-p8-live-tested.md) (2026-09-07)
+**What runs unattended next.** The 5-minute schedule tick on the prod VM continues, and the
+next nightly dispatch will fire on schedule. No spend is accruing (all steps are
+subscription-billed; today's cost is $0.00 against the $30/day budget). Nothing else will
+act on the approvals or the >400-line Atlas branch without you.
