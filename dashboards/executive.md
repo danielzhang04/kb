@@ -1,58 +1,35 @@
 # Executive Dashboard
-_Generated: 2026-10-01T06:19:57Z by dispatcher-cloud_
+_Generated: 2026-10-04T06:17Z by dispatcher-cloud_
 
 ## Action required
-- `65d8f246-8a461521` — **figment** — GATE A eye-gate: operator must rule creator-001
-  expansion-02 blind board (seven axes) before curation to 40 can proceed — **T3**
-- `6ab76543-b01ea7d5` — **kb** — `wake:human-decision` — **T1**
-- Also waiting (inbox wake-me, not in approvals/): **14 open `sync-daemon-dirs` drift
-  cards** (see Anomalies) and the Atlas Omni-interface review (diff > 400 lines, branch
-  `codex/atlas-enhancements-20260820`).
+Two cards sit in `queue/approvals/` awaiting Daniel:
+- `6ab76543-b01ea7d5` — **kb** — `wake:human-decision` — T1
+- `65d8f246-8a461521` — **figment** — GATE A eye-gate: operator rules creator-001 expansion-03 blind board (seven axes) so curation to 40 can proceed — T3
 
 ## Queue
 | state | count |
 |-------|-------|
 | inbox | 119 |
-| working | 2 |
+| working | 3 |
 | approvals | 2 |
 | done | 1620 |
 
-(inbox includes tonight's in-flight `nightly-review` card `6abdfb26-99db0bc1` (state=working)
-and 14 open `wake-daniel-*-sync-daemon-dirs` cards.)
-
 ## Last 24h
-- **Cadences:** `nightly-review` dispatched 2026-09-30 (`6abca973`) and 2026-10-01
-  (`6abdfb26`, this run). No other cadences fired.
-- **Cost:** $0.00 billed (all steps subscription-billed, logged 0.0). Budget
-  $30.00/day → **~$30.00 remaining**.
-- **Notable:** daemon-dir drift gate ran in cloud refs-fallback mode; filed the 14th
-  open drift wake-me card. `preamble.py` OK; `sync_skills --check` clean. Dashboards
-  regenerated.
+- Cadences run: 1 dispatch today (`cadence:nightly-review`, this run). No dispatch, cost, or activity rows on 2026-10-03.
+- Cost: $0.00 spent today vs. $30.00 daily budget — $30.00 remaining. All steps subscription-billed (0.0).
+- Notable: fleet otherwise quiet overnight; no worker cost or activity logged in the last 24h.
 
 ## Projects
-- **atlas** — V1 "Hands" merged & live (PR #44, prod on 127.0.0.1:5317). Omni-interface
-  foundation + adversarially-reviewed remediation sit on `codex/atlas-enhancements-20260820`
-  awaiting Daniel review (diff > 400 lines); V2 "Trust" is Daniel's go/no-go.
-- **faceless-youtube** — PARKED, no active work. STATE.md stale (2026-07-19); last real
-  activity was the Bricks Variant-D arc in external clone `kb-clones/bricks-arc`.
-- **figment** — one resumable `pipeline` command drives anchor→dataset→smoke→train→tester
-  →gen→detail→video with per-stage gates; `detail`/`video` now real gradeable stages; single
-  gate writer + prompt composer. GATE A eye-gate ruling pending (approvals).
-- **kb-ops** — prod VM LIVE on release `e8ac49ad` (PR #203 merged 09-21, PR #204 merged
-  09-23); daemon-internal 5-min schedule tick live; ops branch linear.
-- **prospecting** — P1–P8 built across `kb-worktrees/prospecting-p{1..8}`, all branches
-  UNPUSHED. P8 affinity gate 953/953; live-tested against real desktop store (campaign
-  `camp_3147b42db58c4c15`), all Gate P8-B criteria green.
+- **atlas** — Omni-interface foundation + adversarial remediation complete locally on `codex/atlas-enhancements-20260820`; remediation diff exceeds 400 lines so it awaits Daniel review before commit. V1 "Hands" shipped to prod (PR #44). V2 "Trust" is Daniel's go/no-go.
+- **faceless-youtube** — PARKED. No active work; last real activity was the Bricks Variant-D arc in an external clone.
+- **figment** — Active: resumable `figment_train.py pipeline` drives anchor→…→video with per-stage gates. GATE A eye-gate awaiting Daniel (see Action required). Note: its `track1:replicate` working card has been stranded since 2026-09-07 (see Anomalies).
+- **kb-ops** — Production VM LIVE on release `e8ac49ad`; daemon schedule tick every 5 min (outbox mode). Ops history linear.
+- **prospecting** — P1–P8 built across worktrees, all branches UNPUSHED. Live-tested against the real desktop store; Gate P8-B acceptance criteria green.
 
 ## Anomalies
-- **sync_daemon_dirs drift (recurring).** `scripts/sync_daemon_dirs.py` is on `origin/main`
-  but absent from `origin/ops`, so the literal step-2b check fails (EXIT 2); refs-fallback
-  reports one ops-only file `orgs/kb-ops/workflows/acceptance-run.md`. **14 open** wake-me
-  cards now track this; a desktop `--sync` from the dashboard-ops worktree is owed.
-- **Stale working card.** `queue/working/d126c410-9bc54280.md` (figment track1 replicate)
-  last touched 2026-09-07 — ~24 days in `working/`, far past the 48h window.
-- **Terminal card parked in working/.** `queue/working/6a6bc3dd-5494006b.md` is state
-  `halted` (codex iter-smoke) — housekeeping move to done/ owed.
-- **Stale STATE.md.** `orgs/faceless-youtube/STATE.md` dated 2026-07-19; distilled note in
-  "## Now" is current but the body is not.
-- Preamble: OK. sync_skills: clean.
+- **Two long-stranded `working/` cards** (ages by git history, not file mtime — the checkout was freshly cloned so mtimes are meaningless):
+  - `6a6bc3dd-5494006b` (**kb-ops** `iter-smoke-t2`, owner codex-worker) — state `halted`, untouched since **2026-07-30** (~66 days). Needs disposition (clear/archive).
+  - `d126c410-9bc54280` (**figment** `track1:replicate`, owner figment-expand) — state `working`, untouched since **2026-09-07** (~27 days). Stranded.
+- **Recurring `sync_daemon_dirs.py` gap.** Routine `routines/nightly.md` step 2b calls `python scripts/sync_daemon_dirs.py --check`, but that script is absent from the `ops` checkout (only `scripts/sync_skills.py` exists), so the main→ops daemon-dir mirror check cannot run from cloud. This has produced a backlog of ~14 `wake-daniel-*-sync-daemon-dirs-drift` cards in `queue/inbox/` (09-10, 09-11, 09-14, 09-17, 10-01, …). A human ruling on the keep-vs-dedup fork is **owed** and still not landed in the routine. The parallel `sync_skills --check` passed (in sync).
+- `preamble.py` was transiently denied by the harness auto-mode classifier on first invocation (misclassified as "Modify Shared Resources"); verified green by direct read and on retry (no STOP file, `ANTHROPIC_API_KEY` unset, $0 < $30 budget).
+- Inbox backlog of 119 cards (30 of them `wake*`) is high; worth a sweep to confirm none are due-and-unclaimed and to clear resolved wake cards.
