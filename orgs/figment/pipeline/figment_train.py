@@ -3438,6 +3438,135 @@ def _tensor_edit_module():
     return _load_module("_figment_tensor_edit", HERE / "tensor_edit.py")
 
 
+def _tensor_video_module():
+    return _load_module("_figment_tensor_video", HERE / "tensor_video.py")
+
+
+def _tensor_video_review_context(plan, root):
+    review = _load_module("_figment_tensor_video_review", HERE / "video/video_review.py")
+    run = plan["stages"]["video"]["runs"][0]
+    manifest = _read_json(root / run["manifest"])
+    native = Path("video/evidence/native/native-evidence.json")
+    arguments = {"root": root, "candidate_manifest": Path(run["manifest"]),
+        "run_receipt": Path(run["out"]) / "run.json", "assembly_receipt": native,
+        "extraction_receipt": native}
+    destination = review._review_directory(root / run["manifest"], manifest["candidate_id"])
+    return review, arguments, destination
+
+
+def _resolve_tensor_video_request(creator, request):
+    try:
+        return _tensor_video_module().read_request(request, creator,
+                                                   approved_edit=validate_approved_edit_still)
+    except (OSError, ValueError, KeyError) as exc:
+        raise FigmentTrainError(f"tensor video request refused: {exc}") from exc
+
+
+def _build_tensor_video_plan(creator, out, request, *, personas_root, skip_pin_verify,
+                             ledger_dir, accept_budget):
+    persona, training, pins = _load_inputs(creator, Path(personas_root))
+    persona = {**persona, "_persona_path": str(Path(personas_root) / creator / "persona.yaml")}
+    if training["recipe_profile"] != "tensor":
+        raise FigmentTrainError("--video-request requires tensor profile")
+    frozen = _resolve_tensor_video_request(creator, request)
+    if not skip_pin_verify:
+        _verify_pins_preflight(pins, ["video"], training)
+    out = Path(out).resolve()
+    if out.exists() and any(out.iterdir()):
+        raise FigmentTrainError("video plan output directory must be empty")
+    parity = _tensor_parity_module()
+    workflow = parity.video_workflow()
+    clip_name = f"{creator}/{Path(frozen['clip']['path']).name}"
+    start_name = f"{creator}/{Path(frozen['start_image']['path']).name}"
+    workflow["113"]["inputs"]["video"] = clip_name
+    workflow["58"]["inputs"]["image"] = start_name
+    workflow["6"]["inputs"]["text"] = frozen["prompt"]["text"]
+    output_name = f"{_creator_output_code(creator)}-tensor-video"
+    workflow["49"]["inputs"]["filename_prefix"] = output_name
+    group = pins["pins"]["video_tensor"]
+    dimensions = _tensor_video_module().output_dimensions(
+        frozen["start_image"]["width"], frozen["start_image"]["height"])
+    manifest = {**_pod_base(pins, training["pod_class"], "video_tensor"),
+        "schema": "figment/tensor-video-manifest@1", "candidate_id": output_name,
+        "fixture": frozen["fixture"], "workflow": workflow,
+        "models": deepcopy(group["models"]), "custom_nodes": deepcopy(group["custom_nodes"]),
+        "seed_fields": ["seed"], "tensor_inputs": frozen, "native_budget": dimensions,
+        "source_plan": str(out / "plan.json"),
+        "uploads": [{"files": [f"_uploads/{name}" for name in (clip_name, start_name)],
+                     "subfolder": creator, "type": "input", "overwrite": True}],
+        "jobs": [{"seed": 123, "output_name": output_name, "substitutions": [],
+                  "output_contract": parity.video_output_contract(workflow_png=False)}]}
+    problems = parity.check_video(workflow, manifest, prompt=frozen["prompt"]["text"],
+                                   driving_video=clip_name, start_image=start_name)
+    if problems:
+        raise FigmentTrainError("tensor video parity failed: " + "; ".join(problems))
+    out.mkdir(parents=True, exist_ok=True)
+    assets = {"anchors": _copy_anchors(out, persona), "persona_dir": _persona_dir_asset(persona)}
+    assets["tensor_passport"] = _tensor_passport_binding(out, persona, assets["anchors"])
+    assets["video_inputs"] = {}
+    for role in ("clip", "start_image"):
+        source = Path(frozen[role]["path"])
+        target = out / "video/runs/_uploads" / creator / source.name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        if _sha256(target) != frozen[role]["sha256"]:
+            raise FigmentTrainError("video input changed while staging")
+        assets["video_inputs"][role] = _relative(target, out)
+    path = out / "video/runs" / f"{creator}-tensor-video.yaml"
+    _write_json(path, manifest)
+    ledger = _resolved_ledger_dir(ledger_dir)
+    run = _planned_run(out, path, _stage_run_root(out, "video") / path.stem, ledger_dir=ledger)
+    stages = {"video": {"runs": [run]}}
+    plan = {"schema": "figment/train-plan@1", "creator": creator, "fixture": frozen["fixture"],
+        "generated_utc": datetime.now(timezone.utc).isoformat(), "generator": _sha256(Path(__file__)),
+        "persona_sha256": _sha256(Path(persona["_persona_path"])), "training": training,
+        "assets": assets, "configs": {}, "ledger_dir": str(ledger), "arc_cap_usd": _arc_cap_usd(),
+        "arc_ledger_glob": ARC_LEDGER_GLOB, "stages": stages, "video_inputs": frozen,
+        "budget_preflight": _budget_preflight(stages, ledger_dir=ledger,
+            arc_cap_usd=_arc_cap_usd(), accept_budget=accept_budget)}
+    _write_json(out / "plan.json", plan)
+    _validate_tensor_video_inputs(plan, out)
+    return plan
+
+
+def _validate_tensor_video_inputs(plan, root, *, launch=False):
+    persona, training = _current_persona_training(plan)
+    if any(training.get(key) != plan["training"].get(key) for key in EDIT_TRAINING_KEYS):
+        raise FigmentTrainError("tensor video profile or pod settings changed")
+    _validate_tensor_passport_inputs(plan, root, persona=persona)
+    frozen = plan["video_inputs"]
+    if _resolve_tensor_video_request(plan["creator"], frozen["request"]["path"]) != frozen:
+        raise FigmentTrainError("tensor video input authority changed")
+    for role in ("clip", "start_image"):
+        operand = root / plan["assets"]["video_inputs"][role]
+        operand.resolve().relative_to(root.resolve())
+        actual = _tensor_edit_module().file_binding({"path": str(operand),
+            "sha256": frozen[role]["sha256"]}, root, image=role == "start_image",
+            limit=2 * 1024 * 1024 * 1024 if role == "clip" else 32 * 1024 * 1024)
+        if actual["bytes"] != frozen[role]["bytes"]:
+            raise FigmentTrainError("staged tensor video input changed")
+    for run in plan["stages"]["video"]["runs"]:
+        path = root / run["manifest"]
+        if _sha256(path) != run["sha256"]:
+            raise FigmentTrainError("tensor video manifest changed")
+        manifest = _read_json(path)
+        problems = _tensor_parity_module().check_video(manifest["workflow"], manifest,
+            prompt=frozen["prompt"]["text"],
+            driving_video=f"{plan['creator']}/{Path(frozen['clip']['path']).name}",
+            start_image=f"{plan['creator']}/{Path(frozen['start_image']['path']).name}")
+        if problems:
+            raise FigmentTrainError("tensor video parity failed: " + "; ".join(problems))
+        if launch:
+            if frozen["fixture"] or plan.get("fixture") is not False:
+                raise FigmentTrainError("fixture tensor video cannot launch")
+            problems = _tensor_parity_module().video_readiness_problems(manifest)
+            if problems:
+                raise FigmentTrainError("video readiness blocked: " + "; ".join(problems))
+            _verify_pins_preflight(_read_json(PINS_PATH), ["video"], training)
+            raise FigmentTrainError("tensor video installed runtime/schema and metadata survival require separately approved smoke")
+    return frozen
+
+
 def _historical_anchor_approval(plan, root, *, reads=None):
     """Verify the original settled passport approval without reinterpreting training.
 
@@ -3677,6 +3806,7 @@ def build_plan(
     import_checkpoints: Path | None = None,
     import_training_config: Path | None = None,
     edit_request: Path | None = None,
+    video_request: Path | None = None,
 ) -> dict[str, Any]:
     """Generate a complete, immutable plan without touching the hand-written runs.
 
@@ -3726,6 +3856,14 @@ def build_plan(
     candidate rebuild and `content/content_asset_binding.py`'s slot join already share.
     Its output root must therefore be inside this repository (`_video_authority_root`).
     """
+    if video_request is not None:
+        if stage != "video" or any(value is not None for value in
+                (edit_request, approved_gen_plan, approved_gen_image_id, video_action, import_checkpoints,
+                 detail_images, style_lora, style_lora_strength, gen_prompt_style, gen_refine_denoise,
+                 gen_detailer_denoise, import_training_config)):
+            raise FigmentTrainError("--video-request is exclusively a tensor video request")
+        return _build_tensor_video_plan(creator_id, out, video_request, personas_root=personas_root,
+            skip_pin_verify=skip_pin_verify, ledger_dir=ledger_dir, accept_budget=accept_budget)
     if edit_request is not None and stage != "edit":
         raise FigmentTrainError("--edit-request is only meaningful for --stage edit")
     if stage == "edit":
@@ -3764,6 +3902,9 @@ def build_plan(
     if video_action is not None and stage != "video":
         raise FigmentTrainError("--video-action is only meaningful for --stage video")
     if stage == "video":
+        _, selected_training, _ = _load_inputs(creator_id, Path(personas_root))
+        if selected_training.get("recipe_profile") == "tensor":
+            raise FigmentTrainError("tensor video requires --video-request; an approved gen still is not driving-clip authority")
         _video_authority_root(out, "a video plan's --out")
     out = Path(out).resolve()
     if (out / "plan.json").exists():
@@ -4541,7 +4682,39 @@ def verify_run_record(
             if actual.get("output_name") != expected.get("output_name"):
                 raise FigmentTrainError("run.json job order/output_name disagrees with manifest")
             files = actual.get("files") or []
-            if len(files) != expected.get("expected_images", 1):
+            if "output_contract" in expected:
+                runner = _pod_runner_module()
+                contract = runner.job_output_contract(expected)
+                roles = {row["role"]:row for row in contract["outputs"]}
+                wanted = set(roles)
+                wanted.update(row["role"] + "-workflow" for row in contract["outputs"] if row["workflow_png"])
+                if len(files) != len(wanted) or {row.get("role") for row in files} != wanted:
+                    raise FigmentTrainError("contract output roles/count disagree with manifest")
+                if not isinstance(manifest.get("workflow"), dict):
+                    raise FigmentTrainError("contract receipt validation requires frozen inline workflow")
+                graph = runner.apply_job(manifest["workflow"], expected, runner.manifest_seed_fields(manifest))
+                if actual.get("effective_workflow_sha256") != _lineage_module().canonical_sha256(graph):
+                    raise FigmentTrainError("contract receipt submitted graph differs from manifest")
+                for row in files:
+                    companion = row.get("companion_of")
+                    authority = roles.get(companion or row.get("role"))
+                    if authority is None or companion and (
+                            row.get("role") != companion + "-workflow" or not authority["workflow_png"]):
+                        raise FigmentTrainError("contract workflow companion binding mismatch")
+                    media_type = "image/png" if companion else authority["media_type"]
+                    if (row.get("node_id") != authority["node_id"] or row.get("media_type") != media_type
+                            or not actual.get("prompt_id") or row.get("prompt_id") != actual["prompt_id"]):
+                        raise FigmentTrainError("contract output node/media/prompt binding mismatch")
+                    runner.contract_view_params(row.get("remote"), media_type)
+                    relative = Path(row.get("path", ""))
+                    if relative.is_absolute() or ".." in relative.parts:
+                        raise FigmentTrainError("contract output path escapes run")
+                    bound = _tensor_edit_module().file_binding({"path":str(out_dir / relative),
+                        "sha256":row.get("sha256")},out_dir,
+                        limit=32*1024*1024 if companion else authority["max_bytes"])
+                    if bound["bytes"] != row.get("bytes"):
+                        raise FigmentTrainError("contract output bytes changed")
+            elif len(files) != expected.get("expected_images", 1):
                 raise FigmentTrainError(
                     f"job {actual.get('output_name')!r} output count disagrees with manifest"
                 )
@@ -4712,6 +4885,11 @@ def _validate_video_source_inputs(plan: dict[str, Any], root: Path, *, reads=Non
     gen source: never trust the plan's own frozen copy alone -- re-run
     `validate_approved_gen_still` against the SAME approved-gen authority the frame
     was drawn from, and refuse if its bytes moved since this video plan was built."""
+    if "video_inputs" in plan:
+        if reads is not None:
+            raise FigmentTrainError("tensor video authority does not yet support observed reads")
+        _validate_tensor_video_inputs(plan, root)
+        return
     source = plan.get("video_source")
     if (not isinstance(source, dict) or not isinstance(source.get("approved_gen_plan"), str)
             or not isinstance(source.get("image_id"), str)):
@@ -4728,6 +4906,9 @@ def _validate_video_source_inputs(plan: dict[str, Any], root: Path, *, reads=Non
 
 
 def _install_stage_config(stage: str, plan: dict[str, Any], root: Path) -> None:
+    if stage == "video" and "video_inputs" in plan:
+        _validate_tensor_video_inputs(plan, root, launch=True)
+        return
     if stage == "edit":
         _validate_tensor_passport_inputs(plan, root)
         _validate_edit_inputs(plan, root, launch=True)
@@ -4832,6 +5013,17 @@ def _build_video_evidence(plan: dict[str, Any], root: Path) -> dict[str, Any]:
     refuses a non-fresh output directory, so this is idempotent by re-reading an existing
     receipt rather than rebuilding it; a re-invocation after a crash between two of them
     resumes at the missing one. Spends nothing and starts no pod."""
+    if "video_inputs" in plan:
+        _validate_tensor_video_inputs(plan, root)
+        run = plan["stages"]["video"]["runs"][0]
+        try:
+            evidence = _tensor_video_module().build_native_evidence(root, root / run["manifest"],
+                root / run["out"] / "run.json", validate_inputs=lambda: _validate_tensor_video_inputs(plan, root))
+            review, arguments, _ = _tensor_video_review_context(plan, root)
+            prepared = review.prepare_review(**arguments)
+        except (ValueError, OSError) as exc:
+            raise FigmentTrainError(f"tensor native evidence refused: {exc}") from exc
+        return {"assembly": evidence, "extraction": evidence, "review": prepared}
     authority = ROOT.resolve()
     _video_authority_root(root, "the video plan root")
     assembly_module = _frame_assemble_module()
@@ -5760,6 +5952,13 @@ def _video_grading_images(plan: dict[str, Any], root: Path) -> list[dict[str, An
     `background_stability`, ... -- and `PLAYBACK_AXES`) for its own attributed
     accepted-video authority, and duplicating a second, weaker copy of it inside the
     still-grading axes is exactly the divergence APPROVED_GEN_ADAPTER.md warns about."""
+    if "video_inputs" in plan:
+        evidence = _build_video_evidence(plan, root)["assembly"]
+        output_name = _read_json(root / plan["stages"]["video"]["runs"][0]["manifest"])["jobs"][0]["output_name"]
+        return [{"image_id": f"{output_name}-decoded-{row['index']:03d}",
+                 "path": str(root / row["path"]), "review_status": "unreviewed",
+                 "parked_reasons": [], "safety_failed": False, "safety_reasons": [],
+                 "framing": None} for row in evidence["frames"][::VIDEO_FRAME_SAMPLE_EVERY]]
     images: list[dict[str, Any]] = []
     for run in plan["stages"]["video"]["runs"]:
         manifest_path = root / run["manifest"]
@@ -6084,7 +6283,7 @@ def _current_persona_training(
 def _current_review_subject(
     plan: dict[str, Any], root: Path, stage: str, grading: dict[str, Any], *, reads=None,
 ) -> dict[str, Any]:
-    if stage == "edit" and reads is not None:
+    if (stage == "edit" or stage == "video" and "video_inputs" in plan) and reads is not None:
         raise FigmentTrainError("edit authority does not yet support an observed reads context")
     persona, training = _current_persona_training(plan, reads=reads)
     if stage != "anchor" and plan.get("training", {}).get("recipe_profile") == "tensor":
@@ -6114,7 +6313,8 @@ def _current_review_subject(
                 for run in plan["stages"][stage]["runs"]
             ]
     edit_inputs = _validate_edit_inputs(plan, root) if stage == "edit" else None
-    if stage == "edit":
+    video_inputs = _validate_tensor_video_inputs(plan, root) if stage == "video" and "video_inputs" in plan else None
+    if stage == "edit" or video_inputs is not None:
         training = {key: training.get(key) for key in EDIT_TRAINING_KEYS}
         persona = {**persona, "training": training}
     try:
@@ -6128,6 +6328,8 @@ def _current_review_subject(
         )
         if edit_inputs is not None:
             subject["edit_inputs"] = edit_inputs
+        if video_inputs is not None:
+            subject["video_inputs"] = video_inputs
         return subject
     except (OSError, ValueError) as exc:
         raise FigmentTrainError(f"cannot establish {stage} review lineage: {exc}") from exc
@@ -6545,6 +6747,16 @@ def build_grade(
         page_path.write_text(page_path.read_text("utf-8").replace("<body>",
             '<body><p><a href="edit-inputs.html">Review BASE/image1, IDENTITY/image2 and exact prompt</a></p>', 1),
             encoding="utf-8")
+    if stage == "video" and "video_inputs" in plan:
+        native = _read_json(root / "video/evidence/native/native-evidence.json")
+        movie = html.escape((root / native["movie"]["path"]).resolve().as_uri())
+        prefix = ('<section><h2>Native movie playback</h2><video controls preload="metadata" '
+                  f'style="max-width:100%;max-height:75vh" src="{movie}"></video>'
+                  '<p>Review the complete sequence and playback before video acceptance. '
+                  f'Fixture: {str(plan.get("fixture") is True).lower()}.</p><pre>'
+                  + html.escape(plan["video_inputs"]["prompt"]["text"]) + '</pre></section>')
+        page_path.write_text(page_path.read_text("utf-8").replace("<body>", "<body>" + prefix, 1),
+                             encoding="utf-8")
     return {
         "page": str(page_path),
         "rulings_template": str(template_path),
@@ -7825,6 +8037,32 @@ def _build_deliverable(
     if primary_path.is_file():
         primary = _read_json(primary_path)
         if primary.get("training", {}).get("recipe_profile") == "tensor":
+            native_root = primary_root if "video_inputs" in primary else video_root
+            native_plan_path = native_root / "plan.json"
+            if native_plan_path.is_file() and "video_inputs" in _read_json(native_plan_path):
+                native_plan = _read_json(native_plan_path)
+                _load_current_approval(native_plan, native_root, "video")
+                review, _, review_root = _tensor_video_review_context(native_plan, native_root)
+                accepted_path = review_root / review.ACCEPTED_NAME
+                if not accepted_path.is_file():
+                    return None
+                accepted = review.validate_accepted_video(native_root, accepted_path.relative_to(native_root),
+                    allow_fixture=native_plan.get("fixture") is True)
+                source = native_root / accepted["movie"]["path"]
+                destination = primary_root / "deliverable"
+                destination.mkdir(parents=True, exist_ok=True)
+                target = destination / source.name
+                shutil.copy2(source, target)
+                if _sha256(target) != accepted["movie"]["sha256"]:
+                    raise FigmentTrainError("accepted native movie changed during delivery")
+                result = {"schema": "figment/tensor-video-deliverable@1", "creator": creator_id,
+                    "fixture": native_plan.get("fixture") is True,
+                    "not_promotable": native_plan.get("fixture") is True,
+                    "movie": {**accepted["movie"], "path": str(target)},
+                    "accepted_video": accepted["accepted_lineage"],
+                    "accepted_edit": native_plan["video_inputs"]["accepted_edit"]["approval_lineage"]}
+                _write_json(destination / "manifest.json", result)
+                return result
             edit_root = primary_root if "edit" in primary.get("stages", {}) else _pipeline_downstream_root(primary_root, "edit")
             approved_path = edit_root / "grade/edit/approved-list.json"
             if not approved_path.is_file():
@@ -8256,6 +8494,8 @@ def command_pipeline(
     order = list(TENSOR_STAGES if tensor else CLEAN_STAGES)
     if set(primary_plan.get("stages", {})) == {"edit"}:
         order = ["edit"]
+    if "video_inputs" in primary_plan:
+        order = ["video"]
     if from_stage is not None:
         if from_stage not in order:
             raise FigmentTrainError("requested stage is not in this profile's pipeline sequence")
@@ -8298,7 +8538,10 @@ def command_pipeline(
         return str(manifest_path) if built is not None else None
 
     for stage in order:
-        if stage in ("anchor", "dataset", "smoke", "train", "tester"):
+        if stage == "video" and "video_inputs" in primary_plan:
+            active_plan, active_root, active_plan_path = primary_plan, primary_root, primary_plan_path
+            deliverable = None
+        elif stage in ("anchor", "dataset", "smoke", "train", "tester"):
             if stage not in primary_plan.get("stages", {}):
                 continue
             active_plan, active_root, active_plan_path = (
@@ -8468,6 +8711,14 @@ def command_pipeline(
                             "--out <new-dir>` for a fresh --stage all plan"
                         ),
                     }
+            if stage == "video" and "video_inputs" in active_plan:
+                review, _, review_root = _tensor_video_review_context(active_plan, active_root)
+                if not (review_root / review.ACCEPTED_NAME).is_file():
+                    return {"status": "GATE video-playback",
+                            "message": "native video requires explicit sample, complete sequence and playback rulings",
+                            "review": str(review_root)}
+                review.validate_accepted_video(active_root, (review_root / review.ACCEPTED_NAME).relative_to(active_root),
+                    allow_fixture=active_plan.get("fixture") is True)
 
     # n11 (superseded by F6a): the old claim that `order` always ends with a
     # self-returning branch was true only while "detail" was the last real stage --
@@ -8509,6 +8760,8 @@ def build_parser() -> argparse.ArgumentParser:
              "its grade/gen/approved-list.json is re-detailed; with --stage video one "
              "of them becomes the I2V first frame",
     )
+    plan.add_argument("--video-request", type=Path, default=None,
+                      help="Explicit tensor driving clip / accepted frame0 edit request")
     plan.add_argument("--edit-request", type=Path, default=None,
                       help="tensor edit only: exact image pair, original identity authority and approved prompt")
     plan.add_argument(
@@ -8814,6 +9067,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.creator, args.stage, args.out, skip_pin_verify=args.skip_pin_verify,
                 detail_images=args.detail_images, approved_gen_plan=args.approved_gen_plan,
                 edit_request=args.edit_request,
+                video_request=args.video_request,
                 approved_gen_image_id=args.approved_gen_image_id,
                 video_action=args.video_action, ledger_dir=args.ledger_dir,
                 accept_budget=args.accept_budget,

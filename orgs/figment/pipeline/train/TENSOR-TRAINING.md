@@ -1,3 +1,9 @@
+## Module08 motion stage
+
+Tensor video consumes an accepted module07 head swap of the exact driving clip's decoded frame0. The source graph uses fixed seed123, six steps, cfg1 and one81-frame/16fps native H264 MP4, with source-derived0.5MP/multiple32 dimensions. Input is conservatively CFR16/at least81 frames; no unproved resampling or padding is accepted. It does not use the trained persona LoRA or old clean gen-to-Wan2.2 adapter.
+
+Node-aware receipts and actual embedded prompt metadata bind the native movie. Decoded PNGs are review samples, never claimed harness outputs. Existing image and video eye gates remain required; fixture rulings cannot authorize production. Phase6 still needs **code implementing runtime admission from an approved real smoke receipt** with exact runtime/pin/graph/schema/termination/metadata evidence. Current launch refuses; approved public metadata alone is insufficient.
+
 ## Module07 edit stage
 
 Module07 is an explicit tensor edit stage after an approved identity source. It uses its own approved BFS swap LoRA, so standalone passport editing does not depend on the persona checkpoint, body dataset or tester prompt. Graph parity retains four reference-latent nodes, the 1536 longest-side size, four scheduler steps and CFG1. Node76 receives the base; node169 receives the accepted identity.

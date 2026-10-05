@@ -81,7 +81,7 @@ ARTIFACT_EXTENSIONS = {".safetensors", ".json", ".txt", ".log"}
 # allow-list) are both outside this ban.
 PICKLE_MODEL_EXTENSIONS = {".pt", ".pth", ".ckpt", ".bin", ".pkl", ".pickle"}
 UPLOAD_EXTENSIONS = {
-    ".png", ".jpg", ".jpeg", ".webp", ".txt", ".toml", ".json",
+    ".png", ".jpg", ".jpeg", ".webp", ".mp4", ".txt", ".toml", ".json",
     ".safetensors", ".ready",
 }
 MAX_UPLOAD_FILE_BYTES = 2 * 1024 ** 3
@@ -2265,6 +2265,8 @@ def require_manifest(
             or comfy_root == volume_root or not comfy_root.is_relative_to(volume_root)):
         raise HarnessError("comfyui.root must be an absolute subdirectory of volume_mount_path")
     for job in manifest["jobs"]:
+        if isinstance(job, dict):
+            job_output_contract(job)
         expected = job.get("expected_images", 1) if isinstance(job, dict) else None
         if (not isinstance(job, dict) or isinstance(expected, bool)
                 or not isinstance(expected, int) or expected <= 0):
@@ -4031,7 +4033,7 @@ class ComfyClient:
 
     def wait_outputs(
         self, prompt_id: str, timeout: float, watchdog: Watchdog,
-        *, expected_images: int = 1,
+        *, expected_images: int = 1, output_contract: dict[str, Any] | None = None,
     ) -> list[dict[str, str]]:
         del expected_images  # live jobs are counted from ComfyUI's own history entry
         deadline = time.monotonic() + timeout
@@ -4059,6 +4061,11 @@ class ComfyClient:
                 if status.get("completed") is False:
                     time.sleep(1)
                     continue
+                if output_contract is not None:
+                    if status.get("completed") is True:
+                        return contract_history_outputs(entry, output_contract)
+                    time.sleep(1)
+                    continue
                 outputs: list[dict[str, str]] = []
                 for node in (entry.get("outputs") or {}).values():
                     for image in node.get("images", []):
@@ -4074,6 +4081,89 @@ class ComfyClient:
                     raise HarnessError(f"ComfyUI job {prompt_id} completed with zero images")
             time.sleep(1)
         raise HarnessError(f"ComfyUI job {prompt_id} timed out")
+
+
+    def download_contract_output(self, record: dict[str, Any], local_path: Path,
+                                 deadline: float, watchdog: Any) -> None:
+        """Bound the entire GET/body, including a slow stream between chunk yields.
+
+        The worker owns only a temporary file. Only this caller may publish it,
+        after a successful deadline/watchdog check. Cancellation shuts down the
+        captured socket, so a blocked real HTTP read cannot retain the worker.
+        """
+        params = contract_view_params(record["remote"], record["media_type"])
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise HarnessError("contract download deadline exceeded")
+        watchdog.check()
+        capture, cancelled = _SocketCapture(), threading.Event()
+        outcome: dict[str, Any] = {}
+        temporary = local_path.with_suffix(local_path.suffix + ".partial")
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+
+        def transfer():
+            session, fresh, response = self.session, None, None
+            try:
+                if requests is not None and isinstance(session, requests.Session) and _CapturingHTTPAdapter is not None:
+                    fresh = requests.Session()
+                    fresh.trust_env = getattr(session, "trust_env", True)
+                    fresh.headers.update(getattr(session, "headers", {}) or {})
+                    adapter = _CapturingHTTPAdapter(capture=capture)
+                    fresh.mount("http://", adapter)
+                    fresh.mount("https://", adapter)
+                    session = fresh
+                response = session.get(self.base_url + "/view", params=params,
+                                       timeout=min(REQUEST_TIMEOUT, remaining), stream=True)
+                if not 200 <= response.status_code < 300:
+                    raise HarnessError("contract output download failed HTTP " + str(response.status_code))
+                length = response.headers.get("Content-Length")
+                if length is not None and (not str(length).isdigit() or not 0 < int(length) <= record["max_bytes"]):
+                    raise HarnessError("contract output Content-Length exceeds bound or is invalid")
+                size = 0
+                with temporary.open("wb") as handle:
+                    for chunk in response.iter_content(chunk_size=64 * 1024):
+                        if cancelled.is_set() or time.monotonic() >= deadline:
+                            raise HarnessError("contract download deadline exceeded")
+                        size += len(chunk)
+                        if size > record["max_bytes"]:
+                            raise HarnessError("contract output exceeds byte bound")
+                        handle.write(chunk)
+                if cancelled.is_set() or size == 0 or (length is not None and size != int(length)):
+                    raise HarnessError("contract output empty, cancelled or truncated")
+            except BaseException as exc:
+                outcome["error"] = exc
+            finally:
+                if response is not None:
+                    response.close()
+                if fresh is not None:
+                    fresh.close()
+                if cancelled.is_set() or "error" in outcome:
+                    temporary.unlink(missing_ok=True)
+
+        worker = threading.Thread(target=transfer, name="contract-output-download", daemon=True)
+        worker.start()
+        def poll(seconds):
+            watchdog.check()
+            worker.join(seconds)
+            return not worker.is_alive()
+        try:
+            if not _sliced_deadline_wait(total_seconds=max(0, deadline-time.monotonic()),
+                                        poll=poll, slice_seconds=0.1):
+                raise HarnessError("contract download deadline exceeded")
+            watchdog.check()
+            if time.monotonic() >= deadline:
+                raise HarnessError("contract download deadline exceeded")
+            if "error" in outcome:
+                raise outcome["error"]
+            temporary.replace(local_path)
+        finally:
+            cancelled.set()
+            capture.shutdown_and_close()
+            # Real socket shutdown unblocks reads; a hostile injected fake may not
+            # cooperate, but can never publish and will clean up when it returns.
+            worker.join(0.2)
+            if not worker.is_alive():
+                temporary.unlink(missing_ok=True)
 
     def download_output(self, image: dict[str, str], local_path: Path,
                         timeout: float) -> None:
@@ -4111,9 +4201,18 @@ class DryRunComfyClient:
 
     def wait_outputs(
         self, prompt_id: str, _timeout: float, watchdog: Watchdog,
-        *, expected_images: int = 1,
+        *, expected_images: int = 1, output_contract: dict[str, Any] | None = None,
     ) -> list[dict[str, str]]:
         watchdog.check()
+        if output_contract is not None:
+            history = {"outputs": {}}
+            for row in output_contract["outputs"]:
+                video = row["media_type"] == "video/mp4"
+                item = {"filename": prompt_id + "-" + row["role"] + (".mp4" if video else ".png"),
+                        "subfolder": "", "type": "output", "format": "video/h264-mp4" if video else row["media_type"],
+                        "workflow": prompt_id + "-" + row["role"] + "-workflow.png"}
+                history["outputs"][row["node_id"]] = {"gifs" if video else "images": [item]}
+            return contract_history_outputs(history, output_contract)
         if expected_images == 1:
             return [{"filename": f"{prompt_id}.png", "subfolder": "", "type": "output"}]
         return [
@@ -4168,6 +4267,19 @@ class DryRunComfyClient:
             temporary.replace(local_path)
         finally:
             temporary.unlink(missing_ok=True)
+
+    def download_contract_output(self, record: dict[str, Any], local_path: Path,
+                                 deadline: float, watchdog: Any) -> None:
+        watchdog.check()
+        if time.monotonic() >= deadline:
+            raise HarnessError("contract download deadline exceeded")
+        contract_view_params(record["remote"], record["media_type"])
+        # Deliberately simulated transport bytes, never evidence of rendered media.
+        data = ("dry-run simulated " + record["media_type"] + "\n").encode()
+        if len(data) > record["max_bytes"]:
+            raise HarnessError("dry-run output exceeds byte bound")
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        local_path.write_bytes(data)
 
     def download_output(self, image: dict[str, str], local_path: Path,
                         _timeout: float) -> None:
@@ -4225,6 +4337,134 @@ def safe_output_name(value: Any) -> str:
     if not re.fullmatch(r"[A-Za-z0-9._-]+", name):
         raise HarnessError(f"unsafe or missing output_name: {name!r}")
     return name
+
+
+
+OUTPUT_CONTRACT_SCHEMA = "figment/comfy-output-contract@1"
+OUTPUT_IMAGE_CAP = 32 * 1024 ** 2
+OUTPUT_VIDEO_CAP = 512 * 1024 ** 2
+
+
+def job_output_contract(job: dict[str, Any]) -> dict[str, Any] | None:
+    """Validate the closed opt-in contract; legacy jobs retain their image semantics."""
+    if "output_contract" not in job:
+        return None
+    contract = job["output_contract"]
+    if any(key in job for key in ("expected_images", "expected_videos", "output_nodes")):
+        raise HarnessError("output_contract conflicts with legacy output selectors")
+    if (not isinstance(contract, dict) or set(contract) != {"schema", "outputs"}
+            or contract["schema"] != OUTPUT_CONTRACT_SCHEMA):
+        raise HarnessError("invalid output_contract schema")
+    rows = contract["outputs"]
+    if not isinstance(rows, list) or not 1 <= len(rows) <= 16:
+        raise HarnessError("output_contract requires 1..16 output declarations")
+    nodes, roles = set(), set()
+    for row in rows:
+        if not isinstance(row, dict) or set(row) != {
+            "node_id", "role", "media_type", "count", "max_bytes", "workflow_png"
+        }:
+            raise HarnessError("invalid output_contract declaration fields")
+        node, role = row["node_id"], row["role"]
+        if not isinstance(node, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", node):
+            raise HarnessError("invalid output node_id")
+        if not isinstance(role, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,47}", role):
+            raise HarnessError("invalid output role")
+        if node in nodes or role in roles or role.endswith("-workflow"):
+            raise HarnessError("duplicate/reserved output node or role")
+        nodes.add(node)
+        roles.add(role)
+        media = row["media_type"]
+        if media not in ("image/png", "video/mp4"):
+            raise HarnessError("unsupported output media_type")
+        cap = OUTPUT_IMAGE_CAP if media == "image/png" else OUTPUT_VIDEO_CAP
+        if type(row["count"]) is not int or row["count"] != 1:
+            raise HarnessError("output count must be exactly one")
+        if type(row["max_bytes"]) is not int or not 1 <= row["max_bytes"] <= cap:
+            raise HarnessError("invalid output max_bytes")
+        if type(row["workflow_png"]) is not bool or (media == "image/png" and row["workflow_png"]):
+            raise HarnessError("workflow_png must be boolean and video-only")
+    return copy.deepcopy(contract)
+
+
+def contract_view_params(descriptor: dict[str, Any], media_type: str) -> dict[str, str]:
+    """Only output-directory, relative literal paths reach /view; fullpath is ignored."""
+    if not isinstance(descriptor, dict) or descriptor.get("type") != "output":
+        raise HarnessError("contract output must have type output")
+    filename, folder = descriptor.get("filename"), descriptor.get("subfolder", "")
+    def safe_part(value: str) -> bool:
+        return bool(value) and value not in (".", "..") and not any(c in value for c in '\\/:\x00') and not value.endswith((".", " ")) and not any(ord(c) < 32 for c in value)
+    if not isinstance(filename, str) or len(filename) > 255 or not safe_part(filename):
+        raise HarnessError("unsafe output filename")
+    if not isinstance(folder, str) or len(folder) > 1024 or (folder and not all(safe_part(x) for x in folder.split("/"))):
+        raise HarnessError("unsafe output subfolder")
+    suffix = ".png" if media_type == "image/png" else ".mp4"
+    if PurePosixPath(filename).suffix.lower() != suffix:
+        raise HarnessError("output extension does not match declared media_type")
+    return {"filename": filename, "subfolder": folder, "type": "output"}
+
+
+def contract_history_outputs(entry: dict[str, Any], contract: dict[str, Any]) -> list[dict[str, Any]]:
+    contract = job_output_contract({"output_contract": contract})
+    outputs = entry.get("outputs")
+    if not isinstance(outputs, dict):
+        raise HarnessError("contract history outputs must be an object")
+    declared = {row["node_id"]: row for row in contract["outputs"]}
+    for node_id, node in outputs.items():
+        if not isinstance(node, dict):
+            raise HarnessError("malformed history node output")
+        if node_id not in declared and (node.get("images") or node.get("gifs")):
+            raise HarnessError("unexpected media output node")
+    result, paths = [], set()
+    for row in contract["outputs"]:
+        node = outputs.get(row["node_id"], {})
+        key = "images" if row["media_type"] == "image/png" else "gifs"
+        items = node.get(key)
+        other = "gifs" if key == "images" else "images"
+        if not isinstance(items, list) or len(items) != 1 or node.get(other):
+            raise HarnessError("contract output node count/type mismatch")
+        item = items[0]
+        params = contract_view_params(item, row["media_type"])
+        if key == "gifs" and item.get("format") != "video/h264-mp4":
+            raise HarnessError("VHS output format must be source video/h264-mp4")
+        primary = {**row, "remote": params}
+        records = [primary]
+        if row["workflow_png"]:
+            companion = {"filename": item.get("workflow"), "subfolder": params["subfolder"], "type": "output"}
+            records.append({"node_id": row["node_id"], "role": row["role"] + "-workflow",
+                "media_type": "image/png", "max_bytes": OUTPUT_IMAGE_CAP,
+                "companion_of": row["role"], "remote": contract_view_params(companion, "image/png")})
+        for record in records:
+            remote = record["remote"]
+            identity = (remote["subfolder"] + "/" + remote["filename"]).casefold()
+            if identity in paths:
+                raise HarnessError("duplicate output path")
+            paths.add(identity)
+            result.append(record)
+    return result
+
+
+def download_contract_outputs(comfy: Any, records: list[dict[str, Any]], out_dir: Path,
+                              output_name: str, timeout: float, watchdog: Any,
+                              prompt_id: str) -> list[dict[str, Any]]:
+    deadline = time.monotonic() + timeout
+    receipts = []
+    for record in records:
+        watchdog.check()
+        suffix = ".png" if record["media_type"] == "image/png" else ".mp4"
+        path = out_dir / (safe_output_name(output_name) + "--" + record["role"] + suffix)
+        comfy.download_contract_output(record, path, deadline, watchdog)
+        size = path.stat().st_size
+        if not 0 < size <= record["max_bytes"]:
+            raise HarnessError("downloaded contract output has invalid size")
+        with path.open("rb") as handle:
+            digest = hashlib.file_digest(handle, "sha256").hexdigest()
+        receipt = {"path": path.name, "bytes": size, "sha256": digest,
+                   "node_id": record["node_id"], "role": record["role"], "media_type": record["media_type"],
+                   "prompt_id": prompt_id, "remote": record["remote"]}
+        if "companion_of" in record:
+            receipt["companion_of"] = record["companion_of"]
+        receipts.append(receipt)
+    return receipts
 
 
 def view_params(image: dict[str, str]) -> dict[str, str]:
@@ -4978,27 +5218,38 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                     output_name = safe_output_name(job.get("output_name"))
                     workflow = apply_job(base_workflow, job, manifest_seed_fields(manifest))
                     prompt_id = comfy.submit(workflow)
-                    expected_images = job.get("expected_images", 1)
-                    if isinstance(expected_images, bool) or not isinstance(expected_images, int):
-                        raise HarnessError("job expected_images must be a positive integer")
-                    remote_images = comfy.wait_outputs(
-                        prompt_id, per_job_timeout, watchdog,
-                        expected_images=expected_images,
-                    )
-                    paths = download_job_outputs(
-                        comfy, remote_images, out_dir, output_name,
-                        per_job_timeout, expected_images,
-                    )
+                    contract = job_output_contract(job)
+                    if contract is not None:
+                        remote = comfy.wait_outputs(prompt_id, per_job_timeout, watchdog, output_contract=contract)
+                        file_receipts = download_contract_outputs(comfy, remote, out_dir, output_name,
+                                                                  per_job_timeout, watchdog, prompt_id)
+                        paths = [out_dir / row["path"] for row in file_receipts]
+                    else:
+                        expected_images = job.get("expected_images", 1)
+                        if isinstance(expected_images, bool) or not isinstance(expected_images, int):
+                            raise HarnessError("job expected_images must be a positive integer")
+                        remote_images = comfy.wait_outputs(prompt_id, per_job_timeout, watchdog,
+                                                           expected_images=expected_images)
+                        paths = download_job_outputs(comfy, remote_images, out_dir, output_name,
+                                                     per_job_timeout, expected_images)
+                        file_receipts = [{"path": path.name, "bytes": path.stat().st_size} for path in paths]
                     job_result = {
                         "job": job_number,
                         "output_name": output_name,
                         "seed": int(job["seed"]),
                         "prompt_id": prompt_id,
                         "seconds": round(time.monotonic() - job_started, 3),
-                        "files": [{"path": path.name, "bytes": path.stat().st_size} for path in paths],
+                        "files": file_receipts,
                     }
+                    if contract is not None:
+                        job_result["output_contract"] = contract
+                        job_result["effective_workflow_sha256"] = hashlib.sha256(json.dumps(
+                            workflow, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False,
+                        ).encode("utf-8")).hexdigest()
                     result["jobs"].append(job_result)
                     for index, path in enumerate(paths, start=1):
+                        if contract is not None and (file_receipts[index - 1]["media_type"] != "image/png" or "companion_of" in file_receipts[index - 1]):
+                            continue
                         image_id = output_name if len(paths) == 1 else f"{output_name}_{index:02d}"
                         images_manifest.append({
                             "image_id": image_id,

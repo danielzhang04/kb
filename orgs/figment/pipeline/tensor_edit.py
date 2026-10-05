@@ -221,8 +221,6 @@ def read_request(path, creator, *, resolve_identity):
               "fixture": request["fixture"], "base": base, "identity": identity,
               "identity_authority": authority, "prompt": prompt, "request": request_binding}
     if request["job_type"] == "start-frame-head-swap":
-        if not request["fixture"]:
-            raise EditInputError("live driving-frame extraction authority requires the phase4 adapter")
         frame = request.get("frame_source")
         _keys(frame, {"clip", "extraction_receipt", "frame_index"})
         if type(frame["frame_index"]) is not int or frame["frame_index"] != 0:
@@ -243,6 +241,15 @@ def read_request(path, creator, *, resolve_identity):
         result["frame_source"] = {"clip": clip, "extraction_receipt": evidence,
                                   "frame_index": 0, "transform": "fixture-declared-frame0-unverified",
                                   "fixture_only": True}
+        if not request["fixture"]:
+            spec = importlib.util.spec_from_file_location("_tensor_edit_frame_authority",
+                Path(__file__).with_name("tensor_video.py"))
+            adapter = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(adapter)
+            verified = adapter.validate_frame0(clip=frame["clip"], image=request["base"],
+                extraction_receipt=frame["extraction_receipt"], base_dir=path.parent)
+            result["frame_source"].update(transform="verified-decoded-frame0",
+                fixture_only=False, verified=verified)
     elif "frame_source" in request:
         raise EditInputError("still touch-up cannot declare driving clip authority")
     result["input_sha256"] = canonical_sha256(result)

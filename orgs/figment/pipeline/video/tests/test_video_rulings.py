@@ -361,10 +361,12 @@ def test_cli_refuses_malformed_rulings_without_attempt_or_traceback(
 
 
 def test_real_approved_gen_candidate_cli_applies_fixture_rulings_and_validates(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     gen_tests = _load("figment_video_rulings_gen_helpers", PIPELINE / "tests" / "test_gen_stage.py")
     command = _load("figment_video_rulings_train", PIPELINE / "figment_train.py")
+    offline = _load("figment_video_rulings_offline", PIPELINE / "tests" / "test_figment_train.py")
+    offline.offline_fixture_models.__wrapped__(command, monkeypatch)
     personas = tmp_path / "personas"
     gen_tests._promoted_persona(personas, creator_id="creator-002", steps=3000)
     gen_tests._prepare_accepted_checkpoint(command, personas, tmp_path)
@@ -787,3 +789,31 @@ def test_terminal_claim_recheck_is_bounded_before_reading_replaced_bytes(
         review.apply_rulings(root=root, rulings=Path("one.json"), **_inputs())
     assert claim.stat().st_size == review.MAX_JSON_BYTES + 1
     assert not (store / review.ACCEPTED_NAME).exists()
+
+
+def test_nonfixture_tensor_acceptance_requires_runtime_admission(prepared_base, tmp_path, monkeypatch):
+    root = _case(prepared_base, tmp_path, monkeypatch)
+    evaluation, store = _evaluation(root)
+    subject = copy.deepcopy(evaluation["subject"])
+    subject.update(schema="figment/tensor-native-review-subject@1", fixture=False, runtime_admitted=False)
+    # Isolate source reconstruction, retaining public apply and closed ruling validation.
+    monkeypatch.setattr(review, "_subject", lambda *args: (subject, store))
+    monkeypatch.setattr(review, "_evaluation", lambda *args: (evaluation, {}))
+    evaluation.update(subject=subject, subject_sha256=review._canonical(subject, "subject"))
+    path = root / "nonfixture-rulings.json"
+    _write(path, _rulings(evaluation, "nonfixture"))
+    with pytest.raises(review.VideoReviewError, match="runtime admission adapter"):
+        _apply(root, path)
+    assert not (store / review.ACCEPTED_NAME).exists()
+    assert not (store / review.CLAIM_NAME).exists()
+
+
+def test_nonfixture_tensor_accepted_projection_requires_runtime_admission(tmp_path, monkeypatch):
+    subject = {"schema": "figment/tensor-native-review-subject@1", "fixture": False,
+               "runtime_admitted": False}
+    snapshot = {"destination": tmp_path, "subject": subject, "inventory": {"attempts": []},
+                **{key: {} for key in ("accepted", "accepted_entry", "attempt", "attempt_entry",
+                                      "claim", "claim_entry", "evaluation_entry")}}
+    monkeypatch.setattr(review, "_accepted_snapshot", lambda *args: snapshot)
+    with pytest.raises(review.VideoReviewError, match="runtime admission adapter"):
+        review.validate_accepted_video(tmp_path, Path("forged.json"), allow_fixture=True)

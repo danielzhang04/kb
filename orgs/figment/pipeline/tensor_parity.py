@@ -625,3 +625,44 @@ def check_edit(workflow, manifest, *, prompt=None, base_image=None, identity_ima
         if ("103", "noise_seed") in subs and subs[("103", "noise_seed")] != seed:
             problems.append(f"edit job {index}: substituted seed differs from job seed")
     return problems
+
+
+def _video_parity_helper():
+    # Load by our own file path, independent of the caller's cwd/sys.path.
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("figment_tensor_video_parity", HERE / "tensor_video_parity.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def video_workflow():
+    helper = _video_parity_helper()
+    try:
+        return helper.video_workflow()
+    except helper.ParityError as exc:
+        raise ParityError(str(exc)) from exc
+
+
+def video_pin_group():
+    return _video_parity_helper().video_pin_group()
+
+
+def video_output_contract(*, workflow_png=False):
+    helper = _video_parity_helper()
+    try:
+        return helper.video_output_contract(workflow_png=workflow_png)
+    except helper.ParityError as exc:
+        raise ParityError(str(exc)) from exc
+
+
+def video_readiness_problems(manifest):
+    return _video_parity_helper().video_readiness_problems(manifest)
+
+
+def check_video(workflow, manifest, *, prompt=None, driving_video=None, start_image=None):
+    helper = _video_parity_helper()
+    try:
+        return helper.check_video(workflow, manifest, prompt=prompt, driving_video=driving_video, start_image=start_image)
+    except helper.ParityError as exc:
+        raise ParityError(str(exc)) from exc

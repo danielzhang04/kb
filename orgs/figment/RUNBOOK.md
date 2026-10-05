@@ -1,3 +1,11 @@
+## Module08 offline native video
+
+Supply the strict `figment/tensor-video-request@1` described in pipeline/README.md, then plan with `pipeline/figment_train.py plan --stage video --creator <id> --video-request <request.json> --out <fresh-dir> --skip-pin-verify`. The clip must currently be CFR16 with81 or more frames and have an accepted module07 head swap of its exact decoded frame0. Intake decisions are attributed and fixture-specific. No checkpoint or implicit gen still replaces that edit approval.
+
+Harness `--dry-run` proves manifest structure only. Actual native evidence requires a bounded MP4, exact node/prompt/graph receipt, matching embedded prompt graph,81frames/16fps and source-derived dimensions. Grade the11 decoded samples using normal stage-video commands; inspect the board's native playback. The existing `video/video_review.py` prepare/apply commands consume the candidate manifest, run receipt, and `video/evidence/native/native-evidence.json` as both assembly and extraction arguments, under the video plan root. They require first/middle/last, complete-sequence and playback rulings; the pipeline will not claim `complete:video` from image rulings alone.
+
+Synthetic video acceptance remains non-production. Production launch is deliberately unavailable pending **phase6 admission-adapter implementation**, not just missing media: revalidate an approved real smoke's nonfixture/dry_run=false status, runtime/pins/graph, installed schema, termination and actual metadata proof. That adapter and a separately approved funded run remain outstanding; do not reinterpret offline proof as admission.
+
 ## Module07 standalone edit
 
 Plan with `pipeline/figment_train.py plan --stage edit --creator <id> --edit-request <request.json> --out <fresh-dir>`. Use `--skip-pin-verify` only for offline fixture planning. See pipeline/README.md for the strict request schema. Review `edit-inputs.html`: BASE is image1/node76 and IDENTITY is image2/node169. The identity comes from the original registered-passport approval or a current approved gen still; a trained checkpoint is unnecessary for passport edits.

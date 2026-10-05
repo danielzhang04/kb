@@ -2,7 +2,7 @@
   "schema": "figment/tensor-pins@1",
   "profiles": {
     "clean": {"anchor": ["anchor", "anchor_edit"], "dataset": ["dataset"], "smoke": ["train"], "train": ["train"], "tester": ["tester"], "gen": ["gen"], "detail": ["detail"], "video": []},
-    "tensor": {"anchor": ["passport_tensor"], "dataset": ["dataset_tensor"], "smoke": ["train"], "train": ["train"], "tester": ["tester"], "caption": ["caption"], "edit": ["edit_tensor"]}
+    "tensor": {"anchor": ["passport_tensor"], "dataset": ["dataset_tensor"], "smoke": ["train"], "train": ["train"], "tester": ["tester"], "caption": ["caption"], "edit": ["edit_tensor"], "video": ["video_tensor"]}
   },
   "pod_classes": {
     "l40s": {
@@ -115,6 +115,23 @@
           "job_wait_for_seconds": 180,
           "comfyui": {"root": "/workspace/ComfyUI", "git_ref": "v0.34.0", "port": 8188, "start_command": "bash /workspace/start-comfy-lorapath.sh"}
         },
+        "video_tensor": {
+          "max_minutes": 80,
+          "container_disk_gb": 80,
+          "volume_gb": 120,
+          "readiness_timeout_seconds": 2400,
+          "job_timeout_seconds": 1800,
+          "comfyui": {
+            "root": "/workspace/ComfyUI",
+            "git_ref": "135abed8da169e33ab0b86550e05e3ae55d6df8c",
+            "source_url": "https://github.com/Comfy-Org/ComfyUI",
+            "tarball_url": "https://codeload.github.com/Comfy-Org/ComfyUI/tar.gz/135abed8da169e33ab0b86550e05e3ae55d6df8c",
+            "replace_non_git_root": false,
+            "port": 8188,
+            "start_command": "python main.py"
+          },
+          "_note": "Offline envelope inherited from existing clean video_manifest builder (80min/2400s readiness/1800s job). Module08 runtime/VRAM not measured. Separate approved live smoke and all lifecycle guards remain mandatory."
+        },
         "edit_tensor": {
           "max_minutes": 95,
           "container_disk_gb": 100,
@@ -145,6 +162,67 @@
     }
   },
   "pins": {
+    "video_tensor": {
+      "_note": "Exact module08 installer files; public immutable LFS/HEAD metadata verified2026-10-05. SAM3.1 has SAM licence, not MIT/Apache. VHS a7 is output49 source revision; both required class schemas match loader113's298 revision. Core v0.25.0 required for SCAIL2 schema; external installer SAM3 clone is unused. Runtime smoke unproved.",
+      "models": [
+        {
+          "repo_id": "Comfy-Org/sam3.1",
+          "filename": "checkpoints/sam3.1_multiplex_fp16.safetensors",
+          "revision": "7bb8374780a725b4353ed31f3a9395c9742b5621",
+          "sha256": "9ba99c92703c2e8b4f47de2d34a539bb8e18923049e238b780d70dbe6368eb03",
+          "destination_dir": "/workspace/ComfyUI/models/checkpoints",
+          "licence": "sam-license"
+        },
+        {
+          "repo_id": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+          "filename": "split_files/clip_vision/clip_vision_h.safetensors",
+          "revision": "123acf1cc74bccbb9bfff8ac1ee72edc08c2341d",
+          "sha256": "64a7ef761bfccbadbaa3da77366aac4185a6c58fa5de5f589b42a65bcc21f161",
+          "destination_dir": "/workspace/ComfyUI/models/clip_vision",
+          "licence": "apache-2.0"
+        },
+        {
+          "repo_id": "Comfy-Org/SCAIL-2",
+          "filename": "diffusion_models/wan2.1_14B_SCAIL_2_fp8_scaled.safetensors",
+          "revision": "fe3c728bc793ba21ca674688f822afb709ad44fb",
+          "sha256": "11513b4697ecf566de0cb74660c478f301fb6699a62b10369e91a6ed0fd6b083",
+          "destination_dir": "/workspace/ComfyUI/models/diffusion_models",
+          "licence": "mit"
+        },
+        {
+          "repo_id": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+          "filename": "split_files/vae/wan_2.1_vae.safetensors",
+          "revision": "123acf1cc74bccbb9bfff8ac1ee72edc08c2341d",
+          "sha256": "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b",
+          "destination_dir": "/workspace/ComfyUI/models/vae",
+          "licence": "apache-2.0"
+        },
+        {
+          "repo_id": "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v",
+          "filename": "loras/Wan21_I2V_14B_lightx2v_cfg_step_distill_lora_rank64.safetensors",
+          "revision": "fef288b326f4fed6d2983b9800c35363da31fcfe",
+          "sha256": "8833bd4fd7c8eabebf0bc8ee5cfaf47f4f310ce116928a02c1adf8941dd4b0f1",
+          "destination_dir": "/workspace/ComfyUI/models/loras",
+          "licence": "apache-2.0"
+        },
+        {
+          "repo_id": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+          "filename": "split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+          "revision": "123acf1cc74bccbb9bfff8ac1ee72edc08c2341d",
+          "sha256": "c3355d30191f1f066b26d93fba017ae9809dce6c627dda5f6a66eaa651204f68",
+          "destination_dir": "/workspace/ComfyUI/models/text_encoders",
+          "licence": "apache-2.0"
+        }
+      ],
+      "custom_nodes": [
+        {
+          "name": "ComfyUI-VideoHelperSuite",
+          "git_url": "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git",
+          "git_ref": "a7ce59e381934733bfae03b1be029756d6ce936d",
+          "licence": "GPL-3.0"
+        }
+      ]
+    },
     "edit_tensor": {
       "_note": "Module07 U12/U13. Klein/encoder/VAE exact records reused from dataset_tensor. Klein gated file/access verification remains a live prerequisite. Swap public immutable metadata verified 2026-10-05 (HF API plus non-following HEAD); source-declared EasyUse/LayerStyle commits and licences confirmed via GitHub APIs. API graph collapses rgthree singleton switches; no rgthree dependency. Runtime compatibility remains unproved. Installer security-level downgrade is NOT reproduced.",
       "models": [
