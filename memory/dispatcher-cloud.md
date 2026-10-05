@@ -1177,3 +1177,24 @@
   time) — use `git log -1 --format=%ci -- <path>` for real card age; I nearly mis-reported both
   stranded cards as fresh. The dedup amendment to step 2b is still OWED/unlanded.
 - Logged 3 cost rows (dispatch, nightly-review, dashboard-regen; claude-opus-4-8; $0.0 subscription).
+
+## 2026-10-05 cloud nightly
+- Dispatched 1 card (`6ac342db-3c8869e3`, cadence:nightly-review, routed sonnet). Self-executed
+  under the T1 nightly-review carve-out; writes stayed in allow-list (dashboards/, memory shard,
+  ledgers/, queue/ card transitions). preamble OK (no classifier denial this run), sync_skills in
+  sync, regenerated both dashboards.
+- DEDUP DECISION (acted on the owed step-2b amendment): daemon-dir drift is now a SINGLE ops-only
+  path (`orgs/kb-ops/workflows/acceptance-run.md`) — shrank from 11 (2026-08-18) to 1. Instead of
+  filing yet another dated `wake-daniel-<date>-sync-daemon-dirs-drift` card, I REFRESHED the
+  canonical card `6a605ebb` with the 2026-10-05 snapshot. Inbox already holds ~18 duplicate
+  `wake-daniel-*-sync-daemon-dirs-drift` cards + several `wake-me:daemon-dir-drift-*` (28
+  drift-related cards total) — unbounded sprawl the prior memory warned about. Cleaning those up is
+  OUTSIDE the carve-out (they are human-owned, not my cards), so flagged in both dashboards as an
+  anomaly for a human/boss consolidation pass; did NOT touch them.
+- Stranded working/ cards UNCHANGED: `6a6bc3dd` kb-ops halted since 07-30 (~67d), `d126c410`
+  figment working since 09-07 (and unparseable by cards.py — unquoted colon in `action:`). Recorded
+  in dashboards, not mine to move. Confirmed age via `git log -1 --format=%ci` (mtimes useless on
+  fresh clone, per prior lesson).
+- scripts/sync_daemon_dirs.py STILL absent from ops; ran the check from the origin/main copy
+  (refs-fallback). Step-2b script-mirror decision still OWED to Daniel.
+- Logged 3 cost rows (dispatch, nightly-review, dashboard-regen; claude-opus-4-8; $0.0 subscription).
