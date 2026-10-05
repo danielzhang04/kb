@@ -1,3 +1,13 @@
+## Tensor module07 edit (offline fixture proof)
+
+`figment_train.py plan --creator creator-003 --stage edit --edit-request <request.json> --out <fresh-dir> --skip-pin-verify` produces a standalone edit plan without dataset or checkpoint prerequisites. `--skip-pin-verify` is for offline planning only; live launch always verifies approved model pins and gated access. Synthetic requests cannot launch.
+
+The `figment/tensor-edit-request@1` object contains `creator`, `job_type` (`still-touch-up` or `start-frame-head-swap`), explicit boolean `fixture`, `base: {path, sha256}`, `identity: {kind: passport|approved-gen, source_plan, image_id}`, and `prompt: {text, sha256, decided_by, decided_at}`. `source_plan` names the original plan.json; prompt SHA256 covers exact UTF-8 text and the timestamp must include a timezone. Relative paths resolve beside the request. Unknown fields, duplicate JSON keys, unsafe links/traversal, unsupported images and colliding upload basenames are refused.
+
+Node76 is BASE/image1; node169 is IDENTITY/image2. Source UI titles suggest the reverse: effective reference links and the approved spec determine these roles. The input preview and grading board link show both images and the exact prompt. Registered-passport authority revalidates the original anchor promotion, selected output, ruling and current registered bytes, while allowing later training changes. New edits use current grading thresholds. Accepted standalone edits ignore unused dataset/tester settings; request, passport, output, graph, model pins and relevant pod configuration remain bound.
+
+Start-frame fixtures additionally require `frame_source: {clip: {path, sha256}, extraction_receipt: {path, sha256}, frame_index: 0}`. The receipt uses the existing frame-extraction schema and must bind the exact clip and first-frame bytes. This is explicitly fixture-only extraction evidence; the trusted live extraction adapter remains phase4 work. A touch-up approval cannot authorize a driving-clip start frame. Module07 fixture results establish wiring and review flow, not image quality. Klein9B live access/preflight and a separately approved semantic smoke remain pending.
+
 # figment pipeline — operator entry point
 
 ## Tensor phase 2 (2026-10-05, offline implementation)

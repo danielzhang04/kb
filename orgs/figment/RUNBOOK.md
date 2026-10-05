@@ -1,3 +1,9 @@
+## Module07 standalone edit
+
+Plan with `pipeline/figment_train.py plan --stage edit --creator <id> --edit-request <request.json> --out <fresh-dir>`. Use `--skip-pin-verify` only for offline fixture planning. See pipeline/README.md for the strict request schema. Review `edit-inputs.html`: BASE is image1/node76 and IDENTITY is image2/node169. The identity comes from the original registered-passport approval or a current approved gen still; a trained checkpoint is unnecessary for passport edits.
+
+Grade and apply rulings using the existing `--stage edit` commands. Repeating identical current edit rulings is idempotent; changed inputs invalidate them. `pipeline --plan <edit-plan>/plan.json` resumes that standalone stage and reports `complete:edit`, without claiming video completion. Its deliverable retains job type, input hash, image hash, approval and fixture provenance. Synthetic plans never launch; live start-frame authority, gated model access and actual swap quality remain explicit prerequisites.
+
 # figment — operator runbook
 
 ## Tensor phase 2: offline inputs and caption resume

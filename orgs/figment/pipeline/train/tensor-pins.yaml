@@ -2,7 +2,7 @@
   "schema": "figment/tensor-pins@1",
   "profiles": {
     "clean": {"anchor": ["anchor", "anchor_edit"], "dataset": ["dataset"], "smoke": ["train"], "train": ["train"], "tester": ["tester"], "gen": ["gen"], "detail": ["detail"], "video": []},
-    "tensor": {"anchor": ["passport_tensor"], "dataset": ["dataset_tensor"], "smoke": ["train"], "train": ["train"], "tester": ["tester"], "caption": ["caption"]}
+    "tensor": {"anchor": ["passport_tensor"], "dataset": ["dataset_tensor"], "smoke": ["train"], "train": ["train"], "tester": ["tester"], "caption": ["caption"], "edit": ["edit_tensor"]}
   },
   "pod_classes": {
     "l40s": {
@@ -115,6 +115,23 @@
           "job_wait_for_seconds": 180,
           "comfyui": {"root": "/workspace/ComfyUI", "git_ref": "v0.34.0", "port": 8188, "start_command": "bash /workspace/start-comfy-lorapath.sh"}
         },
+        "edit_tensor": {
+          "max_minutes": 95,
+          "container_disk_gb": 100,
+          "volume_gb": 0,
+          "avoid_machine_hosts": [
+            "qvf79yutw3t2"
+          ],
+          "readiness_timeout_seconds": 2700,
+          "job_timeout_seconds": 450,
+          "comfyui": {
+            "root": "/workspace/ComfyUI",
+            "git_ref": "v0.20.1",
+            "port": 8188,
+            "start_command": "python main.py"
+          },
+          "_note": "Offline inherited anchor_edit envelope; module07 runtime and memory not measured. Live gate and budget approval remain required."
+        },
         "passport_tensor": {
           "max_minutes": 91,
           "container_disk_gb": 100,
@@ -128,6 +145,57 @@
     }
   },
   "pins": {
+    "edit_tensor": {
+      "_note": "Module07 U12/U13. Klein/encoder/VAE exact records reused from dataset_tensor. Klein gated file/access verification remains a live prerequisite. Swap public immutable metadata verified 2026-10-05 (HF API plus non-following HEAD); source-declared EasyUse/LayerStyle commits and licences confirmed via GitHub APIs. API graph collapses rgthree singleton switches; no rgthree dependency. Runtime compatibility remains unproved. Installer security-level downgrade is NOT reproduced.",
+      "models": [
+        {
+          "repo_id": "black-forest-labs/FLUX.2-klein-9b-fp8",
+          "filename": "flux-2-klein-9b-fp8.safetensors",
+          "revision": "902d9d510b51533e07729f19211414a3648b77d2",
+          "sha256": "865ba09f5b4c3cbd3468a4bd3acb9fcb2f8740c54317482f0bcd4ed1d3655cee",
+          "destination_dir": "/workspace/ComfyUI/models/diffusion_models"
+        },
+        {
+          "repo_id": "Comfy-Org/vae-text-encorder-for-flux-klein-9b",
+          "filename": "split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors",
+          "revision": "3f62d9d8ae1fec33c6e91453d5c712855b096b55",
+          "sha256": "abad16806e0cbabc54e0325d6565847443fe396d5f0be38bb3cd3fe75a1201d6",
+          "destination_dir": "/workspace/ComfyUI/models/text_encoders"
+        },
+        {
+          "repo_id": "Comfy-Org/flux2-dev",
+          "filename": "split_files/vae/flux2-vae.safetensors",
+          "revision": "ed33133cd56476eac818c0943b6f9419b3e4a3a1",
+          "sha256": "d64f3a68e1cc4f9f4e29b6e0da38a0204fe9a49f2d4053f0ec1fa1ca02f9c4b5",
+          "destination_dir": "/workspace/ComfyUI/models/vae"
+        },
+        {
+          "repo_id": "Alissonerdx/BFS-Best-Face-Swap",
+          "filename": "bfs_head_v1_flux-klein_9b_step3500_rank128.safetensors",
+          "revision": "0ca3913ade4b4ada458d60c232354e8586c4c181",
+          "sha256": "70d8aaf332d710b905d5085afaa87c3ef577edffd54ffcfadeb8c47a854f9044",
+          "destination_dir": "/workspace/ComfyUI/models/loras",
+          "licence": "mit (HF card declaration; base-model terms remain separate)",
+          "provenance": "2026-10-05 public HF API LFS sha256 and pinned resolve HEAD302 agree; no model bytes fetched."
+        }
+      ],
+      "custom_nodes": [
+        {
+          "name": "ComfyUI-Easy-Use",
+          "git_url": "https://github.com/yolain/ComfyUI-Easy-Use.git",
+          "git_ref": "070001b36be2bbdfcf766b6a2d6f14c36cb62906",
+          "licence": "GPL-3.0",
+          "provenance": "Module07 node144 properties.ver; GitHub commit and licence API at this exact revision verified2026-10-05."
+        },
+        {
+          "name": "ComfyUI_LayerStyle",
+          "git_url": "https://github.com/chflame163/ComfyUI_LayerStyle.git",
+          "git_ref": "3d53de09d8c1fb904d5cb0a137b9bc75e9d77108",
+          "licence": "MIT",
+          "provenance": "Module07 node143 properties.ver; GitHub commit and licence API at this exact revision verified2026-10-05."
+        }
+      ]
+    },
     "dataset_tensor": {
       "_note": "R1 module04 bf16 file + fp8_e4m3fn loader; module10 effective graph. Public HF HEAD metadata verified 2026-10-05 for bf16, qwen_3_8b, bfs_head (no weights downloaded). Klein9B SHA is installer-stated; revision from public HF model metadata. Its unauthenticated HEAD returns 401: gated access/file verification remains a live prerequisite, not offline proof. lumina2 retained pending smoke. Existing pins reused for unchanged files and node dependencies.",
       "models": [

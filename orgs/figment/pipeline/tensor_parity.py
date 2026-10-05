@@ -467,3 +467,161 @@ def check_tester(workflow, manifest, prompt=None):
     if texts and (len(set(texts)) != 1 or not isinstance(texts[0], str) or not texts[0].strip()):
         problems.append("tester: all checkpoints require one nonempty scene prompt")
     return problems
+
+
+# Module07: U12 chooses the official installer fp8 model; U13 replaces the
+# saved unrelated slider with the installer's head-swap LoRA at transcript1.0.
+EDIT_GRAPH = PACKAGE_ROOT / "07_editing_images" / "10sorlabs_image_edit_workflow.json"
+EDIT_GRAPH_SHA256 = "0d99bee74c93802d9537cafaa8b80e3ab46df9c2313fc02c60ea9feab3b2905b"
+EDIT_INSTALLER_SHA256 = "458d1768ede819a441b5405cae47804102800502ef083cdf3d7dd570c70d3d5d"
+EDIT_WORKFLOW = HERE / "train" / "workflows" / "tensor_edit_m07_api.json"
+EDIT_LEDGER = {
+    "126": "Inline prompt primitive into113.text; caller binds exact approved text",
+    "145": "Singleton UI switch:143 output3 is effective width",
+    "146": "Singleton UI switch:143 output4 is effective height",
+    "165,167,170,171": "Disconnected notes, not executable nodes",
+    "104.unet_name": "U12 official installer fp8 weights",
+    "164.lora_name,strength_model": "U13 installer head-swap LoRA, transcript1.0",
+}
+# Public metadata receipts 2026-10-05; exact URLs in edit_tensor pin group.
+# Klein SHA is installer-stated, not a claim that gated weights were fetched.
+EDIT_MODEL_PINS = {
+    "flux-2-klein-9b-fp8.safetensors": (
+        "black-forest-labs/FLUX.2-klein-9b-fp8", "flux-2-klein-9b-fp8.safetensors",
+        "902d9d510b51533e07729f19211414a3648b77d2",
+        "865ba09f5b4c3cbd3468a4bd3acb9fcb2f8740c54317482f0bcd4ed1d3655cee", "diffusion_models"),
+    "qwen_3_8b_fp8mixed.safetensors": (
+        "Comfy-Org/vae-text-encorder-for-flux-klein-9b", "split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors",
+        "3f62d9d8ae1fec33c6e91453d5c712855b096b55",
+        "abad16806e0cbabc54e0325d6565847443fe396d5f0be38bb3cd3fe75a1201d6", "text_encoders"),
+    "flux2-vae.safetensors": (
+        "Comfy-Org/flux2-dev", "split_files/vae/flux2-vae.safetensors",
+        "ed33133cd56476eac818c0943b6f9419b3e4a3a1",
+        "d64f3a68e1cc4f9f4e29b6e0da38a0204fe9a49f2d4053f0ec1fa1ca02f9c4b5", "vae"),
+    "bfs_head_v1_flux-klein_9b_step3500_rank128.safetensors": (
+        "Alissonerdx/BFS-Best-Face-Swap", "bfs_head_v1_flux-klein_9b_step3500_rank128.safetensors",
+        "0ca3913ade4b4ada458d60c232354e8586c4c181",
+        "70d8aaf332d710b905d5085afaa87c3ef577edffd54ffcfadeb8c47a854f9044", "loras"),
+}
+EDIT_NODE_PINS = {
+    "https://github.com/yolain/ComfyUI-Easy-Use": "070001b36be2bbdfcf766b6a2d6f14c36cb62906",
+    "https://github.com/chflame163/ComfyUI_LayerStyle": "3d53de09d8c1fb904d5cb0a137b9bc75e9d77108",
+}
+
+
+def edit_workflow():
+    """Derive executable edges from the hash-bound UI graph, retaining easy int."""
+    graph = _source(EDIT_GRAPH, EDIT_GRAPH_SHA256)
+    _read_verified(EDIT_GRAPH.parent / "image_edit_models.bat", EDIT_INSTALLER_SHA256)
+    nodes = {str(n["id"]): n for n in graph["nodes"]}
+    links = {edge[0]: edge for edge in graph["links"]}
+    result = {}
+
+    def edge(link):
+        _, source, slot, *_ = links[link]
+        source = str(source)
+        if source == "126":
+            return "__EDIT_PROMPT__"
+        if source in {"145", "146"}:
+            incoming = [i["link"] for i in nodes[source]["inputs"] if i.get("link") is not None]
+            if len(incoming) != 1:
+                raise ParityError(f"edit switch {source} is not a singleton")
+            return edge(incoming[0])
+        visit(source)
+        return [source, slot]
+
+    def visit(node_id):
+        if node_id in result:
+            return
+        node = nodes[node_id]
+        inputs = _widget_values(node)
+        for item in node["inputs"]:
+            if item.get("link") is not None:
+                inputs[item["name"]] = edge(item["link"])
+        if node_id in {"76", "169"}:
+            inputs.pop("upload")
+            inputs["image"] = "__BASE_IMAGE__" if node_id == "76" else "__IDENTITY_IMAGE__"
+        if node_id == "104":
+            inputs["unet_name"] = "flux-2-klein-9b-fp8.safetensors"
+        if node_id == "164":
+            inputs.update(lora_name="bfs_head_v1_flux-klein_9b_step3500_rank128.safetensors", strength_model=1.0)
+        result[node_id] = {"class_type": node["type"], "inputs": inputs}
+
+    visit("163")
+    return result
+
+
+def _edit_pin_problems(manifest):
+    problems = []
+    models = manifest.get("models", [])
+    names = [PurePosixPath(str(m.get("filename", ""))).name for m in models]
+    if len(names) != len(set(names)) or set(names) != set(EDIT_MODEL_PINS):
+        problems.append("edit models: expected exact four files without duplicate basenames")
+    for name, model in zip(names, models):
+        wanted = EDIT_MODEL_PINS.get(name)
+        if wanted is None:
+            continue
+        actual = tuple(model.get(k) for k in ("repo_id", "filename", "revision", "sha256", "destination_dir"))
+        expected = (*wanted[:4], "/workspace/ComfyUI/models/" + wanted[4])
+        if actual != expected:
+            problems.append(f"edit model {name}: immutable source pin mismatch")
+        if "pickle_ack" in model:
+            problems.append(f"edit model {name}: pickle hatch not permitted")
+    rows = manifest.get("custom_nodes", [])
+    actual_nodes = {}
+    for row in rows:
+        url = row.get("git_url", "").removesuffix(".git")
+        pin = row.get("git_ref", row.get("installer_pin"))
+        if row.get("installer_pin", pin) != pin:
+            problems.append("edit custom nodes: conflicting pin aliases")
+        actual_nodes[url] = pin
+    if len(rows) != len(actual_nodes) or actual_nodes != EDIT_NODE_PINS:
+        problems.append("edit custom nodes: source-declared immutable dependency mapping differs")
+    return problems
+
+
+def edit_readiness_problems(manifest):
+    """Offline dependency integrity only; live HEAD/access checks remain mandatory.
+
+    A clear return does not prove runtime compatibility, gated model access, or
+    production approval. Caller must still enforce its live preflight/fixture gate.
+    """
+    problems = _edit_pin_problems(manifest)
+    if manifest.get("fixture") or manifest.get("synthetic") or manifest.get("fixture_only"):
+        problems.append("edit fixture/synthetic evidence is not production readiness")
+    return problems
+
+
+def check_edit(workflow, manifest, *, prompt=None, base_image=None, identity_image=None):
+    """Check frozen request bindings and every effective module07 graph field."""
+    expected = edit_workflow()
+    for node, field, value in (("113", "text", prompt), ("76", "image", base_image), ("169", "image", identity_image)):
+        if value is not None:
+            expected[node]["inputs"][field] = value
+    mutable = {("103", "noise_seed"), ("163", "filename_prefix")}
+    problems = _compare_export(workflow, expected, mutable) + _edit_pin_problems(manifest)
+    for node, field in (("113", "text"), ("76", "image"), ("169", "image")):
+        value = workflow.get(node, {}).get("inputs", {}).get(field)
+        if not isinstance(value, str) or not value.strip():
+            problems.append(f"edit node {node}.{field}: nonempty request binding required")
+    base = workflow.get("76", {}).get("inputs", {}).get("image")
+    identity = workflow.get("169", {}).get("inputs", {}).get("image")
+    if isinstance(base, str) and isinstance(identity, str) and base.casefold() == identity.casefold():
+        problems.append("edit images: base and identity require distinct bindings")
+    if manifest.get("seed_fields") != ["noise_seed"]:
+        problems.append("edit seed_fields: require noise_seed only")
+    jobs = manifest.get("jobs", [])
+    if not jobs:
+        problems.append("edit jobs: at least one job required")
+    for index, job in enumerate(jobs):
+        subs = {(str(s.get("node_id")), s.get("field")): s.get("value") for s in job.get("substitutions", [])}
+        if len(subs) != len(job.get("substitutions", [])) or set(subs) - mutable:
+            problems.append(f"edit job {index}: unsupported or duplicate substitution")
+        if job.get("expected_images") != 1:
+            problems.append(f"edit job {index}: require exactly one output image")
+        seed = job.get("seed")
+        if type(seed) is not int or not 0 <= seed <= 2**64 - 1:
+            problems.append(f"edit job {index}: invalid seed")
+        if ("103", "noise_seed") in subs and subs[("103", "noise_seed")] != seed:
+            problems.append(f"edit job {index}: substituted seed differs from job seed")
+    return problems

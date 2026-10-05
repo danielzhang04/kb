@@ -89,13 +89,15 @@ VIDEO_FRAME_SAMPLE_EVERY = 8
 # configured_ledger_dir() so they cannot silently bind this worktree-local fallback.
 LEDGER_DIR = ROOT / "ledgers" / "cost"
 ARC_LEDGER_GLOB = "figment-*.tsv"
-STAGES = ("anchor", "dataset", "smoke", "train", "tester", "gen", "detail", "video")
+CLEAN_STAGES = ("anchor", "dataset", "smoke", "train", "tester", "gen", "detail", "video")
+TENSOR_STAGES = ("anchor", "dataset", "smoke", "train", "tester", "gen", "edit", "video")
+STAGES = (*CLEAN_STAGES[:-1], "edit", "video")
 # Track-2 Task D2 (review H3): the one, single source of truth for "which stages have a
 # grading board" -- `build_grade`, `apply_rulings`, and `command_gate` each used to carry
 # their own local tuple, so widening one and not the others silently reopened the exact
 # gap H3 first closed for "anchor". "gen"/"detail"/"video" are gradeable; "smoke"/"train"
 # never are (no per-cell operator ruling makes sense for either).
-GRADEABLE_STAGES = ("anchor", "dataset", "tester", "gen", "detail", "video")
+GRADEABLE_STAGES = ("anchor", "dataset", "tester", "gen", "detail", "edit", "video")
 # m5/F6a: `pipeline --from-stage` may name any stage the driver actually runs itself,
 # which since F6a includes "video" -- `command_pipeline`'s own loop plans and runs it
 # exactly like every other stage. Naming `--from-stage video` still never jumps
@@ -3432,6 +3434,228 @@ def _plan_video_manifest(
     }, manifest_path
 
 
+def _tensor_edit_module():
+    return _load_module("_figment_tensor_edit", HERE / "tensor_edit.py")
+
+
+def _historical_anchor_approval(plan, root, *, reads=None):
+    """Verify the original settled passport approval without reinterpreting training.
+
+    Registration remains valid when later training settings change. Every original
+    plan, manifest, output, numeric gate, ruling and transition remains hash-bound.
+    The edit adapter separately checks the currently registered passport bytes.
+    """
+    lineage = _lineage_module()
+    grade = root / "grade/anchor"
+    approval = _read_json(grade / "approval-lineage.json", reads=reads)
+    evaluation = _read_json(grade / "evaluation-inputs.json", reads=reads)
+    grading = _read_json(grade / "grading-manifest.json", reads=reads)
+    if (approval.get("schema") != lineage.APPROVAL_SCHEMA
+            or approval.get("creator") != plan["creator"] or approval.get("stage") != "anchor"
+            or approval.get("decision") != "verified"):
+        raise FigmentTrainError("original passport approval is invalid")
+    settled = approval.get("subject", {})
+    reviewed = approval.get("reviewed_subject", {})
+    transition = approval.get("transition", {})
+    if (not isinstance(settled, dict) or not isinstance(reviewed, dict)
+            or evaluation.get("schema") != lineage.EVALUATION_SCHEMA
+            or evaluation.get("subject") != reviewed
+            or lineage.canonical_sha256(reviewed) != approval.get("reviewed_subject_sha256")
+            or evaluation.get("subject_sha256") != approval.get("reviewed_subject_sha256")
+            or transition != {"kind": "anchor-promotion", "requires_replan": True,
+                "from_subject_sha256": approval.get("reviewed_subject_sha256"),
+                "to_subject_sha256": approval.get("subject_sha256")}):
+        raise FigmentTrainError("original passport promotion transition is invalid")
+    before, after = deepcopy(reviewed), deepcopy(settled)
+    before_identity = before.get("persona", {}).get("identity", {})
+    after_identity = after.get("persona", {}).get("identity", {})
+    if (after_identity.get("history", []) != before_identity.get("history", []) + before_identity.get("references", [])
+            or len(after_identity.get("references", [])) != 1):
+        raise FigmentTrainError("original passport identity transition is invalid")
+    for value in (before_identity, after_identity):
+        value.pop("references", None)
+        value.pop("history", None)
+    if before != after:
+        raise FigmentTrainError("passport promotion changed unrelated reviewed inputs")
+    try:
+        current = lineage.review_subject(creator=plan["creator"], stage="anchor",
+            plan_path=root / "plan.json",
+            manifest_paths=[root / run["manifest"] for run in plan["stages"]["anchor"]["runs"]],
+            images=grading["images"], anchors=[root / name for name in plan["assets"]["anchors"]],
+            persona=settled["persona"], training=settled["training"],
+            threshold_path=HERE / "gate.yaml", score_path=grade / "gate.json", reads=reads)
+        # Original numeric gate/evaluation bytes above retain their reviewed thresholds.
+        # Later calibration changes govern new edit grading, not historical registration.
+        current["thresholds"] = settled["thresholds"]
+        lineage.assert_current(approval, current, label="original passport registration")
+    except (KeyError, ValueError, OSError) as exc:
+        raise FigmentTrainError(f"original passport evidence changed: {exc}") from exc
+    if evaluation.get("gate_sha256") not in (None, _sha256(grade / "gate.json", reads=reads)):
+        raise FigmentTrainError("original passport numeric gate changed")
+    return approval
+
+
+def _validate_registered_passport(creator, persona, source_plan, image_id):
+    edit = _tensor_edit_module()
+    try:
+        return edit.registered_passport_authority(creator, persona, source_plan, image_id,
+            validated_anchor=lambda c, p, i: _validate_approved_still(c, p, i, "anchor", historical_anchor=True))
+    except (OSError, ValueError, KeyError) as exc:
+        raise FigmentTrainError(f"passport authority refused: {exc}") from exc
+
+
+def _resolve_edit_request(creator, persona, request):
+    def resolve(kind, source, image_id):
+        if kind == "passport":
+            return _validate_registered_passport(creator, persona, source, image_id)
+        approved = validate_approved_gen_still(creator, source, image_id)
+        def recheck():
+            for field in ("source_plan", "approval_lineage", "approved_list"):
+                evidence = approved[field]
+                if _sha256(Path(evidence["path"])) != evidence["sha256"]:
+                    raise FigmentTrainError("approved gen authority changed while resolving edit identity")
+        recheck()
+        source_plan = _read_json(source)
+        recheck()
+        if validate_approved_gen_still(creator, source, image_id) != approved:
+            raise FigmentTrainError("approved gen authority changed while resolving edit identity")
+        return {"kind": "approved-gen", "image": approved,
+                "fixture": source_plan.get("fixture") is True,
+                "source_plan": approved["source_plan"], "approval_lineage": approved["approval_lineage"]}
+    try:
+        return _tensor_edit_module().read_request(request, creator, resolve_identity=resolve)
+    except (OSError, ValueError, KeyError) as exc:
+        raise FigmentTrainError(f"edit request refused: {exc}") from exc
+
+
+def _build_edit_plan(creator, out, request, *, personas_root, skip_pin_verify, ledger_dir, accept_budget):
+    if request is None:
+        raise FigmentTrainError("edit requires --edit-request with an approved image pair and exact prompt")
+    persona, training, pins = _load_inputs(creator, Path(personas_root))
+    persona = {**persona, "_persona_path": str(Path(personas_root) / creator / "persona.yaml")}
+    if training["recipe_profile"] != "tensor":
+        raise FigmentTrainError("edit is available only in the tensor profile")
+    _identity_gate_module().load_thresholds(persona)
+    frozen = _resolve_edit_request(creator, persona, request)
+    # Grade against the registered passport even when image2 is an accepted gen still.
+    if not persona["identity"]["references"]:
+        raise FigmentTrainError("edit requires a registered passport")
+    _stage_pin_groups(pins, training, "edit")
+    if not skip_pin_verify:
+        _verify_pins_preflight(pins, ["edit"], training)
+    out = Path(out).resolve()
+    if out.exists() and any(out.iterdir()):
+        raise FigmentTrainError(f"plan output directory must be empty: {out}")
+    workflow = _read_json(HERE / "train/workflows/tensor_edit_m07_api.json")
+    base_name = f"{creator}/{Path(frozen['base']['path']).name}"
+    identity_name = f"{creator}/{Path(frozen['identity']['path']).name}"
+    workflow["76"]["inputs"]["image"] = base_name
+    workflow["169"]["inputs"]["image"] = identity_name
+    workflow["113"]["inputs"]["text"] = frozen["prompt"]["text"]
+    output_name = f"{_creator_output_code(creator)}-edit-{frozen['job_type']}"
+    workflow["163"]["inputs"]["filename_prefix"] = output_name
+    group = pins["pins"]["edit_tensor"]
+    manifest = {**_pod_base(pins, training["pod_class"], "edit_tensor"),
+        "models": deepcopy(group["models"]), "custom_nodes": deepcopy(group["custom_nodes"]),
+        "workflow": "../workflows/tensor_edit_m07_api.json", "seed_fields": ["noise_seed"],
+        "uploads": [{"files": [f"_uploads/{name}" for name in (base_name, identity_name)],
+                     "subfolder": creator, "type": "input", "overwrite": True}],
+        "jobs": [{"seed": 1058272840145291, "output_name": output_name, "expected_images": 1,
+                  "substitutions": []}]}
+    errors = _tensor_parity_module().check_edit(workflow, manifest, prompt=frozen["prompt"]["text"],
+                                               base_image=base_name, identity_image=identity_name)
+    if errors:
+        raise FigmentTrainError("tensor edit parity failed: " + "; ".join(errors))
+    # Validation above deliberately precedes the first plan artifact write.
+    out.mkdir(parents=True, exist_ok=True)
+    assets = {"anchors": _copy_anchors(out, persona), "persona_dir": _persona_dir_asset(persona)}
+    assets["tensor_passport"] = _tensor_passport_binding(out, persona, assets["anchors"])
+    copies = {}
+    for role in ("base", "identity"):
+        source = Path(frozen[role]["path"])
+        destination = out / "train/runs/_uploads" / creator / source.name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+        if _sha256(destination) != frozen[role]["sha256"]:
+            raise FigmentTrainError("edit input changed while staging")
+        copies[role] = _relative(destination, out)
+    assets["edit_images"] = copies
+    workflow_path = out / "train/workflows/tensor_edit_m07_api.json"
+    _write_json(workflow_path, workflow)
+    manifest_path = out / "train/runs" / f"{creator}-tensor-edit.yaml"
+    _write_json(manifest_path, manifest)
+    resolved_ledger = _resolved_ledger_dir(ledger_dir)
+    run = _planned_run(out, manifest_path, _stage_run_root(out, "edit") / manifest_path.stem,
+                       ledger_dir=resolved_ledger)
+    run["workflow_sha256"] = _sha256(workflow_path)
+    stages = {"edit": {"runs": [run]}}
+    budget = _budget_preflight(stages, ledger_dir=resolved_ledger, arc_cap_usd=_arc_cap_usd(), accept_budget=accept_budget)
+    plan = {"schema": "figment/train-plan@1", "creator": creator, "fixture": frozen["fixture"],
+        "generated_utc": datetime.now(timezone.utc).isoformat(), "generator": _sha256(Path(__file__)),
+        "persona_sha256": _sha256(Path(persona["_persona_path"])), "training": training,
+        "assets": assets, "configs": {}, "ledger_dir": str(resolved_ledger), "arc_cap_usd": _arc_cap_usd(),
+        "arc_ledger_glob": ARC_LEDGER_GLOB, "budget_preflight": budget, "stages": stages,
+        "edit_inputs": frozen}
+    _write_json(out / "plan.json", plan)
+    _edit_preview(plan, out, out / "edit-inputs.html")
+    return plan
+
+
+EDIT_TRAINING_KEYS = ("recipe_profile", "pod_class", "price_ceiling_usd_per_hour")
+
+
+def _validate_edit_inputs(plan, root, *, launch=False):
+    persona, training = _current_persona_training(plan)
+    if training.get("recipe_profile") != "tensor" or any(
+            training.get(key) != plan["training"].get(key) for key in EDIT_TRAINING_KEYS):
+        raise FigmentTrainError("edit profile or pod settings changed after planning")
+    frozen = plan.get("edit_inputs", {})
+    current = _resolve_edit_request(plan["creator"], persona, frozen.get("request", {}).get("path"))
+    if current != frozen or plan.get("fixture") is not frozen.get("fixture"):
+        raise FigmentTrainError("edit source inputs or authority changed after planning")
+    for role in ("base", "identity"):
+        path = root / plan["assets"]["edit_images"][role]
+        try:
+            path.resolve().relative_to(root.resolve())
+            actual = _tensor_edit_module().file_binding({"path": str(path), "sha256": frozen[role]["sha256"]}, root, image=True)
+        except (ValueError, OSError) as exc:
+            raise FigmentTrainError(f"edit staged {role} changed: {exc}") from exc
+        if actual["bytes"] != frozen[role]["bytes"]:
+            raise FigmentTrainError("edit staged input size changed")
+    for run in plan["stages"]["edit"]["runs"]:
+        manifest_path = root / run["manifest"]
+        manifest = _read_json(manifest_path)
+        workflow_path = manifest_path.parent / manifest["workflow"]
+        if _sha256(manifest_path) != run["sha256"] or _sha256(workflow_path) != run["workflow_sha256"]:
+            raise FigmentTrainError("edit manifest or workflow changed after planning")
+        errors = _tensor_parity_module().check_edit(_read_json(workflow_path), manifest,
+            prompt=frozen["prompt"]["text"], base_image=f"{plan['creator']}/{Path(frozen['base']['path']).name}",
+            identity_image=f"{plan['creator']}/{Path(frozen['identity']['path']).name}")
+        if errors:
+            raise FigmentTrainError("edit parity refused: " + "; ".join(errors))
+        if launch:
+            if frozen["fixture"]:
+                raise FigmentTrainError("synthetic fixture edit is dry-run only; cannot launch")
+            problems = _tensor_parity_module().edit_readiness_problems(manifest)
+            if problems:
+                raise FigmentTrainError("edit readiness blocked: " + "; ".join(problems))
+            # Offline plan verification never grants live model access, including gated Klein.
+            _verify_pins_preflight(_read_json(PINS_PATH), ["edit"], plan["training"])
+    return current
+
+
+def _edit_preview(plan, root, path):
+    inputs = plan["edit_inputs"]
+    rows = []
+    for role, label in (("base", "BASE / image1 / node76"), ("identity", "IDENTITY / image2 / node169")):
+        image = (root / plan["assets"]["edit_images"][role]).resolve().as_uri()
+        rows.append(f'<figure><figcaption>{label}</figcaption><img width="320" src="{html.escape(image)}"></figure>')
+    path.write_text('<!doctype html><meta charset="utf-8"><title>Edit input review</title>'
+        + '<h1>Edit input review</h1>' + ''.join(rows) + '<pre>'
+        + html.escape(inputs["prompt"]["text"]) + '</pre><p>Fixture: '
+        + str(inputs["fixture"]).lower() + '</p>', encoding="utf-8")
+
+
 def build_plan(
     creator_id: str,
     stage: str,
@@ -3452,6 +3676,7 @@ def build_plan(
     gen_detailer_denoise: float | None = None,
     import_checkpoints: Path | None = None,
     import_training_config: Path | None = None,
+    edit_request: Path | None = None,
 ) -> dict[str, Any]:
     """Generate a complete, immutable plan without touching the hand-written runs.
 
@@ -3501,6 +3726,15 @@ def build_plan(
     candidate rebuild and `content/content_asset_binding.py`'s slot join already share.
     Its output root must therefore be inside this repository (`_video_authority_root`).
     """
+    if edit_request is not None and stage != "edit":
+        raise FigmentTrainError("--edit-request is only meaningful for --stage edit")
+    if stage == "edit":
+        if any(value is not None for value in (detail_images, approved_gen_plan, approved_gen_image_id,
+                video_action, style_lora, style_lora_strength, gen_prompt_style, gen_refine_denoise,
+                gen_detailer_denoise, import_checkpoints, import_training_config)):
+            raise FigmentTrainError("edit accepts only its explicit request, not other stage overrides")
+        return _build_edit_plan(creator_id, out, edit_request, personas_root=personas_root,
+            skip_pin_verify=skip_pin_verify, ledger_dir=ledger_dir, accept_budget=accept_budget)
     if stage not in (*STAGES, "all"):
         raise FigmentTrainError(f"unknown stage {stage!r}")
     if detail_images is not None and stage not in ("gen", "all"):
@@ -3609,7 +3843,7 @@ def build_plan(
                     "strength": upstream_training.get("style_lora_strength"),
                 }
 
-    selected = list(STAGES if stage == "all" else (stage,))
+    selected = list((TENSOR_STAGES if tensor else CLEAN_STAGES) if stage == "all" else (stage,))
     if persona["identity"].get("history") and "anchor" in selected:
         if stage != "all":
             raise FigmentTrainError(
@@ -3622,7 +3856,7 @@ def build_plan(
     # "detail" and "video" (F2/F6) are likewise always planned explicitly, by name,
     # each pointed at an already-approved upstream stage's output -- neither can be
     # known at `--stage all` planning time.
-    for _later_stage in ("gen", "detail", "video"):
+    for _later_stage in ("gen", "detail", "edit", "video"):
         if stage == "all" and _later_stage in selected:
             selected.remove(_later_stage)
     if pre_passport:
@@ -4494,6 +4728,10 @@ def _validate_video_source_inputs(plan: dict[str, Any], root: Path, *, reads=Non
 
 
 def _install_stage_config(stage: str, plan: dict[str, Any], root: Path) -> None:
+    if stage == "edit":
+        _validate_tensor_passport_inputs(plan, root)
+        _validate_edit_inputs(plan, root, launch=True)
+        return
     if plan.get("training", {}).get("recipe_profile") == "tensor":
         training = plan["training"]
         if stage != "anchor":
@@ -5846,6 +6084,8 @@ def _current_persona_training(
 def _current_review_subject(
     plan: dict[str, Any], root: Path, stage: str, grading: dict[str, Any], *, reads=None,
 ) -> dict[str, Any]:
+    if stage == "edit" and reads is not None:
+        raise FigmentTrainError("edit authority does not yet support an observed reads context")
     persona, training = _current_persona_training(plan, reads=reads)
     if stage != "anchor" and plan.get("training", {}).get("recipe_profile") == "tensor":
         _validate_tensor_passport_inputs(plan, root, persona=persona, reads=reads)
@@ -5873,8 +6113,12 @@ def _current_review_subject(
                 }
                 for run in plan["stages"][stage]["runs"]
             ]
+    edit_inputs = _validate_edit_inputs(plan, root) if stage == "edit" else None
+    if stage == "edit":
+        training = {key: training.get(key) for key in EDIT_TRAINING_KEYS}
+        persona = {**persona, "training": training}
     try:
-        return _lineage_module().review_subject(
+        subject = _lineage_module().review_subject(
             creator=plan["creator"], stage=stage, plan_path=root / "plan.json",
             manifest_paths=manifest_paths, images=grading["images"], anchors=anchors,
             persona=persona, training=training, threshold_path=HERE / "gate.yaml",
@@ -5882,6 +6126,9 @@ def _current_review_subject(
             checkpoint_inputs=checkpoint_inputs,
             reads=reads,
         )
+        if edit_inputs is not None:
+            subject["edit_inputs"] = edit_inputs
+        return subject
     except (OSError, ValueError) as exc:
         raise FigmentTrainError(f"cannot establish {stage} review lineage: {exc}") from exc
 
@@ -5944,6 +6191,7 @@ def _load_current_approval(
 
 def _validate_approved_still(
     creator_id: str, plan_path: Path, image_id: str, stage: str, *, reads=None,
+    historical_anchor: bool = False,
 ) -> dict[str, Any]:
     """Return one current, kept `stage` still without changing any Figment record.
 
@@ -5979,7 +6227,12 @@ def _validate_approved_still(
     plan, loaded_root = (_load_plan(creator_id, resolved_plan) if reads is None else _load_plan(creator_id, resolved_plan, reads=reads))
     if loaded_root != root:
         raise FigmentTrainError(f"approved {stage} plan root changed while loading")
-    approval = (_load_current_approval(plan, root, stage) if reads is None else _load_current_approval(plan, root, stage, reads=reads))
+    if historical_anchor:
+        if stage != "anchor":
+            raise FigmentTrainError("historical identity authority is anchor-only")
+        approval = _historical_anchor_approval(plan, root, reads=reads)
+    else:
+        approval = (_load_current_approval(plan, root, stage) if reads is None else _load_current_approval(plan, root, stage, reads=reads))
     if (approval.get("creator") != creator_id or approval.get("stage") != stage
             or approval.get("decision") != "verified"):
         raise FigmentTrainError(f"{stage} approval lineage does not authorize this creator/stage")
@@ -6077,6 +6330,8 @@ def _validate_approved_still(
         raise FigmentTrainError(f"{stage} approval evidence changed while validating") from exc
     return {
         "image_id": image_id, "path": str(resolved), "bytes": bytes_seen, "sha256": digest,
+        **({"rulings": {"path": str(rulings_path), "sha256": initial_digests["rulings"]},
+            "fixture": plan.get("fixture") is True} if historical_anchor else {}),
         "source_plan": {"path": str(resolved_plan), "sha256": initial_digests["source_plan"]},
         "approval_lineage": {
             "path": str(reads.resolve(approval_path)) if reads is not None else str(approval_path.resolve()),
@@ -6103,6 +6358,27 @@ def validate_approved_detail_still(
     by the deliverable (B1) so a crafted `detail/grade/approved-list.json` row (an
     out-of-root path, a gate-failed or unruled image) is refused rather than shipped."""
     return _validate_approved_still(creator_id, plan_path, image_id, "detail", reads=reads)
+
+
+def validate_approved_edit_still(creator_id, plan_path, image_id, *, driving_clip_sha256=None):
+    approved = _validate_approved_still(creator_id, plan_path, image_id, "edit")
+    def recheck():
+        for field in ("source_plan", "approval_lineage", "approved_list"):
+            evidence = approved[field]
+            if _sha256(Path(evidence["path"])) != evidence["sha256"]:
+                raise FigmentTrainError("accepted edit authority changed while validating")
+        if _sha256(Path(approved["path"])) != approved["sha256"]:
+            raise FigmentTrainError("accepted edit bytes changed while validating")
+    recheck()
+    plan, root = _load_plan(creator_id, plan_path)
+    inputs = _validate_edit_inputs(plan, root)
+    if driving_clip_sha256 is not None:
+        if (inputs["job_type"] != "start-frame-head-swap"
+                or inputs.get("frame_source", {}).get("frame_index") != 0
+                or inputs.get("frame_source", {}).get("clip", {}).get("sha256") != driving_clip_sha256):
+            raise FigmentTrainError("accepted edit is not the exact driving-clip frame0 head swap")
+    recheck()
+    return {**approved, "edit_inputs": inputs, "fixture": inputs["fixture"]}
 
 
 def _run_identity_gate(
@@ -6162,6 +6438,8 @@ def build_grade(
     if stage not in GRADEABLE_STAGES:
         raise FigmentTrainError(f"grade stage must be one of {GRADEABLE_STAGES}")
     plan, root = _load_plan(creator_id, plan_path)
+    if stage == "edit":
+        _validate_edit_inputs(plan, root)
     if stage != "anchor" and plan.get("training", {}).get("recipe_profile") == "tensor":
         _validate_tensor_passport_inputs(plan, root)
     anchors = [(root / value).resolve() for value in plan["assets"]["anchors"]]
@@ -6262,6 +6540,11 @@ def build_grade(
     page_path.write_text(
         _grading_html(creator_id, stage, anchors, images, advisory, gate_document), encoding="utf-8",
     )
+    if stage == "edit":
+        _edit_preview(plan, root, grade_dir / "edit-inputs.html")
+        page_path.write_text(page_path.read_text("utf-8").replace("<body>",
+            '<body><p><a href="edit-inputs.html">Review BASE/image1, IDENTITY/image2 and exact prompt</a></p>', 1),
+            encoding="utf-8")
     return {
         "page": str(page_path),
         "rulings_template": str(template_path),
@@ -6803,11 +7086,31 @@ def apply_rulings(
     approval_out = grade_dir / "approval-lineage.json"
     rejection_out = grade_dir / "rejection-lineage.json"
     accepted_checkpoint_out = grade_dir / "accepted-checkpoint.json"
+    if (stage == "edit" and approved_rows and rulings_out.is_file()
+            and _read_json(rulings_out) == normalized and approval_out.is_file()):
+        _load_current_approval(plan, root, stage)
+        for row in approved_rows:
+            validate_approved_edit_still(creator_id, root / "plan.json", row["image_id"])
+        return {"rulings": str(rulings_out), "review_manifest": str(review_out),
+                "approved_list": str(approved_out), "approval_lineage": str(approval_out)}
     if not approved_rows:
         if checkpoint_step is not None:
             raise FigmentTrainError("rulings approved no images")
         if any(r["decision"] != "cull" for r in normalized["rulings"]):
             raise FigmentTrainError("rulings approved no images")
+        if (stage == "edit" and rulings_out.is_file() and rejection_out.is_file()
+                and _read_json(rulings_out) == normalized and not approval_out.exists()):
+            rejection = _read_json(rejection_out)
+            if (rejection.get("decision") != "rejected" or rejection.get("creator") != creator_id
+                    or rejection.get("stage") != stage or rejection.get("rulings_sha256") != _sha256(rulings_out)):
+                raise FigmentTrainError("edit rejection evidence changed")
+            try:
+                _lineage_module().assert_current(rejection, _current_review_subject(plan, root, stage, grading),
+                                                  label="edit rejection")
+            except ValueError as exc:
+                raise FigmentTrainError(str(exc)) from exc
+            return {"rulings": str(rulings_out), "review_manifest": str(review_out),
+                    "rejection_lineage": str(rejection_out)}
         if (any(
             (
                 reads.file(path, required=False) is not None
@@ -7518,6 +7821,35 @@ def _build_deliverable(
     `pipeline` call -- gen's own approval-lineage sha is folded in alongside detail's
     so a gen re-ruling (a new kept set, even one that leaves detail's own digest
     unchanged) is never missed."""
+    primary_path = primary_root / "plan.json"
+    if primary_path.is_file():
+        primary = _read_json(primary_path)
+        if primary.get("training", {}).get("recipe_profile") == "tensor":
+            edit_root = primary_root if "edit" in primary.get("stages", {}) else _pipeline_downstream_root(primary_root, "edit")
+            approved_path = edit_root / "grade/edit/approved-list.json"
+            if not approved_path.is_file():
+                return None
+            approved = _read_json(approved_path)
+            rows = [validate_approved_edit_still(creator_id, edit_root / "plan.json", row["image_id"])
+                    for row in approved.get("images", [])]
+            if not rows:
+                return None
+            destination = primary_root / "deliverable"
+            destination.mkdir(parents=True, exist_ok=True)
+            result = {"schema": "figment/tensor-edit-deliverable@1", "creator": creator_id,
+                      "fixture": any(row["fixture"] for row in rows), "images": []}
+            for row in rows:
+                source = Path(row["path"])
+                copied = destination / source.name
+                shutil.copy2(source, copied)
+                if _sha256(copied) != row["sha256"]:
+                    raise FigmentTrainError("accepted edit changed while exporting deliverable")
+                result["images"].append({"image_id": row["image_id"], "path": str(copied),
+                    "sha256": row["sha256"], "approval_lineage": row["approval_lineage"],
+                    "edit_input_sha256": row["edit_inputs"]["input_sha256"],
+                    "job_type": row["edit_inputs"]["job_type"]})
+            _write_json(destination / "manifest.json", result)
+            return result
     detail_approval_path = detail_root / "grade" / "detail" / "approval-lineage.json"
     if not detail_approval_path.is_file():
         return None
@@ -7673,7 +8005,7 @@ def _dry_run_retry_preview(
     return None
 
 
-DOWNSTREAM_REPLAN_STAGES = ("gen", "detail", "video")
+DOWNSTREAM_REPLAN_STAGES = ("gen", "detail", "edit", "video")
 MAX_DOWNSTREAM_SUPERSESSIONS = 4
 
 
@@ -7920,13 +8252,21 @@ def command_pipeline(
         primary_root = Path(out).resolve()
         primary_plan_path = primary_root / "plan.json"
 
-    order = list(STAGES)
+    tensor = primary_plan.get("training", {}).get("recipe_profile") == "tensor"
+    order = list(TENSOR_STAGES if tensor else CLEAN_STAGES)
+    if set(primary_plan.get("stages", {})) == {"edit"}:
+        order = ["edit"]
     if from_stage is not None:
+        if from_stage not in order:
+            raise FigmentTrainError("requested stage is not in this profile's pipeline sequence")
         order = order[order.index(from_stage):]
 
     gen_root = _pipeline_downstream_root(primary_root, "gen")
     detail_root = _pipeline_downstream_root(primary_root, "detail")
     video_root = _pipeline_downstream_root(primary_root, "video")
+    edit_root = primary_root if "edit" in primary_plan.get("stages", {}) else _pipeline_downstream_root(primary_root, "edit")
+    if replan_downstream == "edit" and edit_root == primary_root:
+        raise FigmentTrainError("standalone edit is the primary plan; create a fresh edit plan to revise it")
 
     if replan_downstream is not None:
         if dry_run:
@@ -7939,7 +8279,7 @@ def command_pipeline(
             }
         _replan_downstream_stage(
             creator_id, primary_root, primary_plan_path,
-            {"gen": gen_root, "detail": detail_root, "video": video_root}[replan_downstream],
+            {"gen": gen_root, "detail": detail_root, "edit": edit_root, "video": video_root}[replan_downstream],
             replan_downstream, replan_downstream_reason,
         )
 
@@ -7964,6 +8304,12 @@ def command_pipeline(
             active_plan, active_root, active_plan_path = (
                 primary_plan, primary_root, primary_plan_path,
             )
+        elif stage == "edit":
+            if not (edit_root / "plan.json").is_file():
+                return {"status": "stopped:edit-not-planned",
+                        "message": "plan --stage edit --edit-request requires explicit current image authority"}
+            active_plan, active_root = _load_plan(creator_id, edit_root / "plan.json")
+            active_plan_path = edit_root / "plan.json"
         elif stage == "gen":
             if (gen_root / "plan.json").is_file():
                 active_plan, active_root = _load_plan(creator_id, gen_root / "plan.json")
@@ -8017,6 +8363,9 @@ def command_pipeline(
                 active_root = detail_root
             active_plan_path = detail_root / "plan.json"
         elif stage == "video":
+            if tensor:
+                return {"status": "stopped:tensor-video-not-planned",
+                        "message": "module08 requires the separately versioned accepted-edit source adapter"}
             deliverable = deliverable_path()
             if (video_root / "plan.json").is_file():
                 active_plan, active_root = _load_plan(creator_id, video_root / "plan.json")
@@ -8126,9 +8475,10 @@ def command_pipeline(
     # branch above falls through without returning, same as every other already-
     # ruled stage. This is that terminal return, now for "video" instead of the
     # removed dead `"complete:detail"` one.
+    standalone_edit = set(primary_plan.get("stages", {})) == {"edit"}
     return {
-        "status": "complete:video",
-        "message": "pipeline complete through video",
+        "status": "complete:edit" if standalone_edit else "complete:video",
+        "message": "standalone edit approved" if standalone_edit else "pipeline complete through video",
         "deliverable": deliverable_path(),
     }
 
@@ -8159,6 +8509,8 @@ def build_parser() -> argparse.ArgumentParser:
              "its grade/gen/approved-list.json is re-detailed; with --stage video one "
              "of them becomes the I2V first frame",
     )
+    plan.add_argument("--edit-request", type=Path, default=None,
+                      help="tensor edit only: exact image pair, original identity authority and approved prompt")
     plan.add_argument(
         "--approved-gen-image-id", default=None,
         help="--stage video only: which kept gen still becomes the first frame "
@@ -8461,6 +8813,7 @@ def main(argv: list[str] | None = None) -> int:
             result = build_plan(
                 args.creator, args.stage, args.out, skip_pin_verify=args.skip_pin_verify,
                 detail_images=args.detail_images, approved_gen_plan=args.approved_gen_plan,
+                edit_request=args.edit_request,
                 approved_gen_image_id=args.approved_gen_image_id,
                 video_action=args.video_action, ledger_dir=args.ledger_dir,
                 accept_budget=args.accept_budget,

@@ -1,3 +1,9 @@
+## Module07 edit stage
+
+Module07 is an explicit tensor edit stage after an approved identity source. It uses its own approved BFS swap LoRA, so standalone passport editing does not depend on the persona checkpoint, body dataset or tester prompt. Graph parity retains four reference-latent nodes, the 1536 longest-side size, four scheduler steps and CFG1. Node76 receives the base; node169 receives the accepted identity.
+
+Plans bind the exact request/prompt and both source/staged image hashes, with original passport or accepted gen approval. Existing numeric grading, age holds, operator rulings and approval lineage remain authoritative. Fixture head-swap receipts bind clip/frame0 bytes but do not assert trusted extraction or semantic model success; they cannot become live runs. The official Klein9B gated HEAD verification limitation remains; no skip-pin-verification shortcut grants execution.
+
 # Tensor track — 10sorLabs module 11 on our harness
 
 ## Current tensor baseline (2026-10-05)
