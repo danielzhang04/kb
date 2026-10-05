@@ -300,7 +300,9 @@ def test_identity_look_age_numeral_rejected(tmp_path):
 def test_pre_passport_persona_may_have_no_references_until_a_promotion():
     creator003 = PERSONA.parents[1] / "creator-003" / "persona.yaml"
     persona = load_persona(creator003)
-    assert persona["identity"]["references"] == []
+    persona["identity"]["references"] = []
+    persona["identity"]["history"] = []
+    validate_persona(persona, base_dir=creator003.parent)
     persona["identity"]["history"] = ["anchors/old.png"]
     with pytest.raises(PersonaError, match="must not be empty once an anchor"):
         validate_persona(persona, base_dir=creator003.parent)

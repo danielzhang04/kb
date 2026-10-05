@@ -6,7 +6,9 @@
     "profile_label": "required"
   },
   "identity": {
-    "references": [],
+    "references": [
+      "anchors/passport.png"
+    ],
     "look": {
       "age_stage": "an adult woman in her early twenties",
       "hair": "long, straight platinum blonde hair",
@@ -34,7 +36,8 @@
         "calibration_set_sha": null,
         "locked_by_gate": null
       }
-    }
+    },
+    "history": []
   },
   "body_target": {
     "source": "identity-spec#body",

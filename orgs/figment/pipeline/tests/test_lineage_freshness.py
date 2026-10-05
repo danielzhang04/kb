@@ -32,6 +32,10 @@ gen_helpers = load_module(
 )
 
 
+# Freshness tests exercise real grading/rulings, never model downloads or inference.
+offline_fixture_models = train_helpers.offline_fixture_models
+
+
 @pytest.fixture(scope="module")
 def command():
     return load_module("figment_freshness_driver", PIPELINE / "figment_train.py")

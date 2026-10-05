@@ -49,6 +49,11 @@ _fake_stage_outputs = anchor_stage_test._fake_stage_outputs
 _axes = anchor_stage_test._axes
 load_json = anchor_stage_test.load_json
 
+# Explicit file-local fixture: preserve the full driver while isolating model seams.
+model_helpers = load_module("figment_pipeline_offline_models", PIPELINE / "tests" / "test_figment_train.py")
+offline_fixture_models = model_helpers.offline_fixture_models
+
+
 LEDGER_DAY = "2026-09-15"
 
 

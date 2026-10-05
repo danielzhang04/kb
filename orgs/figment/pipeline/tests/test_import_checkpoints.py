@@ -48,6 +48,10 @@ pipeline_command_test = load_module(
 )
 _install_fake_harness = pipeline_command_test._install_fake_harness
 
+# Same offline model boundary as the pipeline driver fixture, with real approval logic.
+offline_fixture_models = pipeline_command_test.offline_fixture_models
+
+
 TRIGGER = "creator003krea2"
 STEPS = 1250
 SAVE_EVERY = 250

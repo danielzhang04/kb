@@ -34,8 +34,8 @@ SIDECAR = {"steps": 600, "save_every": 200, "recipe_profile": "clean"}
 
 
 @pytest.mark.parametrize("inline,sidecar,steps,ambiguous", [
-    (MISSING, MISSING, 2000, False), (None, MISSING, 2000, False),
-    (MISSING, None, 2000, False), (None, None, 2000, False),
+    (MISSING, MISSING, 2000, False), (None, MISSING, 3000, False),
+    (MISSING, None, 3000, False), (None, None, 3000, False),
     (INLINE, MISSING, 800, False), (INLINE, None, 800, False),
     (MISSING, SIDECAR, 600, False), (None, SIDECAR, 600, False),
     (INLINE, SIDECAR, None, True), ({}, {}, None, True),
@@ -56,7 +56,8 @@ def test_inline_sidecar_null_semantics_and_default_parity(tmp_path, inline, side
         reader = fixtures.reader_for(fixture)
         actual = training.load_persona_with_training(fixture.path, reads=reader)
         assert actual == baseline and actual["training"]["steps"] == steps
-        assert actual["training"]["trigger"] == creator.replace("-", "") + "krea2"
+        assert actual["training"]["trigger"] == (None if actual["training"]["recipe_profile"] == "tensor"
+                                                 else creator.replace("-", "") + "krea2")
         reader.recheck()
         actual["identity"]["references"].append("mutated returned list")
         assert training.load_persona_with_training(fixture.path)["identity"]["references"] == baseline["identity"]["references"]

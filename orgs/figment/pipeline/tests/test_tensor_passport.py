@@ -42,6 +42,8 @@ def _pre_passport_persona(personas_root: Path) -> Path:
     """The committed creator-003 persona with its spec paths rebound to local files so
     it validates under tmp_path (same technique as test_anchor_stage._synthetic_persona)."""
     source = load_json(PERSONAS / "creator-003" / "persona.yaml")
+    source["identity"]["references"] = []
+    source["identity"]["history"] = []
     target = personas_root / "creator-003"
     target.mkdir(parents=True)
     for name, text in (("identity.md", "fixture identity\n"), ("register.md", "fixture register\n")):
@@ -55,7 +57,10 @@ def _pre_passport_persona(personas_root: Path) -> Path:
     return target
 
 
-def _plan(command, tmp_path, personas_root=PERSONAS, stage="anchor", name="plan"):
+def _plan(command, tmp_path, personas_root=None, stage="anchor", name="plan"):
+    if personas_root is None:
+        personas_root = tmp_path / "personas"
+        _pre_passport_persona(personas_root)
     return command.build_plan("creator-003", stage, tmp_path / name, personas_root=personas_root,
                               skip_pin_verify=True, ledger_dir=tmp_path / "ledger")
 
@@ -179,6 +184,8 @@ def test_build_grade_gates_only_the_tensor_passport_reference_free(command, tmp_
     plan = {"training": {"recipe_profile": profile}, "assets": {"anchors": []}}
     monkeypatch.setattr(command, "_load_plan", lambda creator, path: (plan, tmp_path))
     monkeypatch.setattr(command, "_grading_images", lambda plan, root, stage: [])
+    # This isolated test owns routing only; binding integrity has mutation integration tests.
+    monkeypatch.setattr(command, "_validate_tensor_passport_inputs", lambda *a, **k: None)
     monkeypatch.setattr(command, "_score_cells_module", lambda: type("S", (), {"score": staticmethod(lambda *a: None)}))
     captured = {}
 

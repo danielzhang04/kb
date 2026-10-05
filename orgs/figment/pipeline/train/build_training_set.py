@@ -294,6 +294,7 @@ def _collect_cells_qwen3vl(
     trigger: str,
     caption_word: str,
     job_runner: JobRunner | None,
+    recipe_profile: str = "clean",
 ) -> list[tuple[Path, str]]:
     """Collect the approved image list exactly like `class` mode (same
     `--source-dir`/`--images-from`/`--exclude` contract), then replace the bare
@@ -306,7 +307,10 @@ def _collect_cells_qwen3vl(
             "a pod itself (GUARDRAILS: build_training_set.py runs locally, never on a "
             "pod); pass the real dispatcher in a live run, or a fake one in tests"
         )
-    _validate_trigger(trigger)
+    if recipe_profile == "clean":
+        _validate_trigger(trigger)
+    elif recipe_profile != "tensor":
+        raise DatasetBuildError("unknown recipe_profile")
     _validate_caption_word(caption_word)
     if source_dir is not None:
         images = [image for image, _ in _collect_cells_class(source_dir, caption_word)]
@@ -349,7 +353,8 @@ def _collect_cells_qwen3vl(
         # from -- a descriptive caption stays identity-associated whether or not DOP's
         # trigger_word injection is on (see the qwen3vl docstring above).
         training_config = _load_training_config_module()
-        captions.append(f"{training_config.persona_trigger_clause(trigger, caption_word)}, {stripped}")
+        captions.append(stripped if recipe_profile == "tensor" else
+                        f"{training_config.persona_trigger_clause(trigger, caption_word)}, {stripped}")
     return list(zip(images, captions))
 
 
@@ -364,6 +369,7 @@ def build_training_set(
     exclude: list[str] | None = None,
     trigger: str | None = None,
     job_runner: JobRunner | None = None,
+    recipe_profile: str = "clean",
 ) -> dict[str, Any]:
     if caption_mode not in CAPTION_MODES:
         raise DatasetBuildError(f"unknown caption_mode: {caption_mode!r}")
@@ -386,6 +392,7 @@ def build_training_set(
         cells = _collect_cells_qwen3vl(
             source_dir, images_from, exclude,
             trigger=trigger, caption_word=caption_word, job_runner=job_runner,
+            recipe_profile=recipe_profile,
         )
     else:  # class
         if approved_cells is not None:

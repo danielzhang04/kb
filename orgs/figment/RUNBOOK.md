@@ -1,5 +1,82 @@
 # figment — operator runbook
 
+## Tensor phase 2: offline inputs and caption resume
+
+This section describes the current `tensor` profile. The longer creator-001 procedures below
+are historical `clean` workflows. Phase2 adds offline dataset/train/tester planning; it does
+not establish live execution evidence or authorize spending.
+
+The persona's training sidecar accepts these stage-specific metadata objects (schematic:
+replace hash/time placeholders with verified values). `path` is absolute or relative to the
+persona directory. Text hashes are SHA256 of the exact UTF-8 text, without an added newline.
+Keep `fixture: true` on synthetic test inputs; stage launch rejects those plans.
+
+```yaml
+training:
+  recipe_profile: tensor
+  trigger: null
+  steps: 3000
+  save_every: 250
+  dataset_source: qwen-edit
+  dataset_replicates: 1
+  caption_mode: qwen3vl
+  dop_enabled: false
+  tensor_body:
+    path: fixtures/body.png
+    sha256: <image-sha256>
+    description: an ordinary adult build in an opaque grey outfit
+    description_sha256: <exact-description-utf8-sha256>
+    faceless: true
+    clothed: true
+    decided_by: offline-fixture
+    decided_at: <ISO-8601>
+    fixture: true
+  tensor_tester_prompt:
+    text: An adult woman in an opaque grey outfit, photographed indoors.
+    sha256: <exact-prompt-utf8-sha256>
+    decided_by: offline-fixture
+    decided_at: <ISO-8601>
+    fixture: true
+```
+
+Dataset planning requires the body object and a selected passport; tester planning requires
+the prompt object. Neither standalone stage demands the other's input. Production metadata
+must record the actual operator decision and source bytes. The passport and body upload
+basenames must differ even when compared without case.
+
+```powershell
+# Local fixture planning only; use an isolated fixture persona with the metadata above.
+py -3 orgs/figment/pipeline/figment_train.py plan --creator <creator> --stage dataset --out <dataset-root> --skip-pin-verify
+# Repeat for m10-02 and m10-03 (three manifests, ten jobs each).
+py -3 orgs/figment/pipeline/pod/runpod_run.py run --manifest <dataset-root>/expand/runs/<creator>-tensor-dataset-m10-01.yaml --out <dry-run-root>/m10-01 --dry-run
+# Tester requires the full twelve-checkpoint ladder and approved scene prompt.
+py -3 orgs/figment/pipeline/figment_train.py plan --creator <creator> --stage tester --out <tester-root> --skip-pin-verify
+```
+
+After dataset outputs have been graded and ruled, the usual `apply-rulings --stage dataset`
+command writes `train/caption-plan.json` plus caption manifest/uploads. Without a verified
+caption run receipt it returns ?separate approved execution required; no pod launched?.
+The final approval and `_dataset.ready` remain absent. Inspect that plan's frozen run argv;
+executing it is a separate approved live action, never a side effect of curation. Offline
+integration tests supply synthetic caption outputs/receipts instead.
+
+Repeat the identical dataset `apply-rulings` command after captions exist: it validates input
+hashes, frozen manifest, staged images, run/ledger receipt and exact caption inventory, then
+finalizes the dataset without a trigger prefix. Changed inputs require a fresh reviewed plan.
+For a failed caption run, `--retry-caption-after-fix "<specific fix>"` uses the existing bounded
+archive/replan mechanism and still launches nothing; verified teardown remains required.
+
+Review all thirty cells, including failed/unscorable ones. An unavailable or low age estimate
+requires explicit age release/cull even in the unscorable group. Five trait axes display only;
+calibration and threshold activation remain pending. Pick a checkpoint by eye from all twelve;
+the final checkpoint is not automatically preferred.
+
+Before any actual tensor dataset run, resolve gated Klein9B access and pin verification.
+The current public HEAD verifier returns 401 for the gated weight even though an installer
+SHA and public repository revision are recorded. Terms acceptance alone does not fix that
+verifier; never use `--skip-pin-verify` to bypass production checks. Obtain the separate live
+run approval only after these prerequisites and current input approvals are satisfied.
+
 The single operator document for the `pipeline` command. Start at
 `orgs/figment/pipeline/README.md` for the pipeline's own map (stages, the gate, pins,
 spend guards); this file is the command sequence an operator actually runs, checked

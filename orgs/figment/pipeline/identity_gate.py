@@ -424,6 +424,7 @@ def run_two_stage_gate(
     model: str | None = None,
     judge_backend: str = "claude",
     reference_free: bool = False,
+    tensor_review: bool = False,
 ) -> dict[str, Any]:
     """The one fail-closed two-stage gate composition EVERY caller of this module uses
     to gate a set of images against a persona's identity references -- extracted so
@@ -453,6 +454,10 @@ def run_two_stage_gate(
     `unscorable`. Nothing is culled -- every row stays in the document."""
     if judge_backend not in JUDGE_BACKENDS:
         raise IdentityGateError(f"judge_backend must be one of {JUDGE_BACKENDS}")
+    if tensor_review and judge_backend == "codex-diagnostic":
+        raise IdentityGateError("codex-diagnostic is not supported for tensor review; use claude or local-research")
+    if tensor_review and (reference_free or not anchors):
+        raise IdentityGateError("tensor downstream review requires passport anchors")
     if reference_free and anchors:
         raise IdentityGateError("reference-free gating takes no identity anchors")
     anchors_by_stem = {path.stem: path for path in anchors}
@@ -483,7 +488,15 @@ def run_two_stage_gate(
         rows = score_cells_for_stage(images, anchors_by_stem, own_anchor=own_anchor)
         stage1_list = [identity_floor_gate(row, thresholds) for row in rows]
 
-        if reference_free:
+        if tensor_review:
+            faced = [image for image, row in zip(images, rows) if row.get("face_px") is not None]
+            if faced and not skip_judge and judge_backend == "claude":
+                judge_kwargs = {"cache_dir": Path(out_dir) / "judge-cache", "workers": workers, "trait_axes": True}
+                if model is not None:
+                    judge_kwargs["model"] = model
+                judge_by_id = {row["image_id"]: row for row in _vlm_judge_module().judge_images_for_stage(faced, anchors[:1], **judge_kwargs)}
+            verdicts = [tensor_verdict(row, judge_by_id.get(row["image_id"]), thresholds, judge_thresholds) for row in rows]
+        elif reference_free:
             faced = [image for image, row in zip(images, rows) if row.get("face_px") is not None]
             if faced and not skip_judge and judge_backend == "claude":
                 judge_kwargs = {"cache_dir": Path(out_dir) / "judge-cache", "workers": workers,
@@ -552,9 +565,11 @@ def run_two_stage_gate(
         verdicts = [
             {"pass": False, "reasons": [reason], "stage1": None, "stage2": None} for _ in rows
         ]
-        if reference_free:
+        if reference_free or tensor_review:
             for verdict in verdicts:
                 verdict["group"] = "unscorable"
+                if tensor_review:
+                    verdict.update(age_hold=True, age_reasons=["unavailable: age estimates (gate outage)"])
 
     result_rows = []
     for row, verdict in zip(rows, verdicts):
@@ -566,6 +581,9 @@ def run_two_stage_gate(
         merged["judge"] = judge_by_id.get(row["image_id"])
         if "group" in verdict:
             merged["group"] = verdict["group"]
+        if "age_hold" in verdict:
+            merged["age_hold"] = verdict["age_hold"]
+            merged["age_reasons"] = verdict["age_reasons"]
         if judge_backend == "codex-diagnostic":
             merged["codex_diagnostic"] = codex_by_id.get(row["image_id"])
         result_rows.append(merged)
@@ -586,7 +604,7 @@ def run_two_stage_gate(
     }
     if judge_backend in ("codex-diagnostic", "local-research"):
         document["judge_backend"] = judge_backend
-    if reference_free:
+    if reference_free or tensor_review:
         groups: dict[str, int] = {}
         for row in result_rows:
             groups[row.get("group", "failed")] = groups.get(row.get("group", "failed"), 0) + 1
@@ -624,6 +642,68 @@ def two_stage_gate(
         "stage1": stage1,
         "stage2": stage2,
     }
+
+
+def tensor_verdict(
+    scores: dict[str, Any], judge_row: dict[str, Any] | None,
+    thresholds: dict[str, Any], judge_thresholds: dict[str, Any],
+) -> dict[str, Any]:
+    """Reference-based tensor sorting, never a keep/cull decision.
+
+    Age holds remain explicit even when a missing face makes the display group
+    unscorable. Display-only traits cannot affect this verdict.
+    """
+    def finite(value):
+        try:
+            return type(value) in (int, float) and math.isfinite(value)
+        except OverflowError:
+            return False
+
+    age_reasons = []
+    floor = thresholds.get("age_floor_years")
+    if not finite(floor):
+        age_reasons.append("unavailable: age_floor_years")
+    for name, value in (("vit age", scores.get("age_value")), ("judge age", (judge_row or {}).get("apparent_age_candidate"))):
+        if not finite(value) or not 0 <= value <= 120:
+            age_reasons.append(f"unavailable: {name}")
+        elif finite(floor) and value < floor:
+            age_reasons.append(f"{name} {value:.4g} is under the age floor {floor:.4g}")
+    clean_scores = dict(scores)
+    for metric in ("identity_own", "face_px"):
+        if not finite(clean_scores.get(metric)):
+            clean_scores[metric] = None
+    clean_judge = dict(judge_row) if judge_row is not None else None
+    if clean_judge is not None:
+        for metric in ("same_person", "age_delta", "skin_realism", "gloss", "artifacts"):
+            if not finite(clean_judge.get(metric)):
+                clean_judge[metric] = None
+    stage1 = identity_floor_gate(clean_scores, thresholds)
+    judge_reasons = []
+    for metric, key, floor_metric in (
+        ("same_person", "same_person_min", True), ("age_delta", "age_delta_max", False),
+        ("skin_realism", "skin_realism_min", True), ("gloss", "gloss_max", False),
+        ("artifacts", "artifacts_max", False),
+    ):
+        value, limit = (clean_judge or {}).get(metric), judge_thresholds.get(key)
+        if not finite(value):
+            judge_reasons.append(f"unavailable: {metric}")
+        elif not finite(limit):
+            judge_reasons.append(f"unavailable: {key}")
+        else:
+            measured = abs(value) if metric == "age_delta" else value
+            if (measured < limit) if floor_metric else (measured > limit):
+                judge_reasons.append(f"{metric} {value:.4g} fails required {'floor' if floor_metric else 'ceiling'} {limit:.4g}")
+    stage2 = {"pass": not judge_reasons, "reasons": judge_reasons}
+    reasons = list(dict.fromkeys(age_reasons + stage1["reasons"] + stage2["reasons"]))
+    face_missing = not finite(scores.get("face_px"))
+    if face_missing:
+        reasons.insert(0, "unavailable: face_px (no measurable face)")
+    group = ("unscorable" if face_missing else "age" if age_reasons else
+             "unscorable" if any(reason.startswith("unavailable:") for reason in reasons) else
+             "failed" if reasons else "passed")
+    return {"pass": group == "passed", "group": group, "reasons": reasons,
+            "age_hold": bool(age_reasons), "age_reasons": age_reasons,
+            "stage1": stage1, "stage2": stage2}
 
 
 def passport_verdict(

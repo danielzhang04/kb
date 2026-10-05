@@ -22,7 +22,7 @@ TRAINING_KEYS = {
     "chosen_checkpoint_sha256", "chosen_checkpoint_approval",
     "dop_enabled", "dop_multiplier", "dop_class", "dataset_source",
     "dataset_replicates", "gen_prompt_style", "gen_refine_denoise", "gen_detailer_denoise",
-    "recipe_profile",
+    "recipe_profile", "tensor_body", "tensor_tester_prompt",
 }
 ALLOWED_GEN_PROMPT_STYLES = {"look-clause", "trigger-scene", "look-clause-close"}
 DEFAULT_TRAINING = {
@@ -184,6 +184,19 @@ def validate_training(raw: Any, creator_id: str) -> dict[str, Any]:
         )
     config = dict(DEFAULT_TRAINING)
     config.update(raw)
+    if config["recipe_profile"] == "tensor":
+        if raw.get("trigger") is not None:
+            raise TrainingConfigError("tensor profile has no textual trigger; omit trigger or use null")
+        for key, value in {"steps": 3000, "save_every": 250, "dataset_replicates": 1,
+                           "dataset_source": "qwen-edit", "dop_enabled": False,
+                           "caption_mode": "qwen3vl", "skin_lora": None}.items():
+            if key in raw and (type(raw[key]) is not type(value) or raw[key] != value):
+                raise TrainingConfigError(f"tensor profile fixes {key} to {value!r}")
+            config[key] = value
+        config["artifact_name"] = creator_id
+    for key in ("tensor_body", "tensor_tester_prompt"):
+        if key in raw and not isinstance(raw[key], dict):
+            raise TrainingConfigError(f"persona.training.{key} must be an object")
 
     if config["base_arch"] not in ALLOWED_ARCHES:
         raise TrainingConfigError(
@@ -292,7 +305,7 @@ def validate_training(raw: Any, creator_id: str) -> dict[str, Any]:
             raise TrainingConfigError(
                 f"persona.training.trigger must equal the derived trigger {expected!r}"
             )
-    config["trigger"] = expected
+    config["trigger"] = None if config["recipe_profile"] == "tensor" else expected
     config["price_ceiling_usd_per_hour"] = float(price)
     return config
 

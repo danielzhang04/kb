@@ -147,7 +147,16 @@ training run that includes it — is generated and trained on operator-controlle
 by the operator. Agents build and test that path with clothed data; the operator runs it.
 Separate stores, prompts, and accounts per tier.
 
-## Budget (operator ruling 2026-09-03)
+## Budget
+
+Current creator-003 tensor-parity arc: **$75 total**, counted from $0 starting
+2026-09-29, per the operator ruling recorded in
+`docs/superpowers/specs/2026-09-29-figment-tensor-parity-design.md` section 10.
+Earlier ledger rows remain history. Each live pod still requires its concrete
+T2 card and approval; the arc cap is not blanket execution approval. Daily and
+per-run guards remain binding.
+
+### Prior creator-001 arc (operator ruling 2026-09-03, amended 2026-09-15)
 
 The overnight build terminal has a HARD CAP of **$60 total** (raised from $50, operator
 ruling 2026-09-15: +$20 for the passport-set rebuild + 3000-step train) for the creator-001

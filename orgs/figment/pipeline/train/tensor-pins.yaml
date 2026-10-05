@@ -2,7 +2,7 @@
   "schema": "figment/tensor-pins@1",
   "profiles": {
     "clean": {"anchor": ["anchor", "anchor_edit"], "dataset": ["dataset"], "smoke": ["train"], "train": ["train"], "tester": ["tester"], "gen": ["gen"], "detail": ["detail"], "video": []},
-    "tensor": {"anchor": ["passport_tensor"]}
+    "tensor": {"anchor": ["passport_tensor"], "dataset": ["dataset_tensor"], "smoke": ["train"], "train": ["train"], "tester": ["tester"], "caption": ["caption"]}
   },
   "pod_classes": {
     "l40s": {
@@ -128,6 +128,96 @@
     }
   },
   "pins": {
+    "dataset_tensor": {
+      "_note": "R1 module04 bf16 file + fp8_e4m3fn loader; module10 effective graph. Public HF HEAD metadata verified 2026-10-05 for bf16, qwen_3_8b, bfs_head (no weights downloaded). Klein9B SHA is installer-stated; revision from public HF model metadata. Its unauthenticated HEAD returns 401: gated access/file verification remains a live prerequisite, not offline proof. lumina2 retained pending smoke. Existing pins reused for unchanged files and node dependencies.",
+      "models": [
+        {
+          "repo_id": "Comfy-Org/Qwen-Image-Edit_ComfyUI",
+          "filename": "split_files/diffusion_models/qwen_image_edit_2511_bf16.safetensors",
+          "revision": "f68ace85e60b4a02a323e394253731947657b7d2",
+          "sha256": "ae42d927b5fac4f278b9a894554c727e619727a63622976f2d95625be4bce08c",
+          "destination_dir": "/workspace/ComfyUI/models/diffusion_models"
+        },
+        {
+          "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+          "filename": "split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+          "revision": "25608066f9bf5cdc28020836ce9549587053f346",
+          "sha256": "cb5636d852a0ea6a9075ab1bef496c0db7aef13c02350571e388aea959c5c0b4",
+          "destination_dir": "/workspace/ComfyUI/models/text_encoders"
+        },
+        {
+          "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+          "filename": "split_files/vae/qwen_image_vae.safetensors",
+          "revision": "dfe60a0d63f0b946628080f070978594983b8b6e",
+          "sha256": "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f",
+          "destination_dir": "/workspace/ComfyUI/models/vae"
+        },
+        {
+          "repo_id": "lightx2v/Qwen-Image-Edit-2511-Lightning",
+          "filename": "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+          "revision": "fd3a43ffb5bc98c7d09b2238e5b09a63284a16f8",
+          "sha256": "22226e8d05d354bb356627d428809f5afd7819399b077238a2b70a82883a904f",
+          "destination_dir": "/workspace/ComfyUI/models/loras"
+        },
+        {
+          "repo_id": "black-forest-labs/FLUX.2-klein-9b-fp8",
+          "filename": "flux-2-klein-9b-fp8.safetensors",
+          "revision": "902d9d510b51533e07729f19211414a3648b77d2",
+          "sha256": "865ba09f5b4c3cbd3468a4bd3acb9fcb2f8740c54317482f0bcd4ed1d3655cee",
+          "destination_dir": "/workspace/ComfyUI/models/diffusion_models"
+        },
+        {
+          "repo_id": "Comfy-Org/vae-text-encorder-for-flux-klein-9b",
+          "filename": "split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors",
+          "revision": "3f62d9d8ae1fec33c6e91453d5c712855b096b55",
+          "sha256": "abad16806e0cbabc54e0325d6565847443fe396d5f0be38bb3cd3fe75a1201d6",
+          "destination_dir": "/workspace/ComfyUI/models/text_encoders"
+        },
+        {
+          "repo_id": "gravedigga/loras",
+          "filename": "bfs_head_v5_2511_merged_version_rank_16_fp16.safetensors",
+          "revision": "9b30695ba342f56131d1131f9788b0fd9cb9dfd4",
+          "sha256": "1315a08947e5d6d7c53ea4fc59f272e0d54efd7f2da35999b7d873a7cf4fa89b",
+          "destination_dir": "/workspace/ComfyUI/models/loras"
+        },
+        {
+          "repo_id": "Comfy-Org/flux2-dev",
+          "filename": "split_files/vae/flux2-vae.safetensors",
+          "revision": "ed33133cd56476eac818c0943b6f9419b3e4a3a1",
+          "sha256": "d64f3a68e1cc4f9f4e29b6e0da38a0204fe9a49f2d4053f0ec1fa1ca02f9c4b5",
+          "destination_dir": "/workspace/ComfyUI/models/vae"
+        },
+        {
+          "repo_id": "gravedigga/loras",
+          "filename": "zit_upscaler.safetensors",
+          "revision": "82ac01152033628ed6d86714d70aa61270a41dcc",
+          "sha256": "009671cec5a384db31052b52e344e5989b0c51a5ad4d25a8c2c629f658754d13",
+          "destination_dir": "/workspace/ComfyUI/models/upscale_models"
+        }
+      ],
+      "custom_nodes": [
+        {
+          "name": "RES4LYF",
+          "git_url": "https://github.com/ClownsharkBatwing/RES4LYF.git",
+          "installer_pin": "e716cd1cb2c5cff90131bf4914b75b75a0489d48"
+        },
+        {
+          "name": "ComfyUI-Impact-Pack",
+          "git_url": "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git",
+          "installer_pin": "429d0159ad429e64d2b3916e6e7be9c22d025c3c"
+        },
+        {
+          "name": "ComfyUI_FaceAnalysis",
+          "git_url": "https://github.com/cubiq/ComfyUI_FaceAnalysis.git",
+          "installer_pin": "8846653446a6b13582da11793faf950325a398e0"
+        },
+        {
+          "name": "ComfyUI-KJNodes",
+          "git_url": "https://github.com/kijai/ComfyUI-KJNodes.git",
+          "installer_pin": "8692bc8ef8beaaeee80fd52ba80477dc9e61547b"
+        }
+      ]
+    },
     "passport_tensor": {
       "_note": "Spec 2026-09-29 §4.1: module 03 (03_generating_your_character/image_generation_models.bat) as the package ships it. Revisions/sha256 read live 2026-09-29 from huggingface.co resolve/main X-Repo-Commit/X-Linked-ETag; zit_upscaler and sam_vit_b equal the sha256 the module 10/09 installers state for the same URLs; realistic_snapshot_lora and the Gourieff face_yolov8m.pt copy have no installer-stated sha256 (module 09's Bingsu copy, 717923c1..., is a different file). zit_upscaler header: SwinIR/HAT family, two x2 pixel-shuffle stages = x4, so 1536x2048 base -> 6144x8192 final. Custom nodes: module 03's installer clones default branches; pinned to the SHAs modules 09/10's installers pin. rgthree omitted: no rgthree node in the API graph (D16/D18/D9). Pickles admitted via the manifest hatch (spec §6) on disposable pods only. Pod budget (l40s stage passport_tensor) rebalanced inside the $2.00 ceiling, not measured: readiness 1200 s + 12 jobs x 330 s per job + 5 min teardown = 91 min; 91/60 x $1.30/h = $1.97 (job 1 also pays the ~21 GB cold load; a job timeout stops the run ungraded).",
       "models": [

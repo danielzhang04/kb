@@ -10,6 +10,7 @@ import argparse
 import csv
 import glob
 import html
+import hashlib
 import importlib.util
 import json
 import math
@@ -1642,7 +1643,7 @@ def _train_manifest(
     persona: dict, training: dict, pins: dict, *, smoke: bool, dataset_dirname: str | None = None,
 ) -> dict[str, Any]:
     creator_id = persona["id"]
-    trigger = training["trigger"]
+    trigger = _artifact_name(training)
     if smoke:
         final = 100
         intermediates = [50]
@@ -1734,6 +1735,99 @@ def _train_manifest(
     return manifest
 
 
+def _tensor_approved_prompt(training: dict) -> str:
+    entry = training.get("tensor_tester_prompt") or {}
+    text = entry.get("text")
+    if (not isinstance(text, str) or not text.strip()
+            or entry.get("sha256") != hashlib.sha256(text.encode("utf-8")).hexdigest()
+            or not entry.get("decided_by") or not entry.get("decided_at")):
+        raise FigmentTrainError("tensor tester requires a hash-bound approved scene prompt")
+    return text
+
+
+def _tensor_body_input(persona: dict, training: dict) -> tuple[Path, str]:
+    entry = training.get("tensor_body") or {}
+    path = Path(entry.get("path", ""))
+    if not path.is_absolute():
+        path = Path(persona["_persona_path"]).parent / path
+    text = entry.get("description")
+    if (not path.is_file() or path.suffix.lower() not in (".png", ".jpg", ".jpeg")
+            or entry.get("sha256") != _sha256(path)
+            or not isinstance(text, str) or not text.strip()
+            or entry.get("description_sha256") != hashlib.sha256(text.encode("utf-8")).hexdigest()
+            or entry.get("faceless") is not True or entry.get("clothed") is not True
+            or not entry.get("decided_by") or not entry.get("decided_at")):
+        raise FigmentTrainError("tensor dataset requires a hash-bound approved faceless clothed body reference and description")
+    return path, text
+
+
+def _tensor_dataset_assets(persona: dict, training: dict, pins: dict) -> tuple[dict, dict]:
+    parity = _tensor_parity_module()
+    body, description = _tensor_body_input(persona, training)
+    passport = Path(persona["identity"]["references"][0])
+    if body.name.casefold() == passport.name.casefold():
+        raise FigmentTrainError("passport and body upload basenames must differ")
+    look = persona["identity"]["look"]
+    prompts = parity.dataset_prompt_blocks(look["hair"], look["eyes"], description)
+    workflow = _read_json(HERE / "expand/workflows/tensor_dataset_m10_api.json")
+    for node, path in (("836", passport), ("837", body)):
+        workflow[node]["inputs"]["image"] = f"{persona['id']}/{path.name}"
+    for node, block in (("800", "face"), ("780", "body")):
+        workflow[node]["inputs"]["text"] = prompts[block]["identity"]
+    return prompts, workflow
+
+
+def _tensor_dataset_manifest(persona: dict, training: dict, pins: dict, prompts: dict, workflow: dict) -> dict:
+    body, description = _tensor_body_input(persona, training)
+    passport = Path(persona["identity"]["references"][0])
+    jobs = _dataset_jobs(persona, prompts, replicates=1)
+    if len(jobs) != 30 or len({j["output_name"] for j in jobs}) != 30:
+        raise FigmentTrainError("tensor dataset must contain exactly 30 unique jobs")
+    for job in jobs:
+        face = job["substitutions"][0]["value"] == ["791", 0]
+        job["substitutions"].append({"node_id": "800" if face else "780", "field": "text",
+                                      "value": prompts["face" if face else "body"]["identity"]})
+    manifest = {**_pod_base(pins, training["pod_class"], "dataset"),
+        "models": deepcopy(pins["pins"]["dataset_tensor"]["models"]),
+        "custom_nodes": deepcopy(pins["pins"]["dataset_tensor"]["custom_nodes"]),
+        "workflow": "../workflows/tensor_dataset_m10_api.json", "seed_fields": ["seed"],
+        "uploads": [{"files": [f"_uploads/{persona['id']}/{p.name}" for p in (passport, body)],
+                     "subfolder": persona["id"], "type": "input", "overwrite": True}],
+        "jobs": jobs}
+    errors = _tensor_parity_module().check_dataset(workflow, manifest, persona["identity"]["look"], description)
+    if errors:
+        raise FigmentTrainError("tensor dataset parity failed: " + "; ".join(errors))
+    return manifest
+
+
+def _copy_tensor_support(out: Path, persona: dict, training: dict, selected: list[str], pins: dict) -> tuple[dict, dict | None, dict | None]:
+    assets = {"anchors": _copy_anchors(out, persona)}
+    assets["tensor_passport"] = _tensor_passport_binding(out, persona, assets["anchors"])
+    runs = out / "train/runs"
+    runs.mkdir(parents=True, exist_ok=True)
+    for source in (TRAIN_START_PATH, TESTER_START_PATH):
+        text = source.read_text(encoding="utf-8").replace("creator-001", persona["id"])
+        text = text.replace("creator001krea2", _artifact_name(training))
+        (runs / source.name).write_text(text, encoding="utf-8")
+    prompts = workflow = None
+    if "dataset" in selected:
+        prompts, workflow = _tensor_dataset_assets(persona, training, pins)
+        target = out / "expand/workflows/tensor_dataset_m10_api.json"
+        _write_json(target, workflow)
+        assets["dataset_workflow"] = _relative(target, out)
+        body, _ = _tensor_body_input(persona, training)
+        upload = out / "expand/runs/_uploads" / persona["id"] / body.name
+        upload.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(body, upload)
+        assets["tensor_body"] = _relative(upload, out)
+    return assets, prompts, workflow
+
+
+def _artifact_name(training: dict) -> str:
+    """Tensor's toolkit job name is the creator id, never a caption trigger."""
+    return training.get("artifact_name", training["trigger"])
+
+
 def _persona_trigger_clause(training: dict) -> str:
     """The `"<trigger> <noun>, "` prefix every tester/gen/detail-only prompt must open
     with (r24/r25 evidence: the train-first LoRA's own tester prompt carried NO trigger
@@ -1749,7 +1843,7 @@ def _persona_trigger_clause(training: dict) -> str:
     -- the one shared, dependency-free home also used by `build_training_set.py` and
     `select_training_cells.py`'s DOP-required captions -- so this function only adds the
     trailing punctuation a *prompt* (as opposed to a bare caption) needs."""
-    trigger = training["trigger"]
+    trigger = _artifact_name(training)
     noun = training.get("dop_class") or "woman"
     return _training_config_module().persona_trigger_clause(trigger, noun) + ", "
 
@@ -1763,7 +1857,7 @@ def _compose_triggered_prompt(training: dict, body: str) -> str:
     exists to invoke, so they compose from `persona.identity.look` via
     `_compose_look_clause` instead (`_generalized_anchor_prompts`, `_generalized_prompts`)
     -- a categorically different clause, not a fourth independent trigger composer."""
-    return _persona_trigger_clause(training) + body
+    return body if training.get("recipe_profile") == "tensor" else _persona_trigger_clause(training) + body
 
 
 def _tester_age_stage(persona: dict[str, Any]) -> str:
@@ -1795,6 +1889,8 @@ def _tester_age_stage(persona: dict[str, Any]) -> str:
 
 def _tester_prompt(persona: dict[str, Any], training: dict[str, Any]) -> str:
     """Build the fixed, clothed portrait prompt for a persona's checkpoint ladder."""
+    if training.get("recipe_profile") == "tensor":
+        return _tensor_approved_prompt(training)
     return _compose_triggered_prompt(training, (
         f"Close-up portrait photograph of {_tester_age_stage(persona)}. "
         "She is an adult woman, fully clothed in a plain fitted black crew-neck top, "
@@ -1858,7 +1954,13 @@ def _tester_base_workflow(prompt_text: str, filename_prefix: str) -> dict[str, A
 
 def _tester_workflow(persona: dict[str, Any], training: dict[str, Any]) -> dict[str, Any]:
     creator_id = persona["id"]
-    trigger = training["trigger"]
+    trigger = _artifact_name(training)
+    if training.get("recipe_profile") == "tensor":
+        workflow = _read_json(HERE / "train/workflows/tensor_tester_m11_api.json")
+        workflow["408"]["inputs"]["text"] = _tensor_approved_prompt(training)
+        workflow["411"]["inputs"]["lora_name"] = f"{trigger}.safetensors"
+        workflow["900"]["inputs"]["filename_prefix"] = f"{creator_id}-tensor-tester"
+        return workflow
     workflow = _tester_base_workflow(
         _tester_prompt(persona, training), f"{creator_id}-tensor-tester",
     )
@@ -1880,7 +1982,7 @@ def _tester_manifest(
     upload_glob: str | None = None,
 ) -> dict[str, Any]:
     creator_id = persona["id"]
-    trigger = training["trigger"]
+    trigger = _artifact_name(training)
     # Path-A train-first (r24 method 4): the tester's checkpoint upload glob must point
     # at the SAME `out/<dirname>/` the matching train manifest's harness run wrote its
     # local output into (`_planned_run`'s `run_root / path.stem`), never the module-10
@@ -1899,6 +2001,9 @@ def _tester_manifest(
     ]
     if include_final:
         checkpoints.append((None, "final"))
+    if training.get("recipe_profile") == "tensor" and (
+            intermediates != list(range(250, 3000, 250)) or not include_final):
+        raise FigmentTrainError("tensor tester requires the full twelve-checkpoint ladder")
     return {
         **_pod_base(pins, training["pod_class"], "tester"),
         "models": deepcopy(pins["pins"]["tester"]["models"]),
@@ -1923,7 +2028,7 @@ def _tester_manifest(
             "expected_images": 1,
             **({"wait_for": "_loras.assembled"} if index == 0 else {}),
             "substitutions": [{
-                "node_id": "4",
+                "node_id": "411" if training.get("recipe_profile") == "tensor" else "4",
                 "field": "lora_name",
                 "value": _checkpoint_name(trigger, step),
             }],
@@ -2228,7 +2333,7 @@ def compile_held_out_diagnostic(
     start_script.write_text(
         TESTER_START_PATH.read_text(encoding="utf-8")
         .replace("creator-001", creator_id)
-        .replace("creator001krea2", training["trigger"]),
+        .replace("creator001krea2", _artifact_name(training)),
         encoding="utf-8",
     )
 
@@ -2240,13 +2345,13 @@ def compile_held_out_diagnostic(
         "seed_fields": ["seed", "noise_seed"],
         "uploads": [{
             "files": [f"inputs/{candidate_checkpoint.name}"],
-            "subfolder": training["trigger"],
+            "subfolder": _artifact_name(training),
             "type": "input",
             "overwrite": True,
             "chunk_bytes": 16777216,
         }],
         "training": {
-            "lora_source_dir": f"/workspace/ComfyUI/input/{training['trigger']}",
+            "lora_source_dir": f"/workspace/ComfyUI/input/{_artifact_name(training)}",
             "start_script_path": "/workspace/start-comfy-lorapath.sh",
             "start_script_file": TESTER_START_PATH.name,
         },
@@ -2461,7 +2566,7 @@ def _gen_manifest(
             "gen requires a chosen checkpoint; run apply-rulings --stage tester first"
         )
     creator_id = persona["id"]
-    trigger = training["trigger"]
+    trigger = _artifact_name(training)
     short = _creator_output_code(creator_id)
     checkpoint_name = _checkpoint_name(trigger, chosen_step)
     prompts = _generalized_gen_prompts(persona, training)
@@ -2567,7 +2672,7 @@ def _detail_manifest(
             "gen requires a chosen checkpoint; run apply-rulings --stage tester first"
         )
     creator_id = persona["id"]
-    trigger = training["trigger"]
+    trigger = _artifact_name(training)
     short = _creator_output_code(creator_id)
     checkpoint_name = _checkpoint_name(trigger, chosen_step)
     workflow = _read_json(DETAIL_WORKFLOW_PATH)
@@ -2705,6 +2810,16 @@ def _caption_manifest(
     }
 
 
+def _render_profile_training_config(training: dict, *, smoke: bool = False) -> dict:
+    config = _render_training_config(_artifact_name(training),
+        100 if smoke else training["steps"], 50 if smoke else training["save_every"])
+    if training.get("recipe_profile") == "tensor" and not smoke:
+        errors = _render_module().check_module_11(config, tensor=True)
+        if errors:
+            raise FigmentTrainError("tensor training parity failed: " + "; ".join(errors))
+    return config
+
+
 def _render_training_config(
     trigger: str, steps: int, save_every: int, *,
     dop_enabled: bool = False, dop_multiplier: float = 1.0, dop_class: str = "person",
@@ -2752,6 +2867,70 @@ def _render_training_config(
         raise FigmentTrainError(f"rendered training config is unsafe: {exc}") from exc
     return config
 
+
+
+def _tensor_passport_binding(out: Path, persona: dict, anchors: list[str]) -> dict:
+    """Freeze the selected identity source and its actual upload bytes together."""
+    references = persona.get("identity", {}).get("references") or []
+    if not references or not anchors:
+        raise FigmentTrainError("tensor downstream plans require a selected passport")
+    source = (Path(persona["_persona_path"]).parent / references[0]).resolve()
+    source_entry = _lineage_module().file_entry(source)
+    staged_entry = _lineage_module().file_entry(out / anchors[0])
+    if any(source_entry[key] != staged_entry[key] for key in ("bytes", "sha256")):
+        raise FigmentTrainError("tensor passport changed while staging")
+    return {"source": _config_path_value(source), "staged": anchors[0],
+            "bytes": source_entry["bytes"], "sha256": source_entry["sha256"]}
+
+
+def _validate_tensor_passport_inputs(plan: dict, root: Path, *, persona=None, reads=None) -> None:
+    """Reject source selection or byte drift before launch, grading, or approval."""
+    binding = plan.get("assets", {}).get("tensor_passport")
+    if not isinstance(binding, dict) or not all(key in binding for key in ("source", "staged", "bytes", "sha256")):
+        raise FigmentTrainError("tensor passport binding missing; create a fresh plan")
+    if persona is None:
+        persona, _ = _current_persona_training(plan, reads=reads)
+    refs = persona.get("identity", {}).get("references") or []
+    anchors = plan.get("assets", {}).get("anchors") or []
+    if not refs or not anchors or anchors[0] != binding["staged"]:
+        raise FigmentTrainError("tensor passport selection changed after planning")
+    source_operand = Path(persona["_persona_path"]).parent / refs[0]
+    source = reads.resolve(source_operand) if reads is not None else source_operand.resolve()
+    if source != _resolve_config_path(binding["source"], reads=reads):
+        raise FigmentTrainError("tensor passport source selection changed after planning")
+    staged_operand = root / binding["staged"]
+    staged = reads.resolve(staged_operand) if reads is not None else staged_operand.resolve()
+    root_resolved = reads.resolve(root) if reads is not None else root.resolve()
+    if not staged.is_relative_to(root_resolved):
+        raise FigmentTrainError("tensor passport upload escapes the plan root")
+    try:
+        for label, path in (("source", source), ("staged upload", staged)):
+            entry = _lineage_module().file_entry(path, reads=reads)
+            if any(entry[key] != binding[key] for key in ("bytes", "sha256")):
+                raise FigmentTrainError(f"tensor passport {label} changed after planning")
+    except (OSError, ValueError) as exc:
+        raise FigmentTrainError(f"tensor passport input unavailable: {exc}") from exc
+
+
+def _validate_tensor_training_inputs(plan: dict, current_training: dict, stage: str) -> None:
+    """Compare semantic inputs, retaining imported training's separate authority."""
+    lineage = _lineage_module()
+    recorded = lineage.training_input_projection(plan["training"])
+    current = lineage.training_input_projection(current_training)
+    imported = plan.get("imported_training_config") if stage == "tester" else None
+    if imported is not None:
+        if not isinstance(imported, dict) or not isinstance(imported.get("path"), str):
+            raise FigmentTrainError("tensor imported training authority is malformed")
+        source = _resolve_config_path(imported["path"])
+        reloaded = _reload_imported_training_projection(plan["creator"], source)
+        if reloaded != recorded:
+            raise FigmentTrainError("tensor imported training inputs changed after planning")
+        # Actual training values come from the imported config; live prompt/caption/
+        # runtime fields remain owned by the persona, as at checkpoint promotion.
+        current = {k: v for k, v in current.items() if k not in lineage.TRAIN_TIME_KEYS}
+        recorded = {k: v for k, v in recorded.items() if k not in lineage.TRAIN_TIME_KEYS}
+    if current != recorded:
+        raise FigmentTrainError(f"tensor {stage} inputs changed after planning")
 
 def _copy_anchors(out: Path, persona: dict) -> list[str]:
     """Copy this persona's identity reference images into `out`'s own upload tree and
@@ -2801,7 +2980,7 @@ def _copy_support_files(out: Path, persona: dict, prompts: dict, workflow: dict)
     for source in (TRAIN_START_PATH, TESTER_START_PATH):
         text = source.read_text(encoding="utf-8")
         text = text.replace("creator-001", persona["id"])
-        text = text.replace("creator001krea2", persona["training"]["trigger"])
+        text = text.replace("creator001krea2", _artifact_name(persona["training"]))
         (train_runs / source.name).write_text(text, encoding="utf-8")
 
     return {
@@ -2849,7 +3028,7 @@ def _planned_run(
     }
     if "_budget" in manifest:
         result["budget"] = manifest["_budget"]
-    if Path(str(manifest.get("workflow", ""))).name == TENSOR_PASSPORT_WORKFLOW_PATH.name:
+    if Path(str(manifest.get("workflow", ""))).name in (TENSOR_PASSPORT_WORKFLOW_PATH.name, "tensor_dataset_m10_api.json"):
         # Final review F5: pin the plan's parity-checked workflow copy; launch re-hashes it.
         result["workflow_sha256"] = _sha256(manifest_path.parent / manifest["workflow"])
     return result
@@ -2989,6 +3168,51 @@ def plan_qwen3vl_caption(
     _write_json(manifest_path, manifest)
     resolved_ledger_dir = _resolved_ledger_dir(ledger_dir)
     return _planned_run(plan_root, manifest_path, run_out, ledger_dir=resolved_ledger_dir)
+
+
+def _tensor_caption_job_runner(creator_id: str, training: dict, plan_root: Path, ledger_dir: Path, *, retry_after_fix_reason: str | None = None):
+    """Plan or consume a separately executed caption job; NEVER launch one here."""
+    def consume(job: dict[str, Any]) -> list[str]:
+        images = [Path(value) for value in job["images"]]
+        subject = [{"name": p.name, "sha256": _sha256(p)} for p in images]
+        receipt = plan_root / "train/caption-plan.json"
+        if receipt.is_file():
+            document = _read_json(receipt)
+            if document.get("images") != subject:
+                raise FigmentTrainError("caption inputs changed; create a new reviewed plan")
+            planned = document["run"]
+            if retry_after_fix_reason and (plan_root / planned["out"] / "run.json").is_file():
+                # The existing planner owns bounded retry eligibility and archives failures.
+                # This remains a plan-only operation: no launch occurs on a retry.
+                planned = plan_qwen3vl_caption(creator_id, _artifact_name(training), images,
+                    plan_root, pod_class=training["pod_class"], ledger_dir=ledger_dir,
+                    skip_pin_verify=True, retry_after_fix_reason=retry_after_fix_reason)
+                _write_json(receipt, {"schema": "figment/tensor-caption-plan@1",
+                                      "images": subject, "run": planned})
+        else:
+            planned = plan_qwen3vl_caption(creator_id, _artifact_name(training), images,
+                plan_root, pod_class=training["pod_class"], ledger_dir=ledger_dir, skip_pin_verify=True)
+            _write_json(receipt, {"schema": "figment/tensor-caption-plan@1", "images": subject,
+                                  "run": planned})
+        manifest_path = plan_root / planned["manifest"]
+        if _sha256(manifest_path) != planned["sha256"]:
+            raise FigmentTrainError("caption manifest changed after planning")
+        for row in subject:
+            staged = plan_root / "train/runs/_uploads" / creator_id / row["name"]
+            if not staged.is_file() or _sha256(staged) != row["sha256"]:
+                raise FigmentTrainError("caption staged image changed after planning")
+        run_out = plan_root / planned["out"]
+        if not (run_out / "run.json").is_file():
+            raise FigmentTrainError(f"caption plan ready at {receipt}; separate approved execution required; no pod launched")
+        verify_run_record("caption", _read_json(manifest_path), run_out, ledger_dir)
+        path = run_out / CAPTION_ARTIFACT_NAME
+        if not path.is_file() or path.stat().st_size > CAPTIONS_MAX_JSON_BYTES:
+            raise FigmentTrainError("caption artifact missing or exceeds size limit")
+        captions = _read_json(path)
+        if not isinstance(captions, dict) or set(captions) != {p.name for p in images}:
+            raise FigmentTrainError("caption artifact must match exactly the approved images")
+        return [captions[p.name] for p in images]
+    return consume
 
 
 def _live_qwen3vl_job_runner(
@@ -3429,8 +3653,16 @@ def build_plan(
                 ]
                 raise FigmentTrainError("pin verification failed:\n" + "\n".join(lines))
 
+    if tensor:
+        if "dataset" in selected:
+            _prompts, _workflow = _tensor_dataset_assets(persona, training, pins)
+            _tensor_dataset_manifest(persona, training, pins, _prompts, _workflow)
+        if "tester" in selected:
+            _tensor_approved_prompt(training)
     if pre_passport:
         assets = _copy_passport_support_files(out)
+    elif tensor:
+        assets, prompts, workflow = _copy_tensor_support(out, persona, training, selected, pins)
     else:
         prompts = _generalized_prompts(persona)
         workflow = _generalized_dataset_workflow(persona, prompts)
@@ -3446,10 +3678,10 @@ def build_plan(
     configs_dir = out / "train" / "configs"
     smoke_config = configs_dir / "training-smoke.json"
     full_config = configs_dir / "training.json"
-    _write_json(smoke_config, _render_training_config(training["trigger"], 100, 50))
+    _write_json(smoke_config, _render_profile_training_config(training, smoke=True))
     _write_json(
         full_config,
-        _render_training_config(training["trigger"], training["steps"], training["save_every"]),
+        _render_profile_training_config(training),
     )
 
     plan_stages: dict[str, Any] = {}
@@ -3471,7 +3703,16 @@ def build_plan(
                 for arm in ("passport", "edit")
             ]
         elif current == "dataset":
-            if training.get("dataset_source") == "klein-multiref":
+            if tensor:
+                complete = _tensor_dataset_manifest(persona, training, pins, prompts, workflow)
+                manifests = []
+                for jobs in _chunks(complete["jobs"], 3):
+                    shard = deepcopy(complete)
+                    shard["jobs"] = jobs
+                    manifests.append(shard)
+                paths = [out / "expand/runs" / f"{creator_id}-tensor-dataset-m10-{index:02d}.yaml"
+                         for index in range(1, len(manifests) + 1)]
+            elif training.get("dataset_source") == "klein-multiref":
                 # P2: a second dataset-stage source (MANDATE.md stage 2) -- 2 shards
                 # (face, body), never the qwen-edit 3-shard-plus-fullbody shape below.
                 manifests = _dataset_manifests_klein_multiref(persona, training, pins)
@@ -3511,7 +3752,7 @@ def build_plan(
         elif current == "tester":
             if import_checkpoints is not None:
                 ladder = _discover_imported_checkpoints(
-                    Path(import_checkpoints), training["trigger"], training["steps"],
+                    Path(import_checkpoints), _artifact_name(training), training["steps"],
                 )
                 staged = _stage_imported_checkpoints(out, persona, ladder)
                 intermediate_steps = [
@@ -3526,6 +3767,11 @@ def build_plan(
                 imported_checkpoints = staged
             else:
                 manifests = [_tester_manifest(persona, training, pins)]
+            if tensor:
+                errors = _tensor_parity_module().check_tester(manifests[0]["workflow"], manifests[0],
+                    prompt=_tensor_approved_prompt(training))
+                if errors:
+                    raise FigmentTrainError("tensor tester parity failed: " + "; ".join(errors))
             paths = [out / "train" / "runs" / f"{creator_id}-tensor-tester.yaml"]
         elif current == "gen":
             accepted_checkpoint = _validated_accepted_checkpoint(persona, training)
@@ -3877,6 +4123,8 @@ def build_train_first_plan(
     # tester` (`build_grade`) needs `plan["assets"]["anchors"]` to resolve to real,
     # `out`-relative files exactly the same way for either plan.json flavor.
     assets = {"anchors": _copy_anchors(out, persona), "persona_dir": _persona_dir_asset(persona)}
+    if training.get("recipe_profile") == "tensor":
+        assets["tensor_passport"] = _tensor_passport_binding(out, persona, assets["anchors"])
 
     train_runs_dir = out / "train" / "runs"
     train_runs_dir.mkdir(parents=True, exist_ok=True)
@@ -3887,7 +4135,7 @@ def build_train_first_plan(
     for source in (TRAIN_START_PATH, TESTER_START_PATH):
         text = source.read_text(encoding="utf-8")
         text = text.replace("creator-001", creator_id)
-        text = text.replace("creator001krea2", training["trigger"])
+        text = text.replace("creator001krea2", _artifact_name(training))
         (train_runs_dir / source.name).write_text(text, encoding="utf-8")
 
     plan_dataset_dirname = f"{creator_id}-tensor-dataset-train-first"
@@ -3904,7 +4152,7 @@ def build_train_first_plan(
         shutil.copy2(item, plan_dataset_dir / name)
 
     config = _render_training_config(
-        training["trigger"], training["steps"], training["save_every"],
+        _artifact_name(training), training["steps"], training["save_every"],
         dop_enabled=training["dop_enabled"], dop_multiplier=training["dop_multiplier"],
         dop_class=training["dop_class"],
     )
@@ -4246,6 +4494,24 @@ def _validate_video_source_inputs(plan: dict[str, Any], root: Path, *, reads=Non
 
 
 def _install_stage_config(stage: str, plan: dict[str, Any], root: Path) -> None:
+    if plan.get("training", {}).get("recipe_profile") == "tensor":
+        training = plan["training"]
+        if stage != "anchor":
+            _validate_tensor_passport_inputs(plan, root)
+        if stage == "dataset":
+            persona, current_training = _current_persona_training(plan)
+            _validate_tensor_training_inputs(plan, current_training, stage)
+            body, _ = _tensor_body_input(persona, training)
+            copied = root / plan["assets"]["tensor_body"]
+            if _sha256(copied) != _sha256(body):
+                raise FigmentTrainError("tensor body copy changed after planning")
+        if stage == "tester":
+            _, current_training = _current_persona_training(plan)
+            _validate_tensor_training_inputs(plan, current_training, stage)
+            _tensor_approved_prompt(training)
+        if stage != "anchor" and any((training.get(key) or {}).get("fixture") is True
+                                      for key in ("tensor_body", "tensor_tester_prompt")):
+            raise FigmentTrainError("synthetic fixture plan is dry-run only; cannot launch")
     if stage == "gen":
         _validate_gen_source_inputs(plan, root)
         return
@@ -4278,7 +4544,7 @@ def _install_stage_config(stage: str, plan: dict[str, Any], root: Path) -> None:
                 )
             training = plan["training"]
             expected_config = _render_training_config(
-                training["trigger"], training["steps"], training["save_every"],
+                _artifact_name(training), training["steps"], training["save_every"],
                 dop_enabled=training["dop_enabled"],
                 dop_multiplier=training["dop_multiplier"], dop_class=training["dop_class"],
             )
@@ -4301,9 +4567,9 @@ def _install_stage_config(stage: str, plan: dict[str, Any], root: Path) -> None:
         raise FigmentTrainError(f"planned {stage} config is missing: {config_source}")
     training = plan["training"]
     expected_config = (
-        _render_training_config(training["trigger"], 100, 50)
+        _render_profile_training_config(training, smoke=True)
         if stage == "smoke" else
-        _render_training_config(training["trigger"], training["steps"], training["save_every"])
+        _render_profile_training_config(training)
     )
     if _read_json(config_source) != expected_config:
         raise FigmentTrainError(
@@ -5408,6 +5674,18 @@ def _figure_html(
     if passport_floor is not None:
         age_line = _passport_age_annotation(gate_row, passport_floor[0])
         extra += f'<br><span class="judge">{html.escape(age_line)}</span>'
+    judge = (gate_row or {}).get("judge") or {}
+    if "traits" in judge or "age_hold" in (gate_row or {}):
+        values = judge.get("traits") or {}
+        def trait_value(key):
+            value = values.get(key)
+            return str(value) if type(value) in (int, float) and math.isfinite(value) else "n/a"
+        text = "traits: " + ", ".join(f"{key} {trait_value(key)}" for key in
+                                      ("lips", "brows", "skin_pattern", "hair", "jaw"))
+        extra += f'<br><span class="judge">{html.escape(text)}</span>'
+    if (gate_row or {}).get("age_hold"):
+        text = "Age ruling required: " + "; ".join((gate_row or {}).get("age_reasons") or [])
+        extra += f'<br><span class="gate-reasons">{html.escape(text)}</span>'
     if annotation:
         extra += f'<br><span class="advisory">{html.escape(annotation)}</span>'
     if judge_annotation:
@@ -5561,6 +5839,7 @@ def _current_persona_training(
         )
     except (OSError, ValueError) as exc:
         raise FigmentTrainError(f"current persona/training configuration is invalid: {exc}") from exc
+    merged["_persona_path"] = str(persona_path)
     return merged, merged["training"]
 
 
@@ -5568,6 +5847,8 @@ def _current_review_subject(
     plan: dict[str, Any], root: Path, stage: str, grading: dict[str, Any], *, reads=None,
 ) -> dict[str, Any]:
     persona, training = _current_persona_training(plan, reads=reads)
+    if stage != "anchor" and plan.get("training", {}).get("recipe_profile") == "tensor":
+        _validate_tensor_passport_inputs(plan, root, persona=persona, reads=reads)
     manifest_paths = [root / run["manifest"] for run in plan["stages"][stage]["runs"]]
     anchors = [
         reads.resolve(root / value) if reads is not None else (root / value).resolve()
@@ -5860,6 +6141,7 @@ def _run_identity_gate(
         lambda: _load_persona_document_for_gate(plan),
         anchors, images, grade_dir, skip_judge=skip_judge, judge_backend=judge_backend,
         reference_free=reference_free,
+        **({"tensor_review": True} if not reference_free and plan.get("training", {}).get("recipe_profile") == "tensor" else {}),
     )
 
 
@@ -5880,6 +6162,8 @@ def build_grade(
     if stage not in GRADEABLE_STAGES:
         raise FigmentTrainError(f"grade stage must be one of {GRADEABLE_STAGES}")
     plan, root = _load_plan(creator_id, plan_path)
+    if stage != "anchor" and plan.get("training", {}).get("recipe_profile") == "tensor":
+        _validate_tensor_passport_inputs(plan, root)
     anchors = [(root / value).resolve() for value in plan["assets"]["anchors"]]
     for anchor in anchors:
         if not anchor.is_file() or anchor.stat().st_size <= 0:
@@ -5946,7 +6230,7 @@ def build_grade(
             } if local_research else {}),
         ),
     )
-    held_for_age = {row["image_id"] for row in gate_document.get("rows", []) if row.get("group") == "age"}
+    held_for_age = {row["image_id"] for row in gate_document.get("rows", []) if row.get("group") == "age" or row.get("age_hold")}
     _write_json(template_path, {
         "schema": "figment/rulings-template@1",
         "creator": creator_id,
@@ -6055,7 +6339,7 @@ def _checkpoint_candidate(
         raise FigmentTrainError(
             f"checkpoint step {step} was not produced by this plan; choose one of {allowed}"
         )
-    filename = _checkpoint_name(training["trigger"], None if step == training["steps"] else step)
+    filename = _checkpoint_name(_artifact_name(training), None if step == training["steps"] else step)
     tester_matches: list[tuple[dict[str, Any], dict[str, Any], str]] = []
     for run in plan["stages"]["tester"]["runs"]:
         manifest_path = root / run["manifest"]
@@ -6366,7 +6650,7 @@ def _age_hold_rows(
     rows = []
     for row in images:
         gate_row = gate_by_id.get(row["image_id"]) or {}
-        if gate_row.get("group") != "age":
+        if gate_row.get("group") != "age" and not gate_row.get("age_hold"):
             continue
         ruling = rulings[row["image_id"]]
         age_ruling = ruling.get("age_ruling")
@@ -6643,13 +6927,19 @@ def apply_rulings(
                 exclude=None,
             )
             if qwen3vl:
-                trigger = plan["training"]["trigger"]
+                trigger = _artifact_name(plan["training"])
                 build_kwargs.update(
                     caption_mode="qwen3vl",
                     trigger=trigger,
-                    job_runner=_live_qwen3vl_job_runner(
-                        creator_id, trigger, root, ledger_dir=Path(plan["ledger_dir"]),
-                        retry_after_fix_reason=retry_caption_after_fix,
+                    recipe_profile=plan["training"].get("recipe_profile", "clean"),
+                    job_runner=(
+                        _tensor_caption_job_runner(creator_id, plan["training"], root, Path(plan["ledger_dir"]),
+                            retry_after_fix_reason=retry_caption_after_fix)
+                        if plan["training"].get("recipe_profile") == "tensor" else
+                        _live_qwen3vl_job_runner(
+                            creator_id, trigger, root, ledger_dir=Path(plan["ledger_dir"]),
+                            retry_after_fix_reason=retry_caption_after_fix,
+                        )
                     ),
                 )
             else:
@@ -6953,7 +7243,7 @@ def _stage_accepted_checkpoint(
     digest = accepted_checkpoint["digest"]
     step = accepted_checkpoint["step"]
 
-    upload_name = _checkpoint_name(training["trigger"], step)
+    upload_name = _checkpoint_name(_artifact_name(training), step)
     staged_dir = out / "train" / "runs" / "accepted-checkpoint"
     staged_dir.mkdir(parents=True, exist_ok=True)
     staged = staged_dir / upload_name

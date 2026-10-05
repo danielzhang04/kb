@@ -58,6 +58,10 @@ train_first_test = load_module(
 )
 
 
+# Fixture grading keeps the real gate and authority chain, with offline no-face models.
+offline_fixture_models = train_first_test.offline_fixture_models
+
+
 BANNED = (
     "UltralyticsDetectorProvider", "SAMLoader", '.pt"', ".pth",
     "creator-001", "creator001krea2", "pawg", "gravedigga", "Impact-Subpack",

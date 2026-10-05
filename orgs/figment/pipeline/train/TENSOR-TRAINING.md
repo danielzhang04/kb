@@ -1,5 +1,34 @@
 # Tensor track — 10sorLabs module 11 on our harness
 
+## Current tensor baseline (2026-10-05)
+
+This section supersedes the historical clean-profile substitutions below for
+`training.recipe_profile: tensor`. The older measurements remain historical evidence;
+no new live dataset/training/tester run is claimed by this phase.
+
+| Stage | Implemented tensor recipe | Evidence or remaining limit |
+|---|---|---|
+| Dataset | Source module10 effective graph, 15 face + 15 body, one replicate, three 10-job shards; separate passport/body bindings; original linked prompts and refine prefixes | Verified source digest, independent widget/edge/prompt tests and mutation tests; no copied stale text widgets or bypassed restricted LoRA |
+| R1 base | Module04 qwen_image_edit_2511_bf16 loaded fp8_e4m3fn, Lightning strength 1, bfs_head_v5 strength 0.6, shift 3.1 | Approved R1; bf16 digest/revision verified with public HEAD metadata on 2026-10-05; no weight download |
+| Refine | Official Klein9B fp8, qwen_3_8b_fp8mixed type lumina2, source ReferenceLatent/detail-boost/sampler/upscale settings | lumina2 retained pending smoke; module10 flux2-vae comes from Comfy-Org/flux2-dev with installer digest d64f3a68..., distinct from the clean profile's older VAE pin |
+| Captions/training | Exact caption body without textual trigger; creator-id artifact stem; DOP off, raw Krea2, 3000 steps, save 250, keep 15, cached text embeddings, sampling off | Captions are planned locally and consumed only after a separately executed, verified receipt; smoke remains explicitly shorter |
+| Tester | Twelve checkpoints, 250..2750 plus final 3000, one approved scene prompt; 1448x2176, seed 1595, 4 steps, cfg 1, res_2s/beta, LoRA 1/1, zeroed negative | All twelve source branches compared after harness fanout collapse; selection stays an operator eye gate |
+| Traits | lips/brows/skin_pattern/hair/jaw, 0-100 match-to-passport, unavailable explicit | Display only; historical 95-row v1 inventory has no trait scores/labels; no thresholds fitted or activated |
+
+`tensor_body` and `tensor_tester_prompt` metadata, fixture markers and caption pending/resume
+commands are documented in [RUNBOOK](../../RUNBOOK.md#tensor-phase-2-offline-inputs-and-caption-resume).
+Dataset source and staged passport digests are frozen together; launch, grading and approval
+reject changed passport bytes or a changed selected source. Training-input comparisons use the
+existing semantic projection, so train-first's plan-only dataset_dir cannot invalidate its tester,
+while imported training values retain their recorded configuration authority.
+
+Pins live in `tensor-pins.yaml` (`dataset_tensor`, existing train/tester/caption groups).
+Klein9B has installer SHA 865ba09f... and public revision 902d9d..., but its unauthenticated weight
+HEAD returns 401. Gated access and an approved verification path remain prerequisites to live
+execution; offline pin bypass is not production verification. Rank/LR/optimizer/buckets,
+quantization and caption-instruction details absent from package text remain inherited pinned
+configuration/video-derived evidence, not newly established exact package proof.
+
 Detailed substitution/settings record for the `train`/`tester`/`gen` stages. Start at
 `pipeline/README.md` for the operator-facing pipeline overview, CLI, gate, and spend guards —
 this file is the setting-by-setting "why" behind the numbers that doc only lists.

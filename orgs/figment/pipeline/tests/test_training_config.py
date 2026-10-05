@@ -33,7 +33,7 @@ def test_dop_is_off_by_default():
 
 def test_dop_can_be_turned_on_with_a_custom_multiplier_and_class():
     config = tc.validate_training(
-        {"dop_enabled": True, "dop_multiplier": 2.5, "dop_class": "woman"}, "creator-002",
+        {"recipe_profile": "clean", "dop_enabled": True, "dop_multiplier": 2.5, "dop_class": "woman"}, "creator-002",
     )
     assert config["dop_enabled"] is True
     assert config["dop_multiplier"] == pytest.approx(2.5)
@@ -80,7 +80,7 @@ def test_dataset_source_defaults_to_qwen_edit():
 
 
 def test_dataset_source_accepts_klein_multiref():
-    config = tc.validate_training({"dataset_source": "klein-multiref"}, "creator-002")
+    config = tc.validate_training({"recipe_profile": "clean", "dataset_source": "klein-multiref"}, "creator-002")
     assert config["dataset_source"] == "klein-multiref"
 
 
@@ -101,7 +101,7 @@ def test_dataset_replicates_defaults_to_one():
 
 
 def test_dataset_replicates_accepts_a_larger_integer():
-    config = tc.validate_training({"dataset_replicates": 2}, "creator-002")
+    config = tc.validate_training({"recipe_profile": "clean", "dataset_replicates": 2}, "creator-002")
     assert config["dataset_replicates"] == 2
 
 

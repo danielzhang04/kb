@@ -36,6 +36,30 @@ def command():
     return load_module("figment_train_test_module", MODULE_PATH)
 
 
+@pytest.fixture(autouse=True)
+def offline_fixture_models(command, monkeypatch):
+    """Exercise real gate/ruling plumbing without loading models for synthetic cells."""
+    class NoFaceModels:
+        def detect(self, image):
+            return None
+
+        def embed(self, image):
+            raise ValueError("synthetic fixture has no face")
+
+        def predict_age(self, image):
+            raise ValueError("synthetic fixture has no age estimate")
+
+    gate = command._identity_gate_module()
+    monkeypatch.setattr(gate, "_default_models", lambda: NoFaceModels())
+    monkeypatch.setattr(command._score_cells_module(), "score", lambda *args, **kwargs: None)
+
+    def unexpected_external_call(*args, **kwargs):
+        pytest.fail("fixture regression attempted external model/network execution")
+
+    monkeypatch.setattr(gate._vlm_judge_module(), "judge_images_for_stage", unexpected_external_call)
+    monkeypatch.setattr(command._verify_pins_module()._OPENER, "open", unexpected_external_call)
+
+
 def load_json(path: Path):
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -315,7 +339,7 @@ def test_dataset_manifests_klein_multiref_binds_three_references_and_pins(comman
     _synthetic_persona(personas_root, dataset_source="klein-multiref")
     persona = command._training_config_module().load_persona_with_training(personas_root / "creator-002" / "persona.yaml")
     training = command._training_config_module().validate_training(
-        {"dataset_source": "klein-multiref"}, persona["id"],
+        {"recipe_profile": "clean", "dataset_source": "klein-multiref"}, persona["id"],
     )
     pins = command._read_json(command.PINS_PATH)
 
@@ -357,7 +381,7 @@ def test_dataset_manifests_klein_multiref_requires_exactly_three_references(comm
     )
     persona = command._training_config_module().load_persona_with_training(personas_root / "creator-002" / "persona.yaml")
     training = command._training_config_module().validate_training(
-        {"dataset_source": "klein-multiref"}, persona["id"],
+        {"recipe_profile": "clean", "dataset_source": "klein-multiref"}, persona["id"],
     )
     pins = command._read_json(command.PINS_PATH)
     with pytest.raises(command.FigmentTrainError, match="3"):
@@ -378,7 +402,7 @@ def _klein_multiref_manifests(command, tmp_path):
     creator-002 persona, reused by the review-fix tests below."""
     persona = _klein_multiref_persona(command, tmp_path)
     training = command._training_config_module().validate_training(
-        {"dataset_source": "klein-multiref"}, persona["id"],
+        {"recipe_profile": "clean", "dataset_source": "klein-multiref"}, persona["id"],
     )
     pins = command._read_json(command.PINS_PATH)
     return persona, command._dataset_manifests_klein_multiref(persona, training, pins)
@@ -438,7 +462,7 @@ def test_klein_multiref_face_manifest_has_fifteen_unique_prompts(command, tmp_pa
     face_manifest, _body_manifest = command._dataset_manifests_klein_multiref(
         persona,
         command._training_config_module().validate_training(
-            {"dataset_source": "klein-multiref"}, persona["id"],
+            {"recipe_profile": "clean", "dataset_source": "klein-multiref"}, persona["id"],
         ),
         command._read_json(command.PINS_PATH),
     )
@@ -492,7 +516,7 @@ def test_klein_multiref_jobs_substitute_node_4_with_reference_lock_and_cell_phra
     face_manifest, body_manifest = command._dataset_manifests_klein_multiref(
         persona,
         command._training_config_module().validate_training(
-            {"dataset_source": "klein-multiref"}, persona["id"],
+            {"recipe_profile": "clean", "dataset_source": "klein-multiref"}, persona["id"],
         ),
         command._read_json(command.PINS_PATH),
     )
@@ -538,7 +562,7 @@ def test_klein_multiref_face_prompts_never_carry_an_identity_look_value(command,
     face_manifest, body_manifest = command._dataset_manifests_klein_multiref(
         persona,
         command._training_config_module().validate_training(
-            {"dataset_source": "klein-multiref"}, persona["id"],
+            {"recipe_profile": "clean", "dataset_source": "klein-multiref"}, persona["id"],
         ),
         command._read_json(command.PINS_PATH),
     )
@@ -717,7 +741,7 @@ def test_dataset_manifests_qwen_edit_keeps_framing_on_the_written_job(command, t
         personas_root / "creator-002" / "persona.yaml"
     )
     training = command._training_config_module().validate_training(
-        {"dataset_source": "qwen-edit"}, persona["id"],
+        {"recipe_profile": "clean", "dataset_source": "qwen-edit"}, persona["id"],
     )
     pins = command._read_json(command.PINS_PATH)
     prompts = command._generalized_prompts(persona)
@@ -737,7 +761,7 @@ def _qwen_edit_dataset_manifests(command, personas_root, *, dataset_replicates=N
     persona = command._training_config_module().load_persona_with_training(
         personas_root / "creator-002" / "persona.yaml"
     )
-    raw_training = {"dataset_source": "qwen-edit"}
+    raw_training = {"recipe_profile": "clean", "dataset_source": "qwen-edit"}
     if dataset_replicates is not None:
         raw_training["dataset_replicates"] = dataset_replicates
     training = command._training_config_module().validate_training(raw_training, persona["id"])
@@ -877,7 +901,7 @@ def test_klein_multiref_framing_reaches_gate_json_through_build_grade(command, t
     plan -> manifest -> `_grading_images` -> `score_cells_for_stage` -> gate.json row,
     and each row's `stage1` must record which `face_px_min` floor it was gated against
     (`face_px_min_applied`) -- never inferred from the image or the output_name string.
-    Real (unmocked) `build_grade`/`score_cells_for_stage`; the fixture's fabricated
+    Real `build_grade`/`score_cells_for_stage` with an offline no-face model; the fixture's fabricated
     1x1 images have no real face, so every cell fails closed, but the plumbing under
     test (framing + face_px_min_applied) does not depend on that outcome."""
     gate, _ = _build_and_grade_dataset(
@@ -3074,6 +3098,13 @@ def test_apply_rulings_dataset_stage_routes_through_the_live_qwen3vl_job_when_de
             handle.write(f"{model}\tpod-create {pod_id}\t0.010000\n")
         return type("Result", (), {"returncode": 0})()
 
+    verifier = command._verify_pins_module()
+    caption_models = command._read_json(command.PINS_PATH)["pins"]["caption"]["models"]
+    pins_by_url = {verifier._pin_url(model): model for model in caption_models}
+    def fixture_head(url, *, timeout=30.0):
+        model = pins_by_url[url]
+        return 200, {"x-repo-commit": model["revision"], "x-linked-etag": model["sha256"]}
+    monkeypatch.setattr(verifier, "head_etag", fixture_head)
     monkeypatch.setattr(command.subprocess, "run", fake_harness)
     result = command.apply_rulings("creator-002", "dataset", plan_file, filled)
 

@@ -217,3 +217,253 @@ def check_passport(workflow: dict[str, Any], manifest: dict[str, Any],
             if key not in ("hair", "eyes") and phrase and phrase in str(prompt):
                 problems.append(f"prompt {index}: carries identity.look.{key} ({phrase!r})")
     return problems
+
+DATASET_GRAPH = PACKAGE_ROOT / "10_dataset_generator_v2" / "10sorlabs_dataset_generator_v2.json"
+DATASET_GRAPH_SHA256 = "06a2fa9f2f572f1281d85ae38b790a6c1806f05affb714d2b4995d7374751b04"
+TESTER_GRAPH = PACKAGE_ROOT / "11_lora_training_krea" / "10sorlabs_dataset_tester.json"
+TESTER_GRAPH_SHA256 = "864819c10d910cae6190d781eaaca9eccd8d29507c4a09416bf9dcbb56a4f8a6"
+R1_GRAPH = PACKAGE_ROOT / "04_generating_a_dataset" / "10sorlabs_dataset_generator.json"
+R1_GRAPH_SHA256 = "2beb21a118b600d01a520367593f9bb920ec680e6885cb4894e0f628bcf9bd6e"
+DATASET_WORKFLOW = HERE / "expand/workflows/tensor_dataset_m10_api.json"
+TESTER_WORKFLOW = HERE / "train/workflows/tensor_tester_m11_api.json"
+
+
+def _source(path, digest):
+    return json.loads(_read_verified(path, digest))
+
+
+def _effective_export(graph, roots):
+    """Walk live inputs, not stale widgets; collapse only typed UI indirections."""
+    nodes = {str(n["id"]): n for n in graph["nodes"]}
+    links = {edge[0]: edge for edge in graph["links"]}
+    setters = {n["widgets_values"][0]: n for n in nodes.values() if n["type"] == "SetNode"}
+    result = {}
+
+    def edge(link):
+        _, src, slot, *_ = links[link]
+        node = nodes[str(src)]
+        kind = node["type"]
+        if kind == "GetNode":
+            return edge(setters[node["widgets_values"][0]]["inputs"][0]["link"])
+        if kind == "SetNode" or node.get("mode") == 4:
+            live = [i for i in node["inputs"] if i.get("link") is not None]
+            if len(live) != 1:
+                raise ParityError("ambiguous bypass")
+            return edge(live[0]["link"])
+        if kind == "PrimitiveStringMultiline":
+            return "__PROMPT_" + str(src) + "__"
+        if kind == "CR Prompt List":
+            return "__ROW_" + str(src) + "__"
+        visit(str(src))
+        return [str(src), slot]
+
+    def visit(node_id):
+        if node_id in result:
+            return
+        node = nodes[node_id]
+        # R1 replaces all three outputs of the excluded AIO checkpoint.
+        if node_id == "701" and graph is not None:
+            return
+        inputs = _widget_values(node)
+        for item in node.get("inputs", []):
+            if item.get("link") is not None:
+                inputs[item["name"]] = edge(item["link"])
+        if node["type"] == "LoadImage":
+            inputs.pop("upload", None)  # frontend upload button, not an API input
+            inputs["image"] = "__FACE_IMAGE__" if node_id == "836" else "__BODY_IMAGE__"
+        result[node_id] = {"class_type": node["type"], "inputs": inputs}
+    for root in roots:
+        visit(str(root))
+    return result
+
+
+def dataset_workflow():
+    graph = _source(DATASET_GRAPH, DATASET_GRAPH_SHA256)
+    result = _effective_export(graph, [832, 833])
+    del result["833"]  # U7: one final output selected per harness job
+    r1 = _source(R1_GRAPH, R1_GRAPH_SHA256)
+    stack = _effective_export(r1, [2, 3, 4])
+    for key, node in stack.items():
+        for field, value in node["inputs"].items():
+            if isinstance(value, list):
+                node["inputs"][field] = ["r1_" + value[0], value[1]]
+        result["r1_" + key] = node
+    replacements = {0: ["r1_2", 0], 1: ["r1_3", 0], 2: ["r1_4", 0]}
+    for node in result.values():
+        for field, value in node["inputs"].items():
+            if isinstance(value, list) and value[0] == "701":
+                node["inputs"][field] = replacements[value[1]]
+    return result
+
+
+def dataset_prompt_blocks(hair, eyes, body_description):
+    for value in (hair, eyes, body_description):
+        if not isinstance(value, str) or not value.strip() or "{" in value or "}" in value:
+            raise ParityError("dataset slots require nonempty text without braces")
+    graph = _source(DATASET_GRAPH, DATASET_GRAPH_SHA256)
+    nodes = {n["id"]: n for n in graph["nodes"]}
+    # Spec 4.2 names these exact editable spans of the two primitive strings.
+    face = nodes[761]["widgets_values"][0].replace("long platinum blone hair", hair.strip()).replace("grey eyes", eyes.strip() if eyes.strip().endswith("eyes") else eyes.strip() + " eyes")
+    body = nodes[760]["widgets_values"][0]
+    body = body[:body.index("she has ") + len("she has ")].replace("platinum blonde hair", hair.strip()) + body_description.strip()
+    result = {}
+    for branch, node_id, prefix in (("face", 179, face), ("body", 697, body)):
+        widgets = _widget_values(nodes[node_id])
+        rows = widgets["multiline_text"].splitlines()
+        start = widgets["start_index"]
+        rows = rows[start:start + widgets["max_rows"]]
+        if len(rows) != 15 or widgets["append_text"]:
+            raise ParityError("module 10 prompt list shape changed")
+        result[branch] = {"identity": prefix, "rows": rows}
+    return result
+
+
+def tester_workflow():
+    graph = _source(TESTER_GRAPH, TESTER_GRAPH_SHA256)
+    result = _effective_export(graph, [407])
+    result["408"]["inputs"]["text"] = "__TESTER_PROMPT__"
+    result["411"]["inputs"]["lora_name"] = "__CHECKPOINT__"
+    result["900"] = {"class_type": "SaveImage", "inputs": {"images": ["407", 0], "filename_prefix": "tester"}}
+    return result
+
+
+def _compare_export(workflow, expected, mutable):
+    problems = []
+    if set(workflow) != set(expected):
+        problems.append("nodes: export differs from effective source graph")
+    for node_id in set(workflow) & set(expected):
+        actual, wanted = workflow[node_id], expected[node_id]
+        if actual.get("class_type") != wanted["class_type"]:
+            problems.append(f"node {node_id}: class differs from source")
+        inputs = actual.get("inputs", {})
+        if set(inputs) != set(wanted["inputs"]):
+            problems.append(f"node {node_id}: input keys differ from source")
+        for field, value in wanted["inputs"].items():
+            if (node_id, field) in mutable:
+                continue
+            if not _same(inputs.get(field), value):
+                problems.append(f"node {node_id}.{field}: differs from effective source")
+    return problems
+
+
+def _phase2_model_hashes():
+    installer = DATASET_GRAPH.parent / "dataset_generator_model_installer.bat"
+    text = _read_verified(installer, "f46cdb5a8151c65fb68b7a246a5e10e3e0b2cf7986858daea623533690c0785f").decode("utf-8")
+    stated = {}
+    for _url, destination, digest in re.findall(r'call :download\s+"([^"\n]+)"\s+"([^"\n]+)"\s+"([a-f0-9]{64})"', text):
+        stated[destination.replace("\\", "/").split("/")[-1]] = digest
+    # Previously verified HF pins, and R1's 2026-10-05 public HEAD receipt.
+    stated.update({
+        "qwen_image_vae.safetensors": "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f",
+        "qwen_image_edit_2511_bf16.safetensors": "ae42d927b5fac4f278b9a894554c727e619727a63622976f2d95625be4bce08c",
+        "qwen_2.5_vl_7b_fp8_scaled.safetensors": "cb5636d852a0ea6a9075ab1bef496c0db7aef13c02350571e388aea959c5c0b4",
+        "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors": "22226e8d05d354bb356627d428809f5afd7819399b077238a2b70a82883a904f",
+        "krea2_turbo_fp8_scaled.safetensors": "eb4dd8c612cfd10f64f25b057e6e6bbcb5737c94a7372177e456dbf7579502f1",
+        "qwen3vl_4b_fp8_scaled.safetensors": "54bd5144df0bbc25dd6ccadfcb826b521445a1b06ae5a42570bdd2974ca87094",
+    })
+    return stated
+
+
+def _model_check(workflow, manifest):
+    expected = {PurePosixPath(v).name for n in workflow.values() for k, v in n["inputs"].items()
+                if k in {"unet_name", "clip_name", "vae_name", "lora_name", "model_name"}
+                and isinstance(v, str) and v.endswith((".safetensors", ".pt", ".pth"))}
+    models = manifest.get("models", [])
+    names = [PurePosixPath(m["filename"]).name for m in models]
+    problems = []
+    if len(names) != len(set(names)) or set(names) != expected:
+        problems.append("models: names differ from effective source or duplicate basenames")
+    hashes = _phase2_model_hashes()
+    for model in models:
+        name = PurePosixPath(model["filename"]).name
+        if not re.fullmatch(r"[0-9a-f]{64}", str(model.get("sha256", ""))):
+            problems.append(f"model {name}: verified sha256 unavailable")
+        if "pickle_ack" in model and name not in PICKLE_HATCH_FILES:
+            problems.append(f"model {name}: pickle hatch not allowed")
+        if name not in hashes or model.get("sha256") != hashes[name]:
+            problems.append(f"model {name}: installer hash mismatch")
+    return problems
+
+
+
+def _node_pin_check(manifest, dataset):
+    expected = {"https://github.com/ClownsharkBatwing/RES4LYF": "e716cd1cb2c5cff90131bf4914b75b75a0489d48"}
+    if dataset:
+        expected.update({
+            "https://github.com/ltdrdata/ComfyUI-Impact-Pack": "429d0159ad429e64d2b3916e6e7be9c22d025c3c",
+            "https://github.com/cubiq/ComfyUI_FaceAnalysis": "8846653446a6b13582da11793faf950325a398e0",
+            "https://github.com/kijai/ComfyUI-KJNodes": "8692bc8ef8beaaeee80fd52ba80477dc9e61547b",
+        })
+    rows = manifest.get("custom_nodes", [])
+    actual = {n.get("git_url", "").removesuffix(".git"): n.get("installer_pin", n.get("git_ref")) for n in rows}
+    return [] if len(rows) == len(actual) and actual == expected else ["custom nodes: dependency pins differ from approved source mapping"]
+
+def check_dataset(workflow, manifest, look, body_description):
+    expected = dataset_workflow()
+    mutable = {(n, f) for n, f in (("836", "image"), ("837", "image"), ("832", "filename_prefix"), ("832", "images"), ("174", "prompt"), ("676", "prompt"), ("800", "text"), ("780", "text"))}
+    mutable |= {(n, "seed") for n in ("646", "672", "788", "778")}
+    problems = _compare_export(workflow, expected, mutable) + _model_check(expected, manifest) + _node_pin_check(manifest, True)
+    blocks = dataset_prompt_blocks(look["hair"], look["eyes"], body_description)
+    for n, branch in (("800", "face"), ("780", "body")):
+        value = workflow.get(n, {}).get("inputs", {}).get("text")
+        if value not in (expected[n]["inputs"]["text"], blocks[branch]["identity"]):
+            problems.append(f"node {n}.text: refine prefix mismatch")
+    for n in ("174", "676"):
+        if workflow.get(n, {}).get("inputs", {}).get("prompt") != expected[n]["inputs"]["prompt"]:
+            problems.append(f"node {n}.prompt: only per-job source prompt substitution allowed")
+    face_image = workflow.get("836", {}).get("inputs", {}).get("image")
+    body_image = workflow.get("837", {}).get("inputs", {}).get("image")
+    if not isinstance(face_image, str) or not isinstance(body_image, str) or not face_image or not body_image or face_image == body_image:
+        problems.append("images: face and body require distinct nonempty bindings")
+    jobs = manifest.get("jobs", [])
+    seen = set()
+    for index, job in enumerate(jobs):
+        subs = {(str(s.get("node_id")), s.get("field")): s.get("value") for s in job.get("substitutions", [])}
+        target = subs.get(("832", "images"), workflow.get("832", {}).get("inputs", {}).get("images"))
+        branch = "face" if target == ["791", 0] else "body" if target == ["776", 0] else None
+        if branch is None:
+            problems.append(f"job {index}: invalid final output")
+            continue
+        block = blocks[branch]
+        prompt_key = ("174", "prompt") if branch == "face" else ("676", "prompt")
+        refine_key = ("800", "text") if branch == "face" else ("780", "text")
+        prompt = subs.get(prompt_key)
+        valid = [block["identity"] + row for row in block["rows"]]
+        if prompt not in valid or subs.get(refine_key) != block["identity"]:
+            problems.append(f"job {index}: effective prompt mismatch")
+        identity = (branch, prompt)
+        if identity in seen:
+            problems.append(f"job {index}: duplicate prompt row")
+        seen.add(identity)
+        allowed = mutable
+        if len(subs) != len(job.get("substitutions", [])) or set(subs) - allowed:
+            problems.append(f"job {index}: unsupported or duplicate substitution")
+    # A shard may contain fewer than 30 rows; complete fanout is enforced by the planner.
+    return problems
+
+
+def check_tester(workflow, manifest, prompt=None):
+    expected = tester_workflow()
+    mutable = {("408", "text"), ("411", "lora_name"), ("900", "filename_prefix")}
+    problems = _compare_export(workflow, expected, mutable) + _model_check(expected, manifest) + _node_pin_check(manifest, False)
+    texts = []
+    jobs = manifest.get("jobs", [])
+    checkpoints = []
+    if len(jobs) != 12:
+        problems.append("tester: require the complete 12-checkpoint ladder")
+    for index, job in enumerate(jobs):
+        subs = {(str(s.get("node_id")), s.get("field")): s.get("value") for s in job.get("substitutions", [])}
+        if len(subs) != len(job.get("substitutions", [])) or set(subs) - mutable:
+            problems.append(f"job {index}: unsupported or duplicate substitution")
+        text = subs.get(("408", "text"), workflow.get("408", {}).get("inputs", {}).get("text"))
+        texts.append(text)
+        checkpoints.append(subs.get(("411", "lora_name"), workflow.get("411", {}).get("inputs", {}).get("lora_name")))
+        if job.get("seed") != 1595:
+            problems.append(f"job {index}: seed must be 1595")
+        if prompt is not None and text != prompt:
+            problems.append(f"job {index}: approved prompt mismatch")
+    if len(set(checkpoints)) != len(checkpoints) or any(not isinstance(c, str) or not c.endswith(".safetensors") for c in checkpoints):
+        problems.append("tester: checkpoint names must be distinct safetensors files")
+    if texts and (len(set(texts)) != 1 or not isinstance(texts[0], str) or not texts[0].strip()):
+        problems.append("tester: all checkpoints require one nonempty scene prompt")
+    return problems

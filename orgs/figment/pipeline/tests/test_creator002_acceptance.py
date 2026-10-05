@@ -119,10 +119,38 @@ def load_json(path: Path) -> dict:
 
 
 def run_cli(args: list[str]) -> subprocess.CompletedProcess:
-    """Invoke the real `figment_train.py` CLI exactly as an operator would."""
-    return subprocess.run(
-        [sys.executable, str(MODULE_PATH), *args], cwd=ROOT, text=True, capture_output=True,
-    )
+    """Run the real CLI parser/driver with offline model seams for fixture grading."""
+    if args and args[0] == "grade":
+        # A fresh child still exercises CLI arguments, exit status, grading and lineage.
+        # Only model acquisition/inference is replaced: these 8x8 cells have no face.
+        bootstrap = """
+import importlib.util
+import sys
+spec = importlib.util.spec_from_file_location("fixture_figment_cli", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+class NoFaceModels:
+    def detect(self, image):
+        return None
+    def embed(self, image):
+        raise ValueError("synthetic fixture has no face")
+    def predict_age(self, image):
+        raise ValueError("synthetic fixture has no age estimate")
+gate = module._identity_gate_module()
+gate._default_models = lambda: NoFaceModels()
+module._score_cells_module().score = lambda *args, **kwargs: None
+def forbidden_external_call(*args, **kwargs):
+    raise SystemExit("fixture CLI attempted external execution")
+gate._vlm_judge_module().judge_images_for_stage = forbidden_external_call
+module._verify_pins_module()._OPENER.open = forbidden_external_call
+sys.argv = sys.argv[1:]
+raise SystemExit(module.main())
+"""
+        argv = [sys.executable, "-c", bootstrap, str(MODULE_PATH), *args]
+    else:
+        argv = [sys.executable, str(MODULE_PATH), *args]
+    return subprocess.run(argv, cwd=ROOT, text=True, capture_output=True)
 
 
 def dry_run_every_manifest(plan: dict) -> list[tuple[str, subprocess.CompletedProcess]]:

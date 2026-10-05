@@ -1,0 +1,116 @@
+{
+  "382": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "krea2_turbo_fp8_scaled.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "383": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_4b_fp8_scaled.safetensors",
+      "type": "krea2",
+      "device": "default"
+    }
+  },
+  "411": {
+    "class_type": "LoraLoader",
+    "inputs": {
+      "lora_name": "__CHECKPOINT__",
+      "strength_model": 1,
+      "strength_clip": 1,
+      "model": [
+        "382",
+        0
+      ],
+      "clip": [
+        "383",
+        0
+      ]
+    }
+  },
+  "408": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "__TESTER_PROMPT__",
+      "clip": [
+        "411",
+        1
+      ]
+    }
+  },
+  "381": {
+    "class_type": "ConditioningZeroOut",
+    "inputs": {
+      "conditioning": [
+        "408",
+        0
+      ]
+    }
+  },
+  "403": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 1448,
+      "height": 2176,
+      "batch_size": 1
+    }
+  },
+  "409": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 1595,
+      "steps": 4,
+      "cfg": 1,
+      "sampler_name": "res_2s",
+      "scheduler": "beta",
+      "denoise": 1,
+      "model": [
+        "411",
+        0
+      ],
+      "positive": [
+        "408",
+        0
+      ],
+      "negative": [
+        "381",
+        0
+      ],
+      "latent_image": [
+        "403",
+        0
+      ]
+    }
+  },
+  "395": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    }
+  },
+  "407": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "409",
+        0
+      ],
+      "vae": [
+        "395",
+        0
+      ]
+    }
+  },
+  "900": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "407",
+        0
+      ],
+      "filename_prefix": "tester"
+    }
+  }
+}

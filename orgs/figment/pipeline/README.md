@@ -1,5 +1,39 @@
 # figment pipeline — operator entry point
 
+## Tensor phase 2 (2026-10-05, offline implementation)
+
+The `tensor` profile now plans the module-10 dataset and module-11 training/tester path.
+It produces exactly 15 face and 15 body jobs, once each, in three 10-job manifests named
+`<creator>-tensor-dataset-m10-01.yaml` through `-03.yaml`. Node836 receives the selected
+passport; node837 receives a separately approved faceless, clothed body image. Source and
+staged passport bytes are pinned at planning and rechecked before launch, grading and review.
+The source prompt rows and linked prefixes replace the old look-prefix/repair-tail recipe.
+
+Tensor training fixes 3000 steps, save 250, one dataset replicate, Qwen captions, DOP off and
+no textual trigger. Checkpoint filenames use the creator id; the tester compares the eleven
+250..2750 intermediates and the final 3000 checkpoint using one approved scene prompt,
+1448x2176, seed 1595, four steps, cfg 1 and res_2s/beta. Checkpoint selection remains an eye gate.
+The historical `clean` path below retains its own recipes and artifact names.
+
+Dataset `apply-rulings` plans captions and reports pending execution without launching a pod.
+It saves `train/caption-plan.json`; after a separately approved caption run, repeating the same
+command verifies its receipt and captions before creating the final approved training set.
+Fixture-marked body/prompt inputs refuse live stage execution; harness `--dry-run` remains
+available. See [the runbook](../RUNBOOK.md#tensor-phase-2-offline-inputs-and-caption-resume)
+for the input schema and commands.
+
+All tensor dataset/tester cells remain visible in passed, age, unscorable or failed groups.
+Missing-face cells can also require an age ruling. Lips, brows, skin_pattern, hair and jaw are
+0-100 passport-match displays, with unavailable values explicit; thresholds are not active.
+The calibration inventory found 95 historical v1 rows without these trait scores or labels;
+source-bound rescoring, labels, fitting and held-out validation remain pending.
+
+This work proves fixture planning and parity, not new live model quality. Klein9B remains
+gated: the installer supplies its digest and public metadata supplies the revision, but the
+current unauthenticated pin-verifier HEAD receives 401. Operator terms/access setup and a
+reviewed gated-file verification path are prerequisites to a separately approved live run;
+`--skip-pin-verify` is for offline tests only. See [recipe evidence](train/TENSOR-TRAINING.md).
+
 One persona (`persona.yaml`) plus a fixed set of reference anchors runs through eight stages
 under a fail-closed identity/quality gate, driven by one script:
 `orgs/figment/pipeline/figment_train.py`. This file is the pipeline's current, real state —
