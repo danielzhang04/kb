@@ -485,3 +485,7 @@ When local declarations and hashes agree, report only consistency. Keep admissio
 ## 2026-10-06 - Bind the model to the real authority mechanism
 
 The signed commit authenticates committed card metadata even when fields are outside the I3 payload digest. Use precise wording and test new contract serialization against the existing approval_payload/work_order_of functions, including line endings and section extraction. A pure event-history analyzer can test topology, time and replay conflicts but cannot prove the opaque evidence it names or replace global transactional consumption. Keep late cleanup possible after launch expiry; never interpret that as revived dispatch authority.
+
+## 2026-10-06 - Preserve filesystem truth across staged reader ownership
+
+Matching path strings cannot prove actual entry spelling or absence of casefold siblings on Windows. Keep exact-case metadata checks inside a bounded retained reader, including final rescans, with legacy callers default-off. A later strict member may share an ancestor already owned by an unrestricted reader: retain both primary observation and strict restriction owner, and reject conflicting spelling or root boundaries. Tests must distinguish real filesystem collision coverage from controlled scanner seams. Before extending an observer, prove the fixture uses the intended real writers and supported provenance: imported checkpoints and hand-authored synthetic authority records are not interchangeable with an in-plan accepted-checkpoint chain.
