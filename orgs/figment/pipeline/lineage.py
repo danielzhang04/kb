@@ -140,6 +140,12 @@ def pre_profile_compatible(recorded: Any, current: Any) -> Any:
 def persona_input_projection(persona: dict[str, Any]) -> dict[str, Any]:
     projected = deepcopy(persona)
     projected.pop("_persona_path", None)
+    # Optional module16 face words are gen-only; gen_inputs binds their fresh
+    # descriptor projection explicitly. The original eight look slots stay here.
+    identity = projected.get("identity")
+    look = identity.get("look") if isinstance(identity, dict) else None
+    if isinstance(look, dict):
+        look.pop("face", None)
     training = projected.get("training")
     if isinstance(training, dict):
         projected["training"] = training_input_projection(training)

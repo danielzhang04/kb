@@ -598,3 +598,11 @@ All 8/8 unique file pins across this directory's four manifests are now verified
 mutable `main`. `pod/tests/test_runpod_run.py`'s `model_revision`/`model_sha256` accept every
 value above (exercised by `train/tests/test_tensor_track.py::
 test_every_model_entry_is_pinned_with_revision_and_sha256`).
+
+## Module09 tensor generation integration
+
+The tensor gen profile uses the source module09 graph: RealisticSnapshot1.5, pawg0.65, then accepted identity LoRA1.0(model/clip); base1448x2176, four main steps/cfg1/res_2s/beta. Scene seeds are1594+original scene_index even when batching by framing. Refine seed40 and FaceDetailer seed137053700462745 stay fixed after job application. Close-up removes the entire upscale/refine branch and upscaled save under U5. Output receipts retain exact node/role identity; every saved variant enters grading.
+
+`gen_tensor` contains exact installer-approved model files and effective custom-node commits. Public metadata is recorded separately from runtime compatibility. The current scheduling/runtime envelope inherits the existing gen configuration; it is unmeasured for this source graph and is not production admission. Per-file style/NMKD mirror licences and RES4LYF licence classification remain unresolved. Fixture plans always refuse live dispatch.
+
+Scene request metadata and optional identity.look.face are gen-only. The generic persona projection excludes only the new optional face slot; all original eight look slots remain bound. Gen inputs explicitly hash/revalidate canonical passport descriptors, photo, text approval, framing and request files. This keeps an existing accepted training checkpoint valid when gen-only face words are supplied, while stale gen rulings fail. Clean gen composition and historic _03 behavior remain unchanged.

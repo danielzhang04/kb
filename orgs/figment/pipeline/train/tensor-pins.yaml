@@ -2,7 +2,7 @@
   "schema": "figment/tensor-pins@1",
   "profiles": {
     "clean": {"anchor": ["anchor", "anchor_edit"], "dataset": ["dataset"], "smoke": ["train"], "train": ["train"], "tester": ["tester"], "gen": ["gen"], "detail": ["detail"], "video": []},
-    "tensor": {"anchor": ["passport_tensor"], "dataset": ["dataset_tensor"], "smoke": ["train"], "train": ["train"], "tester": ["tester"], "caption": ["caption"], "edit": ["edit_tensor"], "video": ["video_tensor"]}
+    "tensor": {"anchor": ["passport_tensor"], "dataset": ["dataset_tensor"], "smoke": ["train"], "train": ["train"], "tester": ["tester"], "caption": ["caption"], "edit": ["edit_tensor"], "video": ["video_tensor"], "gen": ["gen_tensor"]}
   },
   "pod_classes": {
     "l40s": {
@@ -94,6 +94,21 @@
           "upload_allowance_seconds": 900,
           "job_wait_for_seconds": 180,
           "comfyui": {"root": "/workspace/ComfyUI", "git_ref": "v0.34.0", "port": 8188, "start_command": "bash /workspace/start-comfy-lorapath.sh"}
+        },
+        "gen_tensor": {
+          "max_minutes": 185,
+          "container_disk_gb": 80,
+          "volume_gb": 120,
+          "readiness_timeout_seconds": 2400,
+          "job_timeout_seconds": 600,
+          "upload_allowance_seconds": 300,
+          "job_wait_for_seconds": 180,
+          "comfyui": {
+            "root": "/workspace/ComfyUI",
+            "git_ref": "v0.34.0",
+            "port": 8188,
+            "start_command": "bash /workspace/start-comfy-lorapath.sh"
+          }
         },
         "gen": {
           "max_minutes": 185,
@@ -460,6 +475,102 @@
       ],
       "custom_nodes": [
         {"git_url": "https://github.com/ClownsharkBatwing/RES4LYF", "git_ref": "e716cd1cb2c5cff90131bf4914b75b75a0489d48"}
+      ]
+    },
+    "gen_tensor": {
+      "_note": "Module09 exact installer hashes and public immutable metadata. Disabled style excluded. Two style/NMKD mirror licences and RES4LYF classification unresolved; no production clearance. rgthree/KJ editor plumbing collapsed; core LoraLoader chain retains model/clip strengths.",
+      "diagnostic_non_commercial": true,
+      "models": [
+        {
+          "repo_id": "Comfy-Org/Krea-2",
+          "filename": "diffusion_models/krea2_turbo_fp8_scaled.safetensors",
+          "revision": "eb1eddd3983a54678545a9b2c178c5853b30f7be",
+          "sha256": "eb4dd8c612cfd10f64f25b057e6e6bbcb5737c94a7372177e456dbf7579502f1",
+          "destination_dir": "/workspace/ComfyUI/models/diffusion_models",
+          "licence": "krea-2-community-license"
+        },
+        {
+          "repo_id": "Comfy-Org/Krea-2",
+          "filename": "text_encoders/qwen3vl_4b_fp8_scaled.safetensors",
+          "revision": "eb1eddd3983a54678545a9b2c178c5853b30f7be",
+          "sha256": "54bd5144df0bbc25dd6ccadfcb826b521445a1b06ae5a42570bdd2974ca87094",
+          "destination_dir": "/workspace/ComfyUI/models/text_encoders",
+          "licence": "krea-2-community-license"
+        },
+        {
+          "repo_id": "Comfy-Org/Krea-2",
+          "filename": "vae/qwen_image_vae.safetensors",
+          "revision": "eb1eddd3983a54678545a9b2c178c5853b30f7be",
+          "sha256": "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f",
+          "destination_dir": "/workspace/ComfyUI/models/vae",
+          "licence": "krea-2-community-license"
+        },
+        {
+          "repo_id": "gravedigga/loras",
+          "filename": "pawg_krea2.safetensors",
+          "revision": "9b30695ba342f56131d1131f9788b0fd9cb9dfd4",
+          "sha256": "6df1ae992e4ac7ae2e5576b01074f31cc6ba20c442711d9b87e920996c24c30d",
+          "destination_dir": "/workspace/ComfyUI/models/loras",
+          "licence": "unknown",
+          "licence_status": "unresolved"
+        },
+        {
+          "repo_id": "gravedigga/loras",
+          "filename": "RealisticSnapshotKrea2.safetensors",
+          "revision": "9b30695ba342f56131d1131f9788b0fd9cb9dfd4",
+          "sha256": "dfd67eb881bec4caeb9409e5b7c127adcb9fb724e6007e1e77165af51e6f908d",
+          "destination_dir": "/workspace/ComfyUI/models/loras",
+          "licence": "unknown",
+          "licence_status": "unresolved"
+        },
+        {
+          "repo_id": "gravedigga/loras",
+          "filename": "4xNMKDSuperscale_4xNMKDSuperscale.pt",
+          "revision": "9b30695ba342f56131d1131f9788b0fd9cb9dfd4",
+          "sha256": "1d1b0078fe71446e0469d8d4df59e96baa80d83cda600d68237d655830821bcc",
+          "destination_dir": "/workspace/ComfyUI/models/upscale_models",
+          "licence": "unknown",
+          "licence_status": "unresolved",
+          "pickle_ack": "Approved module09 diagnostic-only exact-file exception: 4xNMKDSuperscale_4xNMKDSuperscale.pt; immutable installer SHA verified."
+        },
+        {
+          "repo_id": "Bingsu/adetailer",
+          "filename": "face_yolov8m.pt",
+          "revision": "53cc19de382014514d9d4038601d261a7faa9b7b",
+          "sha256": "717923c19b3f4bbf5250b728f1fa6b2cb72a33aed1d236ea9caf0e21ad943e5f",
+          "destination_dir": "/workspace/ComfyUI/models/ultralytics/bbox",
+          "licence": "apache-2.0",
+          "pickle_ack": "Approved module09 diagnostic-only exact-file exception: face_yolov8m.pt; immutable installer SHA verified."
+        },
+        {
+          "repo_id": "datasets/Gourieff/ReActor",
+          "filename": "models/sams/sam_vit_b_01ec64.pth",
+          "revision": "788477a1c8088e664f10a74b95ce65dcdd3c56dc",
+          "sha256": "ec2df62732614e57411cdcf32a23ffdf28910380d03139ee0f4fcbe91eb8c912",
+          "destination_dir": "/workspace/ComfyUI/models/sams",
+          "licence": "mit",
+          "pickle_ack": "Approved module09 diagnostic-only exact-file exception: sam_vit_b_01ec64.pth; immutable installer SHA verified."
+        }
+      ],
+      "custom_nodes": [
+        {
+          "name": "ComfyUI-Impact-Pack",
+          "git_url": "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git",
+          "git_ref": "429d0159ad429e64d2b3916e6e7be9c22d025c3c",
+          "licence": "GPL-3.0"
+        },
+        {
+          "name": "ComfyUI-Impact-Subpack",
+          "git_url": "https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git",
+          "git_ref": "50c7b71a6a224734cc9b21963c6d1926816a97f1",
+          "licence": "AGPL-3.0"
+        },
+        {
+          "name": "RES4LYF",
+          "git_url": "https://github.com/ClownsharkBatwing/RES4LYF.git",
+          "git_ref": "e716cd1cb2c5cff90131bf4914b75b75a0489d48",
+          "licence": "NOASSERTION"
+        }
       ]
     },
     "gen": {

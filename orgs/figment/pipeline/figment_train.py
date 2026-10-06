@@ -3438,6 +3438,167 @@ def _tensor_edit_module():
     return _load_module("_figment_tensor_edit", HERE / "tensor_edit.py")
 
 
+def _tensor_stills_module():
+    return _load_module("_figment_tensor_stills", HERE / "tensor_stills.py")
+
+
+def _canonical_intake_adapter(creator, personas_root):
+    intake = _tensor_stills_module().prompt_intake
+    def current():
+        persona, _, _ = _load_inputs(creator, Path(personas_root))
+        persona["_persona_path"] = str(Path(personas_root) / creator / "persona.yaml")
+        return persona
+    def resolve(selected_creator, selection):
+        if selected_creator != creator:
+            raise FigmentTrainError("intake creator changed")
+        return _validate_registered_passport(creator, current(), selection["source_plan"], selection["image_id"])
+    def descriptors(selected_creator, authority):
+        if selected_creator != creator or authority["creator"] != creator:
+            raise FigmentTrainError("intake descriptor creator changed")
+        look = current()["identity"]["look"]
+        return {key: look.get(key, "") for key in ("face", "hair", "eyes", "skin")}
+    return intake.CanonicalPassportAdapter(resolve, descriptors)
+
+
+def _resolve_stills_request(creator, request, personas_root):
+    try:
+        return _tensor_stills_module().read_request(request, creator,
+            passport_adapter=_canonical_intake_adapter(creator, personas_root))
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise FigmentTrainError(f"stills intake refused: {exc}") from exc
+
+
+def _tensor_stills_manifest(group, training, pins, checkpoint_upload):
+    pin_group = deepcopy(pins["pins"]["gen_tensor"])
+    if group["framing"] == "close-up":
+        pin_group["models"] = [row for row in pin_group["models"] if not row["filename"].endswith("4xNMKDSuperscale_4xNMKDSuperscale.pt")]
+    return {**_pod_base(pins, training["pod_class"], "gen_tensor"),
+        "models": pin_group["models"], "custom_nodes": pin_group["custom_nodes"],
+        "diagnostic_non_commercial": True,
+        "workflow": deepcopy(group["workflow"]), "seed_fields": group["seed_fields"],
+        "output_roles": group["output_roles"], "framing": group["framing"], "jobs": deepcopy(group["jobs"]),
+        "uploads": [{"files": [checkpoint_upload], "subfolder": _artifact_name(training),
+                     "type": "input", "overwrite": True, "chunk_bytes": 16777216}],
+        "training": {"lora_source_dir": "/workspace/ComfyUI/input/" + _artifact_name(training),
+                     "start_script_path": "/workspace/start-comfy-lorapath.sh",
+                     "start_script_file": "start-comfy-lorapath.sh.template"}}
+
+
+def _build_tensor_stills_plan(creator, out, request, *, personas_root, skip_pin_verify, ledger_dir, accept_budget):
+    persona, training, pins = _load_inputs(creator, Path(personas_root))
+    persona = {**persona, "_persona_path": str(Path(personas_root) / creator / "persona.yaml")}
+    if training["recipe_profile"] != "tensor":
+        raise FigmentTrainError("--stills-request requires tensor profile")
+    _identity_gate_module().load_thresholds(persona)
+    frozen = _resolve_stills_request(creator, request, personas_root)
+    accepted = _validated_accepted_checkpoint(persona, training)
+    authority = _accepted_checkpoint_snapshot(accepted)
+    name = _checkpoint_name(_artifact_name(training), accepted["step"])
+    groups = _tensor_stills_module().compile_scene_groups(frozen["scenes"], identity_lora=name,
+        output_prefix=_creator_output_code(creator) + "-stills")
+    manifests = [_tensor_stills_manifest(group, training, pins, "accepted-checkpoint/" + name) for group in groups]
+    for group, manifest in zip(groups, manifests):
+        errors = _tensor_parity_module().check_stills(group["workflow"], manifest, framing=group["framing"],
+            identity_lora=name, approved_prompts=group["approved_prompts"])
+        if errors:
+            raise FigmentTrainError("tensor stills parity failed: " + "; ".join(errors))
+    if not skip_pin_verify:
+        _verify_pins_preflight(pins, ["gen"], training)
+    out = Path(out).resolve()
+    if out.exists() and any(out.iterdir()):
+        raise FigmentTrainError(f"plan output directory must be empty: {out}")
+    out.mkdir(parents=True, exist_ok=True)
+    assets = {"anchors": _copy_anchors(out, persona), "persona_dir": _persona_dir_asset(persona)}
+    assets["tensor_passport"] = _tensor_passport_binding(out, persona, assets["anchors"])
+    _stage_accepted_checkpoint(out, persona, training, accepted_checkpoint=accepted)
+    launcher = out / "train/runs/start-comfy-lorapath.sh.template"
+    shutil.copy2(TESTER_START_PATH, launcher)
+    assets["stills_launcher_sha256"] = _sha256(launcher)
+    ledger = _resolved_ledger_dir(ledger_dir)
+    runs = []
+    for group, manifest in zip(groups, manifests):
+        suffix = group["framing"]
+        workflow_path = out / "train/workflows" / f"tensor_stills_m09_{suffix}.json"
+        _write_json(workflow_path, manifest.pop("workflow"))
+        manifest["workflow"] = "../workflows/" + workflow_path.name
+        manifest_path = out / "train/runs" / f"{creator}-tensor-stills-{suffix}.yaml"
+        _write_json(manifest_path, manifest)
+        run = _planned_run(out, manifest_path, _stage_run_root(out, "gen") / manifest_path.stem, ledger_dir=ledger)
+        run.update(workflow_sha256=_sha256(workflow_path), framing=suffix)
+        runs.append(run)
+    stages = {"gen": {"runs": runs}}
+    budget = _budget_preflight(stages, ledger_dir=ledger, arc_cap_usd=_arc_cap_usd(), accept_budget=accept_budget)
+    plan = {"schema": "figment/train-plan@1", "creator": creator, "fixture": True,
+        "generated_utc": datetime.now(timezone.utc).isoformat(), "generator": _sha256(Path(__file__)),
+        "persona_sha256": _sha256(Path(persona["_persona_path"])), "training": training,
+        "assets": assets, "configs": {}, "ledger_dir": str(ledger), "arc_cap_usd": _arc_cap_usd(),
+        "arc_ledger_glob": ARC_LEDGER_GLOB, "budget_preflight": budget, "stages": stages,
+        "gen_authority": authority, "gen_inputs": frozen}
+    _write_json(out / "plan.json", plan)
+    _validate_tensor_stills_inputs(plan, out)
+    intake = _tensor_stills_module().prompt_intake
+    adapter = _canonical_intake_adapter(creator, personas_root)
+    evidence_root = Path(frozen["request"]["path"]).parent
+    for row in frozen["scene_files"]:
+        if row["kind"] == "draft":
+            raw = intake._read(evidence_root, row["path"])
+            if hashlib.sha256(raw).hexdigest() != row["sha256"]:
+                raise FigmentTrainError("stills preview draft changed after approval binding")
+            draft = json.loads(raw)
+            preview = intake.preview_fixture_html(evidence_root, draft, passport_adapter=adapter)
+            preview_path = out / "intake" / f"scene-{row['scene_index']}.html"
+            preview_path.parent.mkdir(parents=True, exist_ok=True)
+            preview_path.write_text(preview, encoding="utf-8")
+    _validate_tensor_stills_inputs(plan, out)
+    return plan
+
+
+def _validate_tensor_stills_inputs(plan, root, *, launch=False):
+    persona, training = _current_persona_training(plan)
+    if training["recipe_profile"] != "tensor":
+        raise FigmentTrainError("tensor stills profile changed")
+    personas_root = _persona_path_for_plan(plan).parent.parent
+    frozen = plan.get("gen_inputs", {})
+    current = _resolve_stills_request(plan["creator"], frozen.get("request", {}).get("path"), personas_root)
+    if current != frozen or plan.get("fixture") is not True:
+        raise FigmentTrainError("stills source inputs or fixture authority changed")
+    _validate_tensor_passport_inputs(plan, root, persona=persona)
+    accepted = _validated_accepted_checkpoint(persona, training)
+    name = _checkpoint_name(_artifact_name(training), accepted["step"])
+    groups = _tensor_stills_module().compile_scene_groups(current["scenes"], identity_lora=name,
+        output_prefix=_creator_output_code(plan["creator"]) + "-stills")
+    pins = _read_json(PINS_PATH)
+    runs = plan["stages"]["gen"]["runs"]
+    if len(runs) != len(groups):
+        raise FigmentTrainError("stills framing groups changed")
+    for run, group in zip(runs, groups):
+        expected_manifest = f"train/runs/{plan['creator']}-tensor-stills-{group['framing']}.yaml"
+        if run.get("manifest") != expected_manifest:
+            raise FigmentTrainError("stills manifest location changed")
+        manifest_path = root / run["manifest"]
+        manifest = _read_json(manifest_path)
+        if manifest.get("workflow") != f"../workflows/tensor_stills_m09_{group['framing']}.json":
+            raise FigmentTrainError("stills workflow location changed")
+        workflow_path = manifest_path.parent / manifest["workflow"]
+        if (_sha256(manifest_path) != run["sha256"] or _sha256(workflow_path) != run["workflow_sha256"]
+                or run.get("framing") != group["framing"]):
+            raise FigmentTrainError("stills manifest, workflow or framing changed")
+        inline = {**manifest, "workflow": _read_json(workflow_path)}
+        expected = _tensor_stills_manifest(group, training, pins, "accepted-checkpoint/" + name)
+        if inline != expected:
+            raise FigmentTrainError("stills manifest differs from current approved scene/checkpoint projection")
+        errors = _tensor_parity_module().check_stills(inline["workflow"], inline, framing=group["framing"],
+            identity_lora=name, approved_prompts=group["approved_prompts"])
+        if errors:
+            raise FigmentTrainError("stills parity changed: " + "; ".join(errors))
+    launcher = root / "train/runs/start-comfy-lorapath.sh.template"
+    if _sha256(launcher) != plan["assets"].get("stills_launcher_sha256") or _sha256(launcher) != _sha256(TESTER_START_PATH):
+        raise FigmentTrainError("stills launcher changed")
+    if launch:
+        raise FigmentTrainError("fixture stills plan is dry-run only; live extractor/runtime/licences remain unverified")
+    return current
+
+
 def _tensor_video_module():
     return _load_module("_figment_tensor_video", HERE / "tensor_video.py")
 
@@ -3807,6 +3968,7 @@ def build_plan(
     import_training_config: Path | None = None,
     edit_request: Path | None = None,
     video_request: Path | None = None,
+    stills_request: Path | None = None,
 ) -> dict[str, Any]:
     """Generate a complete, immutable plan without touching the hand-written runs.
 
@@ -3856,6 +4018,14 @@ def build_plan(
     candidate rebuild and `content/content_asset_binding.py`'s slot join already share.
     Its output root must therefore be inside this repository (`_video_authority_root`).
     """
+    if stills_request is not None:
+        if stage != "gen" or any(value is not None for value in
+                (edit_request, video_request, approved_gen_plan, approved_gen_image_id, video_action,
+                 import_checkpoints, import_training_config, detail_images, style_lora, style_lora_strength,
+                 gen_prompt_style, gen_refine_denoise, gen_detailer_denoise)):
+            raise FigmentTrainError("--stills-request is exclusively a tensor gen request")
+        return _build_tensor_stills_plan(creator_id, out, stills_request, personas_root=personas_root,
+            skip_pin_verify=skip_pin_verify, ledger_dir=ledger_dir, accept_budget=accept_budget)
     if video_request is not None:
         if stage != "video" or any(value is not None for value in
                 (edit_request, approved_gen_plan, approved_gen_image_id, video_action, import_checkpoints,
@@ -3928,6 +4098,8 @@ def build_plan(
     _identity_gate_module().load_thresholds(persona)
     pre_passport = not persona["identity"]["references"]
     tensor = training["recipe_profile"] == "tensor"
+    if tensor and stage == "gen":
+        raise FigmentTrainError("tensor gen requires --stills-request with canonical approved fixture scenes")
     if pre_passport and (not tensor or stage not in ("anchor", "all")):
         raise FigmentTrainError(
             f"{creator_id} has no identity reference yet; only the tensor-profile anchor "
@@ -4820,6 +4992,10 @@ def _validate_gen_source_inputs(plan: dict[str, Any], root: Path, *, reads=None)
     if not isinstance(expected, str):
         raise FigmentTrainError("gen plan has no accepted checkpoint digest")
     _validate_staged_checkpoint_upload(plan, root, "gen", expected, reads=reads)
+    if "gen_inputs" in plan:
+        if reads is not None:
+            raise FigmentTrainError("tensor stills authority does not yet support observed reads")
+        _validate_tensor_stills_inputs(plan, root)
 
 
 def _validate_detail_source_inputs(plan: dict[str, Any], root: Path, *, reads=None) -> None:
@@ -4906,6 +5082,10 @@ def _validate_video_source_inputs(plan: dict[str, Any], root: Path, *, reads=Non
 
 
 def _install_stage_config(stage: str, plan: dict[str, Any], root: Path) -> None:
+    if stage == "gen" and "gen_inputs" in plan:
+        _validate_gen_source_inputs(plan, root)
+        _validate_tensor_stills_inputs(plan, root, launch=True)
+        return
     if stage == "video" and "video_inputs" in plan:
         _validate_tensor_video_inputs(plan, root, launch=True)
         return
@@ -5998,11 +6178,57 @@ def _video_grading_images(plan: dict[str, Any], root: Path) -> list[dict[str, An
     return images
 
 
+def _tensor_stills_grading_images(plan, root):
+    import io
+    import warnings
+    from PIL import Image
+    _validate_gen_source_inputs(plan, root)
+    name = _checkpoint_name(_artifact_name(plan["training"]), plan["training"]["chosen_checkpoint_step"])
+    groups = _tensor_stills_module().compile_scene_groups(plan["gen_inputs"]["scenes"], identity_lora=name,
+        output_prefix=_creator_output_code(plan["creator"]) + "-stills")
+    images = []
+    for run, group in zip(plan["stages"]["gen"]["runs"], groups):
+        manifest_path = root / run["manifest"]
+        manifest = _read_json(manifest_path)
+        manifest["workflow"] = _read_json(manifest_path.parent / manifest["workflow"])
+        run_out = root / run["out"]
+        receipt = verify_run_record("gen", manifest, run_out, Path(plan["ledger_dir"]))
+        if receipt.get("dry_run") is True:
+            raise FigmentTrainError("dry-run simulated stills are not grading media")
+        for job in receipt["jobs"]:
+            for row in _tensor_stills_module().normalize_stills_outputs(group, job):
+                path = run_out / row["path"]
+                with path.open("rb") as handle:
+                    raw = handle.read(32 * 1024 * 1024 + 1)
+                if len(raw) != row["bytes"] or len(raw) > 32 * 1024 * 1024 or hashlib.sha256(raw).hexdigest() != row["sha256"]:
+                    raise FigmentTrainError("stills image changed during decode")
+                try:
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("error", Image.DecompressionBombWarning)
+                        with Image.open(io.BytesIO(raw)) as image:
+                            if image.format != "PNG" or getattr(image, "n_frames", 1) != 1 or image.width * image.height > 32_000_000:
+                                raise ValueError("single bounded PNG required")
+                            image.verify()
+                        with Image.open(io.BytesIO(raw)) as image:
+                            image.load()
+                except (OSError, ValueError, Image.DecompressionBombWarning, Image.DecompressionBombError) as exc:
+                    raise FigmentTrainError(f"stills output is not a valid single-frame PNG: {path.name}") from exc
+                images.append({"image_id": row["image_id"], "path": str(path.resolve()),
+                    "review_status": "unreviewed", "parked_reasons": [], "safety_failed": False,
+                    "safety_reasons": [], "framing": row["framing"], "role": row["role"],
+                    "node_id": row["node_id"], "scene_index": row["scene_index"],
+                    "approved_prompt": group["approved_prompts"][str(row["scene_index"])],
+                    "intake_preview": str((root / "intake" / f"scene-{row['scene_index']}.html").resolve())})
+    return images
+
+
 def _grading_images(plan: dict[str, Any], root: Path, stage: str) -> list[dict[str, Any]]:
     if stage not in plan.get("stages", {}):
         raise FigmentTrainError(f"plan does not contain stage {stage!r}")
     if stage == "video":
         return _video_grading_images(plan, root)
+    if stage == "gen" and "gen_inputs" in plan:
+        return _tensor_stills_grading_images(plan, root)
     images: list[dict[str, Any]] = []
     for run in plan["stages"][stage]["runs"]:
         manifest_path = root / run["manifest"]
@@ -6108,6 +6334,11 @@ def _figure_html(
     judge_annotation = _judge_annotation((gate_row or {}).get("judge"))
     caption = f"{number}. {html.escape(row['image_id'])}" if number is not None else html.escape(row["image_id"])
     extra = ""
+    if row.get("role"):
+        extra += f'<br><span>{html.escape(str(row["framing"]))} / {html.escape(str(row["role"]))}</span>'
+        extra += f'<br><span>{html.escape(str(row.get("approved_prompt", "")))}</span>'
+        if row.get("intake_preview"):
+            extra += f'<br><a href="{html.escape(Path(row["intake_preview"]).as_uri())}">Canonical fixture intake</a>'
     if passport_floor is not None:
         age_line = _passport_age_annotation(gate_row, passport_floor[0])
         extra += f'<br><span class="judge">{html.escape(age_line)}</span>'
@@ -6283,7 +6514,7 @@ def _current_persona_training(
 def _current_review_subject(
     plan: dict[str, Any], root: Path, stage: str, grading: dict[str, Any], *, reads=None,
 ) -> dict[str, Any]:
-    if (stage == "edit" or stage == "video" and "video_inputs" in plan) and reads is not None:
+    if (stage == "edit" or stage == "video" and "video_inputs" in plan or stage == "gen" and "gen_inputs" in plan) and reads is not None:
         raise FigmentTrainError("edit authority does not yet support an observed reads context")
     persona, training = _current_persona_training(plan, reads=reads)
     if stage != "anchor" and plan.get("training", {}).get("recipe_profile") == "tensor":
@@ -6314,6 +6545,15 @@ def _current_review_subject(
             ]
     edit_inputs = _validate_edit_inputs(plan, root) if stage == "edit" else None
     video_inputs = _validate_tensor_video_inputs(plan, root) if stage == "video" and "video_inputs" in plan else None
+    gen_inputs = None
+    if stage == "gen" and "gen_inputs" in plan:
+        _validate_gen_source_inputs(plan, root)
+        gen_inputs = plan["gen_inputs"]
+        # Re-read every receipt and decoded image at ruling/approval boundaries too.
+        current_images = _tensor_stills_grading_images(plan, root)
+        recorded = [(row["image_id"], row["path"]) for row in grading["images"]]
+        if recorded != [(row["image_id"], row["path"]) for row in current_images]:
+            raise FigmentTrainError("stills grading role/image mapping changed")
     if stage == "edit" or video_inputs is not None:
         training = {key: training.get(key) for key in EDIT_TRAINING_KEYS}
         persona = {**persona, "training": training}
@@ -6330,6 +6570,8 @@ def _current_review_subject(
             subject["edit_inputs"] = edit_inputs
         if video_inputs is not None:
             subject["video_inputs"] = video_inputs
+        if gen_inputs is not None:
+            subject["gen_inputs"] = gen_inputs
         return subject
     except (OSError, ValueError) as exc:
         raise FigmentTrainError(f"cannot establish {stage} review lineage: {exc}") from exc
@@ -6742,6 +6984,11 @@ def build_grade(
     page_path.write_text(
         _grading_html(creator_id, stage, anchors, images, advisory, gate_document), encoding="utf-8",
     )
+    if stage == "gen" and "gen_inputs" in plan and plan.get("fixture") is True:
+        page_path.write_text(page_path.read_text("utf-8").replace("<body>",
+            '<body><aside style="padding:16px;background:#fff1b8;color:#362900;font-weight:bold">'
+            'FIXTURE ONLY — testing evidence; not production approval or model-quality proof.</aside>', 1),
+            encoding="utf-8")
     if stage == "edit":
         _edit_preview(plan, root, grade_dir / "edit-inputs.html")
         page_path.write_text(page_path.read_text("utf-8").replace("<body>",
@@ -7298,11 +7545,13 @@ def apply_rulings(
     approval_out = grade_dir / "approval-lineage.json"
     rejection_out = grade_dir / "rejection-lineage.json"
     accepted_checkpoint_out = grade_dir / "accepted-checkpoint.json"
-    if (stage == "edit" and approved_rows and rulings_out.is_file()
+    replayable = stage == "edit" or stage == "gen" and "gen_inputs" in plan
+    if (replayable and approved_rows and rulings_out.is_file()
             and _read_json(rulings_out) == normalized and approval_out.is_file()):
         _load_current_approval(plan, root, stage)
         for row in approved_rows:
-            validate_approved_edit_still(creator_id, root / "plan.json", row["image_id"])
+            validator = validate_approved_edit_still if stage == "edit" else validate_approved_gen_still
+            validator(creator_id, root / "plan.json", row["image_id"])
         return {"rulings": str(rulings_out), "review_manifest": str(review_out),
                 "approved_list": str(approved_out), "approval_lineage": str(approval_out)}
     if not approved_rows:
@@ -7310,7 +7559,7 @@ def apply_rulings(
             raise FigmentTrainError("rulings approved no images")
         if any(r["decision"] != "cull" for r in normalized["rulings"]):
             raise FigmentTrainError("rulings approved no images")
-        if (stage == "edit" and rulings_out.is_file() and rejection_out.is_file()
+        if (replayable and rulings_out.is_file() and rejection_out.is_file()
                 and _read_json(rulings_out) == normalized and not approval_out.exists()):
             rejection = _read_json(rejection_out)
             if (rejection.get("decision") != "rejected" or rejection.get("creator") != creator_id
@@ -8496,17 +8745,22 @@ def command_pipeline(
         order = ["edit"]
     if "video_inputs" in primary_plan:
         order = ["video"]
+    if "gen_inputs" in primary_plan:
+        order = ["gen"]
+        _validate_gen_source_inputs(primary_plan, primary_root)
     if from_stage is not None:
         if from_stage not in order:
             raise FigmentTrainError("requested stage is not in this profile's pipeline sequence")
         order = order[order.index(from_stage):]
 
-    gen_root = _pipeline_downstream_root(primary_root, "gen")
+    gen_root = primary_root if "gen_inputs" in primary_plan else _pipeline_downstream_root(primary_root, "gen")
     detail_root = _pipeline_downstream_root(primary_root, "detail")
     video_root = _pipeline_downstream_root(primary_root, "video")
     edit_root = primary_root if "edit" in primary_plan.get("stages", {}) else _pipeline_downstream_root(primary_root, "edit")
     if replan_downstream == "edit" and edit_root == primary_root:
         raise FigmentTrainError("standalone edit is the primary plan; create a fresh edit plan to revise it")
+    if replan_downstream is not None and "gen_inputs" in primary_plan:
+        raise FigmentTrainError("standalone stills is the primary plan; create an explicit new stage request")
 
     if replan_downstream is not None:
         if dry_run:
@@ -8538,7 +8792,9 @@ def command_pipeline(
         return str(manifest_path) if built is not None else None
 
     for stage in order:
-        if stage == "video" and "video_inputs" in primary_plan:
+        if stage == "gen" and "gen_inputs" in primary_plan:
+            active_plan, active_root, active_plan_path = primary_plan, primary_root, primary_plan_path
+        elif stage == "video" and "video_inputs" in primary_plan:
             active_plan, active_root, active_plan_path = primary_plan, primary_root, primary_plan_path
             deliverable = None
         elif stage in ("anchor", "dataset", "smoke", "train", "tester"):
@@ -8719,6 +8975,8 @@ def command_pipeline(
                             "review": str(review_root)}
                 review.validate_accepted_video(active_root, (review_root / review.ACCEPTED_NAME).relative_to(active_root),
                     allow_fixture=active_plan.get("fixture") is True)
+            if stage == "gen" and "gen_inputs" in active_plan:
+                _load_current_approval(active_plan, active_root, "gen")
 
     # n11 (superseded by F6a): the old claim that `order` always ends with a
     # self-returning branch was true only while "detail" was the last real stage --
@@ -8727,6 +8985,9 @@ def command_pipeline(
     # ruled stage. This is that terminal return, now for "video" instead of the
     # removed dead `"complete:detail"` one.
     standalone_edit = set(primary_plan.get("stages", {})) == {"edit"}
+    if "gen_inputs" in primary_plan:
+        return {"status": "complete:gen", "message": "standalone stills approved; edit requires an explicit request",
+                "deliverable": deliverable_path()}
     return {
         "status": "complete:edit" if standalone_edit else "complete:video",
         "message": "standalone edit approved" if standalone_edit else "pipeline complete through video",
@@ -8741,6 +9002,8 @@ def build_parser() -> argparse.ArgumentParser:
     plan.add_argument("--creator", required=True)
     plan.add_argument("--stage", choices=(*STAGES, "all"), default="all")
     plan.add_argument("--out", required=True, type=Path)
+    plan.add_argument("--personas-root", type=Path, default=PERSONAS_ROOT,
+                      help="local persona registry (defaults to the project registry)")
     plan.add_argument(
         "--ledger-dir", type=Path,
         help="cost ledger root (frozen in plan: explicit, KB_LEDGER_DIR, managed OPS, then repo)",
@@ -8760,6 +9023,8 @@ def build_parser() -> argparse.ArgumentParser:
              "its grade/gen/approved-list.json is re-detailed; with --stage video one "
              "of them becomes the I2V first frame",
     )
+    plan.add_argument("--stills-request", type=Path, default=None,
+                      help="canonical approved fixture scene request for tensor gen")
     plan.add_argument("--video-request", type=Path, default=None,
                       help="Explicit tensor driving clip / accepted frame0 edit request")
     plan.add_argument("--edit-request", type=Path, default=None,
@@ -9068,6 +9333,8 @@ def main(argv: list[str] | None = None) -> int:
                 detail_images=args.detail_images, approved_gen_plan=args.approved_gen_plan,
                 edit_request=args.edit_request,
                 video_request=args.video_request,
+                stills_request=args.stills_request,
+                personas_root=args.personas_root,
                 approved_gen_image_id=args.approved_gen_image_id,
                 video_action=args.video_action, ledger_dir=args.ledger_dir,
                 accept_budget=args.accept_budget,

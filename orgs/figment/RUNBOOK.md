@@ -514,3 +514,13 @@ investigation rather than looping forever. `pipeline --dry-run` (with or without
 Every command above was checked against `figment_train.py --help`, `pipeline --help`,
 `plan --help`, `run --help`, `grade --help`, `apply-rulings --help`,
 `train/verify_pins.py --help`, and `video/video_manifest.py --help` on 2026-09-15.
+
+## Module09/16 offline fixture workflow
+
+1. Use a registered passport with its original approval lineage and a currently accepted tester checkpoint. Produce explicit canonical fixture scene drafts and fixture decisions through `pipeline/prompt_intake.py`; keep scene photos, draft JSON and approval JSON in one local evidence directory. Supply face/hair/eyes/skin slots; missing face is a review gap.
+2. Build the closed `figment/tensor-stills-request@1` document: creator, fixture=true, passport source_plan/image_id, scenes[{scene_index,draft:{path,sha256},approval:{path,sha256}}]. Relative draft/image paths stay within that evidence directory. Plan with `figment_train.py plan --stage gen --stills-request ...`; no model extraction starts here. Optional --personas-root selects an isolated fixture registry.
+3. Inspect each intake preview and framing group. The existing harness --dry-run validates manifests; its simulated media is not gradeable. Offline integration uses separately labelled synthetic PNG receipts, not supposed model outputs.
+4. Grade every saved image role, then apply attributed keep/cull and any required independent age rulings. Exact repeated tensor-gen rulings revalidate current authority and return existing receipts. Changed rulings require a fresh review; no previous decision is silently overwritten.
+5. Downstream edit must name an exact kept image ID. Changed photo, approved prose, framing, face slot, passport, checkpoint, graph or image invalidates gen/downstream authority.
+
+Live extraction, filesystem confinement, actual module09 runtime compatibility and unresolved component licences remain blockers. No stage here grants paid-run authorization or calibration/quality proof.

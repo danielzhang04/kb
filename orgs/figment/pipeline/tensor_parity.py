@@ -213,7 +213,8 @@ def check_passport(workflow: dict[str, Any], manifest: dict[str, Any],
         prompt = substitutions[0].get("value")
         if prompt != expected_prompt:
             problems.append(f"prompt {index}: differs from the copy block with only the hair/eye slots filled")
-        for key, phrase in look.items():
+        for key in ("age_stage", "hair", "eyes", "skin", "brows", "makeup", "build", "clothing"):
+            phrase = look.get(key)
             if key not in ("hair", "eyes") and phrase and phrase in str(prompt):
                 problems.append(f"prompt {index}: carries identity.look.{key} ({phrase!r})")
     return problems
@@ -666,3 +667,28 @@ def check_video(workflow, manifest, *, prompt=None, driving_video=None, start_im
         return helper.check_video(workflow, manifest, prompt=prompt, driving_video=driving_video, start_image=start_image)
     except helper.ParityError as exc:
         raise ParityError(str(exc)) from exc
+
+
+def _stills_parity_helper():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("figment_tensor_stills_parity", HERE / "tensor_stills_parity.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def stills_workflow(framing="full"):
+    return _stills_parity_helper().stills_workflow(framing)
+
+
+def stills_pin_group(framing="full"):
+    return _stills_parity_helper().stills_pin_group(framing)
+
+
+def stills_readiness_problems(manifest, framing="full"):
+    return _stills_parity_helper().stills_readiness_problems(manifest, framing)
+
+
+def check_stills(workflow, manifest, *, framing="full", prompt=None, identity_lora=None, approved_prompts=None):
+    return _stills_parity_helper().check_stills(workflow, manifest, framing=framing,
+        prompt=prompt, identity_lora=identity_lora, approved_prompts=approved_prompts)

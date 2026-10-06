@@ -707,3 +707,19 @@ defects below for where these two sources disagree past 09-04.
   `build_plan --stage dataset` then plans `_dataset_manifests_klein_multiref` (2 shards, klein
   4B Base + `ReferenceLatent` x3) instead of the qwen-edit two-stage replica. No code change;
   `train/TENSOR-TRAINING.md`'s P2 section has the full settings table.
+
+## Offline tensor stills and scene intake (modules09/16)
+
+Tensor gen accepts a canonical fixture scene request after the existing tester checkpoint selection:
+
+```powershell
+python figment_train.py plan --creator creator-003 --stage gen --stills-request scene-evidence/request.json --out local-stills --skip-pin-verify
+```
+
+For isolated synthetic registries, add `--personas-root <directory>`. The default registry is unchanged. Requests use `figment/tensor-stills-request@1`, fixture=true, the original passport source-plan/image-id selection, and scenes with an explicit scene_index plus local draft/approval paths and SHA256 digests. Drafts/approvals come from prompt_intake's fixture API with the driver's canonical passport adapter; live extraction is unavailable. Ordinary planning never calls a model.
+
+Scenes batch by framing. Full/medium/wide save base/upscaled/enhanced; close-up saves base/enhanced and skips the source upscale/refine chain. Every saved variant is graded and ruled independently, with its role and approved scene text on the board. Scene photos stay local. Only the accepted checkpoint is staged for inference. An explicitly kept variant may become edit input through the existing approved-gen authority.
+
+Optional `identity.look.face` supplies gen-only approved face words. Absent/empty values remain an intake gap; no descriptors are inferred. The original eight look slots still govern their existing consumers. Gen freshness binds the new face words; adding them does not invalidate an earlier accepted checkpoint.
+
+These fixture plans refuse live launch. Unknown style/upscaler/RES4LYF licences, actual runtime compatibility, production Read confinement/extraction and quality remain unresolved. Public immutable model metadata and dry-run manifests do not prove model execution.
