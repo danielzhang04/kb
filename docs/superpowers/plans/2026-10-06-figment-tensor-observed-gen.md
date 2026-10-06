@@ -326,3 +326,63 @@ project-module loading. Actual canonical callbacks and writer receipts remain in
 use; no synthetic authority callback. This does NOT establish full common-prefix
 cost or A/B/C partition fit. A test-only full-prefix fixed-budget probe is next;
 production inventory/bootstrap and both entrypoint refusals remain unchanged.
+
+
+## Released test-only complete-cost probe
+
+Stage D is checkpointdb3aaef7. Probe two scenes first using the existing router
+and explicit genuine role inventory plus G plan/G staged checkpoint. Proposed
+TENSOR file partitions are A32/B80/C144 (not current clean PHASE_LIMITS A16/B96).
+Other proposed limits remain A4MiB unique/32MiB stream/384operations;
+B64MiB/128MiB/256operations; C956MiB/1888MiB/384operations. Same roots(F,G,T)
+for all readers, longest-root semantics, all existing per-file/raw/metadata caps.
+These are test-owned proposed tensor policies; clean production policy is untouched.
+
+Charge explicit pre-domain document reads and configured G/T digest checks, then
+begin_domain; load G plan/check root; revalidate planned gen authority; validate
+staged accepted checkpoint; private tensor validator; final manifest hashes;
+router C/B/A rechecks. Record phase failures and partial counters without resetting,
+borrowing, caching authority or raising limits. Discovery remains a test-prepared
+approximation: failure is a decisive lower bound; success would not prove complete
+production discovery or isolated pinned CLI. Report the two-scene result before
+any separately reviewed one-scene fixture variant. No production source edits.
+
+
+Cost-probe accounting correction before interpretation: the first test-prepared
+approximation charged speculative A/B document reads plus extra domain resolve/
+SHA operations. Its lower-bound flag is INVALID, explicitly superseded; original
+report/log retained. It measured C385/384 at refusal, A186/B256, but that run alone
+cannot prove unavoidable failure. The corrected independent probe omits ALL
+discovery work and mirrors exact domain calls, using pure normalized root-key
+comparison. Fresh fixture/readers are a new run, not budget reset/continuation.
+A domain-only overflow under unchanged owners/limits is decisive even without
+additional required production discovery. Success still would not prove full cost.
+
+
+Two-scene exact domain-only result: measurement test passed1in16.63s because it
+correctly records the refusal, NOT because tensor observation succeeded. Reader C
+hit385/384public operations during original passport image resolution in the
+private validator; A170/B238 at stop. All pre-domain public counters were zero.
+Final manifest checks and C/B/A rechecks were not reached. This is a decisive
+lower-bound failure for the proposed fixed ownership/policy even before production
+discovery. No phase/cap/caching changes made. A separately reviewed one-scene
+native-writer fixture variant is required before testing a narrower subset.
+
+
+Reviewed next test-only variants: one full scene at index0 and one close-up at
+index3, independently, under identical fixed phase ownership and limits. The
+real-writer fixture helper accepts only these two variants or its unchanged
+mixed default. Actual indices/framing are reported dynamically. Rerun the default
+fixture and both new probes. No production change; a fitting domain-only variant
+is merely a subset candidate pending actual discovery/bootstrap proof.
+
+
+One-scene domain-only measurements: full(index0) and close-up(index3) both succeed
+through C/B/A final rechecks and natural consumption of all66 admitted roles.
+Each ends at A185/384, B182/256, C366/384 operations; C has only18operations
+remaining before any actual production-discovery work. Default native mixed
+fixture plus both probes:3passed33.99s. These are candidate subset measurements,
+not full cost, production discovery, bootstrap or CLI support. Two scenes remain
+excluded by the decisive corrected domain-only overflow. Exact JSON reports retain
+all phase limits/content/raw/metadata counters; original approximation is preserved
+with its lower-bound claim explicitly invalidated. No production source changed.

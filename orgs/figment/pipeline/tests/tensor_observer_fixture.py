@@ -121,7 +121,8 @@ def rule(ft, root, stage, chosen, *, checkpoint_step=None):
     return grade
 
 
-def build_tensor_fixture(tmp):
+def build_tensor_fixture(tmp, *, scene_specs=((0, "full"), (3, "close-up"))):
+    assert scene_specs in (((0, "full"), (3, "close-up")), ((0, "full"),), ((3, "close-up"),))
     root = tmp / "r"
     figment = root / "orgs/figment"
     pipeline = figment / "pipeline"
@@ -199,7 +200,7 @@ def build_tensor_fixture(tmp):
         binding = intake.canonical_passport_binding(creator=CREATOR, selection=selection, passport_adapter=adapter)
         evidence.mkdir()
         request = {"schema": "figment/tensor-stills-request@1", "creator": CREATOR, "fixture": True, "passport": selection, "scenes": []}
-        for index, framing in ((0, "full"), (3, "close-up")):
+        for index, framing in scene_specs:
             photo = evidence / f"scene{index}.png"
             Image.new("RGB", (64, 96), "navy").save(photo)
             response = {key: "" for key in intake.SECTIONS}
@@ -228,5 +229,5 @@ def build_tensor_fixture(tmp):
         report={"fixture": True, "runtime_proof": False, "guard_attempts": guard.attempts, "scorer_seams": calls,
                 "copied_file_sha256": before, "passport_authority_sha256": passport_authority["authority_sha256"],
                 "source_plan_sha256": sha(train / "plan.json"), "gen_plan_sha256": sha(gen / "plan.json"),
-                "source_stages": list(plan["stages"]), "checkpoint_artifact": checkpoint_name, "scene_indices": [0, 3],
+                "source_stages": list(plan["stages"]), "checkpoint_artifact": checkpoint_name, "scene_indices": [index for index, _ in scene_specs],
                 "gen_framings": [run["framing"] for run in gen_plan["stages"]["gen"]["runs"]]})
