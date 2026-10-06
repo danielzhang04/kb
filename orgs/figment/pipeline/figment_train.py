@@ -803,19 +803,19 @@ def _pod_base(pins: dict[str, Any], pod_class: str, stage: str) -> dict[str, Any
     return result
 
 
-def _load_inputs(creator_id: str, personas_root: Path) -> tuple[dict, dict, dict]:
+def _load_inputs(creator_id: str, personas_root: Path, *, reads=None) -> tuple[dict, dict, dict]:
     persona_path = Path(personas_root) / creator_id / "persona.yaml"
-    if not persona_path.is_file():
+    if not (reads.file(persona_path, required=False) if reads is not None else persona_path.is_file()):
         raise FigmentTrainError(f"persona not found: {persona_path}")
     try:
-        persona = _training_config_module().load_persona_with_training(persona_path)
+        persona = _training_config_module().load_persona_with_training(persona_path, reads=reads)
     except ValueError as exc:
         raise FigmentTrainError(str(exc)) from exc
     if persona.get("id") != creator_id:
         raise FigmentTrainError(
             f"persona.id {persona.get('id')!r} does not match requested creator {creator_id!r}"
         )
-    pins = _read_json(PINS_PATH)
+    pins = _read_json(PINS_PATH, reads=reads)
     training = persona["training"]
     try:
         pod_price = float(pins["pod_classes"][training["pod_class"]]["price_usd_per_hour"])
@@ -3442,16 +3442,16 @@ def _tensor_stills_module():
     return _load_module("_figment_tensor_stills", HERE / "tensor_stills.py")
 
 
-def _canonical_intake_adapter(creator, personas_root):
+def _canonical_intake_adapter(creator, personas_root, *, reads=None):
     intake = _tensor_stills_module().prompt_intake
     def current():
-        persona, _, _ = _load_inputs(creator, Path(personas_root))
+        persona, _, _ = _load_inputs(creator, Path(personas_root), reads=reads)
         persona["_persona_path"] = str(Path(personas_root) / creator / "persona.yaml")
         return persona
     def resolve(selected_creator, selection):
         if selected_creator != creator:
             raise FigmentTrainError("intake creator changed")
-        return _validate_registered_passport(creator, current(), selection["source_plan"], selection["image_id"])
+        return _validate_registered_passport(creator, current(), selection["source_plan"], selection["image_id"], reads=reads)
     def descriptors(selected_creator, authority):
         if selected_creator != creator or authority["creator"] != creator:
             raise FigmentTrainError("intake descriptor creator changed")
@@ -3460,10 +3460,10 @@ def _canonical_intake_adapter(creator, personas_root):
     return intake.CanonicalPassportAdapter(resolve, descriptors)
 
 
-def _resolve_stills_request(creator, request, personas_root):
+def _resolve_stills_request(creator, request, personas_root, *, reads=None):
     try:
         return _tensor_stills_module().read_request(request, creator,
-            passport_adapter=_canonical_intake_adapter(creator, personas_root))
+            passport_adapter=_canonical_intake_adapter(creator, personas_root, reads=reads), reads=reads)
     except (OSError, ValueError, KeyError, TypeError) as exc:
         raise FigmentTrainError(f"stills intake refused: {exc}") from exc
 
@@ -3553,21 +3553,21 @@ def _build_tensor_stills_plan(creator, out, request, *, personas_root, skip_pin_
     return plan
 
 
-def _validate_tensor_stills_inputs(plan, root, *, launch=False):
-    persona, training = _current_persona_training(plan)
+def _validate_tensor_stills_inputs(plan, root, *, launch=False, reads=None):
+    persona, training = _current_persona_training(plan, reads=reads)
     if training["recipe_profile"] != "tensor":
         raise FigmentTrainError("tensor stills profile changed")
-    personas_root = _persona_path_for_plan(plan).parent.parent
+    personas_root = _persona_path_for_plan(plan, reads=reads).parent.parent
     frozen = plan.get("gen_inputs", {})
-    current = _resolve_stills_request(plan["creator"], frozen.get("request", {}).get("path"), personas_root)
+    current = _resolve_stills_request(plan["creator"], frozen.get("request", {}).get("path"), personas_root, reads=reads)
     if current != frozen or plan.get("fixture") is not True:
         raise FigmentTrainError("stills source inputs or fixture authority changed")
-    _validate_tensor_passport_inputs(plan, root, persona=persona)
-    accepted = _validated_accepted_checkpoint(persona, training)
+    _validate_tensor_passport_inputs(plan, root, persona=persona, reads=reads)
+    accepted = _validated_accepted_checkpoint(persona, training, reads=reads)
     name = _checkpoint_name(_artifact_name(training), accepted["step"])
     groups = _tensor_stills_module().compile_scene_groups(current["scenes"], identity_lora=name,
-        output_prefix=_creator_output_code(plan["creator"]) + "-stills")
-    pins = _read_json(PINS_PATH)
+        output_prefix=_creator_output_code(plan["creator"]) + "-stills", reads=reads)
+    pins = _read_json(PINS_PATH, reads=reads)
     runs = plan["stages"]["gen"]["runs"]
     if len(runs) != len(groups):
         raise FigmentTrainError("stills framing groups changed")
@@ -3576,23 +3576,26 @@ def _validate_tensor_stills_inputs(plan, root, *, launch=False):
         if run.get("manifest") != expected_manifest:
             raise FigmentTrainError("stills manifest location changed")
         manifest_path = root / run["manifest"]
-        manifest = _read_json(manifest_path)
+        manifest = _read_json(manifest_path, reads=reads)
         if manifest.get("workflow") != f"../workflows/tensor_stills_m09_{group['framing']}.json":
             raise FigmentTrainError("stills workflow location changed")
-        workflow_path = manifest_path.parent / manifest["workflow"]
-        if (_sha256(manifest_path) != run["sha256"] or _sha256(workflow_path) != run["workflow_sha256"]
+        workflow_path = (root / "train/workflows" / f"tensor_stills_m09_{group['framing']}.json"
+                         if reads is not None else manifest_path.parent / manifest["workflow"])
+        if (_sha256(manifest_path, reads=reads) != run["sha256"] or _sha256(workflow_path, reads=reads) != run["workflow_sha256"]
                 or run.get("framing") != group["framing"]):
             raise FigmentTrainError("stills manifest, workflow or framing changed")
-        inline = {**manifest, "workflow": _read_json(workflow_path)}
+        inline = {**manifest, "workflow": _read_json(workflow_path, reads=reads)}
         expected = _tensor_stills_manifest(group, training, pins, "accepted-checkpoint/" + name)
         if inline != expected:
             raise FigmentTrainError("stills manifest differs from current approved scene/checkpoint projection")
-        errors = _tensor_parity_module().check_stills(inline["workflow"], inline, framing=group["framing"],
-            identity_lora=name, approved_prompts=group["approved_prompts"])
+        stills_parity = _tensor_stills_module().parity if reads is not None else _tensor_parity_module()
+        errors = stills_parity.check_stills(inline["workflow"], inline, framing=group["framing"],
+            identity_lora=name, approved_prompts=group["approved_prompts"],
+            **({"reads": reads} if reads is not None else {}))
         if errors:
             raise FigmentTrainError("stills parity changed: " + "; ".join(errors))
     launcher = root / "train/runs/start-comfy-lorapath.sh.template"
-    if _sha256(launcher) != plan["assets"].get("stills_launcher_sha256") or _sha256(launcher) != _sha256(TESTER_START_PATH):
+    if _sha256(launcher, reads=reads) != plan["assets"].get("stills_launcher_sha256") or _sha256(launcher, reads=reads) != _sha256(TESTER_START_PATH, reads=reads):
         raise FigmentTrainError("stills launcher changed")
     if launch:
         raise FigmentTrainError("fixture stills plan is dry-run only; live extractor/runtime/licences remain unverified")
@@ -3785,11 +3788,12 @@ def _historical_anchor_approval(plan, root, *, reads=None):
     return approval
 
 
-def _validate_registered_passport(creator, persona, source_plan, image_id):
+def _validate_registered_passport(creator, persona, source_plan, image_id, *, reads=None):
     edit = _tensor_edit_module()
     try:
         return edit.registered_passport_authority(creator, persona, source_plan, image_id,
-            validated_anchor=lambda c, p, i: _validate_approved_still(c, p, i, "anchor", historical_anchor=True))
+            validated_anchor=lambda c, p, i: _validate_approved_still(c, p, i, "anchor", historical_anchor=True, reads=reads),
+            reads=reads)
     except (OSError, ValueError, KeyError) as exc:
         raise FigmentTrainError(f"passport authority refused: {exc}") from exc
 

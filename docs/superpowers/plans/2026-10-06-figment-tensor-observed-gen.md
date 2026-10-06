@@ -282,3 +282,47 @@ existing retained reader suites366passed/1filesystem-capabilityskip5.08s; affect
 leaf/router/13cleanCLI consumers95passed42.10s. Initial70passed/2failed17.45s
 is retained as the diagnosed product portability failure, not a harness error.
 No full observed tensor adapter, driver integration or runtime authority enabled.
+
+
+## Released Stage D: private canonical driver validation
+
+Stage P is checkpoint71164575. Add reads threading only to the private driver
+canonical intake/registered-passport/stills validation functions, plus _load_inputs
+keyword-only reads=None for its existing file predicate/config load/pins read.
+Preserve the same creator, pod-class and price-ceiling checks and native errors;
+current() must reuse that helper without caching persona/descriptors or authority.
+Use existing reads-aware current persona, both G/T tensor passport bindings and
+accepted checkpoint validators, actual canonical historical anchor callbacks,
+already loaded stills.parity, fixed lexical workflow paths, full manifest equality
+and staged/current launcher hashes. Both source and review tensor entrypoint
+refusals remain; no pinned bundle, router inventory, CLI or launch release.
+
+Test the actual nonimported two-scene native-writer fixture with a finite explicitly
+constructed admission list under original fixed reader limits, fresh canonical
+callbacks, transitive domain I/O and new-project-module traps; record operation,
+byte and metadata counters including final recheck. Common wrapper gen-authority
+and staged-checkpoint checks remain outside this private validator's scope and
+must be measured again for the full adapter. Negative creator/price ceiling,
+source/passport/checkpoint/scene/manifest/launcher mutation and native regression
+must preserve failure. No synthetic authority callbacks or validator bypass.
+
+
+Stage D verification:69 explicitly admitted roles, all naturally touched by the
+private canonical validator; unchanged default reader1024-operation cap. Final
+private proof passed1test60.46s with10 fresh canonical mutation refusals and3
+native/observed shared-input guard parity cases. Earlier affected regressions had
+115passed/1negative expectation failure: appending whitespace to the derived
+approved-list is semantically unchanged; the corrected case removes its kept row.
+The original log is retained; production validation was not loosened. Clean
+isolated CLI compatibility13passed35.77s. Native fixture and115 affected config/
+stills/leaf regressions remain passed; test counts overlap prior checkpoints.
+
+Private positive final counters:869operations,349940unique bytes,2631437stream
+bytes,30raw collections/209284returned bytes;38case directories,76actual scans,
+418probes,171unique entries,3037unique namebytes/6074cumulative namebytes.
+The test traps direct/transitive Path, builtins.open, io.open, os.open/stat/lstat/
+scandir/getcwd calls unless owned by the exact retained reader and traps new
+project-module loading. Actual canonical callbacks and writer receipts remain in
+use; no synthetic authority callback. This does NOT establish full common-prefix
+cost or A/B/C partition fit. A test-only full-prefix fixed-budget probe is next;
+production inventory/bootstrap and both entrypoint refusals remain unchanged.
