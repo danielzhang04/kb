@@ -191,3 +191,46 @@ The table is a proposed full-adapter inventory, not permission for this exact-ca
 Implemented only the released metadata prerequisite in observed_reads.py and narrow gen_source_read router policy; no tensor callers, bundles, roots or refusals changed. The first combined run passed389 tests with1skip (real case-sensitive sibling directory unavailable; controlled scanner collision tests passed);13 existing isolated clean CLI consumers passed32.22s. Final affected delta evidence is recorded separately.
 
 Independent review found a shared-directory restriction hole: an earlier unrestricted reader could remain primary directory owner when a later exact-case member imposed an ancestor restriction. The router now retains the original owner AND the first strict restriction owner. A directory resolve passes original lexical spelling through the strict owner's public resolve, then the original owner's observation, and returns the strict canonical spelling. Both remain retained for final checks; added operations must enter future quota accounting. Later strict claims for that directory must have exactly the same canonical(path, longest-matched-root) tuple; differing spelling or root boundary refuses, rather than silently dropping outer-edge requirements. File ownership remains unchanged. Tests cover earlier wrong-case ordinary owner, later restriction, canonical result, operation charging and conflicting spelling/root boundaries.
+
+
+## Released Stage L: canonical intake and passport leaf readers
+
+Root release follows the independent phase6-observed-gen-plumbing-review.md brief.
+Native real-writer setup is proven: one focused test passed in 6.78 seconds,
+nonimported step750 and full/close-up scenes, no guarded execution attempts.
+Synthetic checkpoint/run/image/scorer seams do not prove runtime or quality.
+
+Owned source scope: prompt_intake.py, tensor_edit.py, and a narrow public
+resolve_exact_file method in observed_reads.py/gen_source_read.py, plus focused
+tests. Both observed tensor entrypoint refusals remain. Keyword-only reads=None
+preserves native callers. Observed intake paths must be absolute-rooted and
+explicitly exact_case admitted; resolve_exact_file rejects default-off members
+before metadata, requires an existing file and retains ordinary ownership,
+operation charging, poisoning and final rechecks. It grants no byte capability.
+Intake verifies and hashes the same bounded raw buffer with native Pillow verify
+semantics. Registered-passport decoding uses the same buffer with load, preserving
+format, dimensions, pixels, animation and EXIF restrictions. Nonimage bindings
+retain hash-only capability. Chosen-anchor JSON retains duplicate-key detection.
+Canonical callbacks remain fresh; fixture-registration-only observed fallback
+refuses. frame_extract becomes lazy on native path use only.
+
+Tests: insufficient policy before data I/O; original caller case; absent/unlisted
+and directory refusal; bounded same-buffer verification/decoding/hash/JSON;
+malformed/format/pixel/frame/EXIF failures; mutation and sealing; native API parity;
+alternate cwd and domain I/O traps. Run affected intake/edit/reader/router suites
+and 13 clean isolated CLI tests. Independent implementation review precedes the
+next plumbing stage. No quota, root, model, source bundle, launch or authority change.
+
+
+Stage L candidate verification: 511 passed / 1 filesystem-capability skip in
+29.10 seconds across leaf/intake/edit-input/reader/router/native-fixture suites.
+The initial focused run was 38 passed / 1 test-harness failure: the unit router
+had only one construction phase; the test now builds all three and enters domain
+validation. No router invariant was relaxed. Independent review caught a supplied
+JSON-buffer observation gap: observed _json_binding(raw=...) now freshly streams
+and compares the retained named-file SHA, even when that buffer was read earlier.
+This additional public operation and stream must be included in future quotas.
+Full tensor source and review entrypoint refusals remain unchanged.
+
+Clean isolated CLI compatibility: 13 passed in32.85s. Final explicit alternate-cwd
+leaf rerun:39passed0.62s (overlaps the511). Scratch lease released.

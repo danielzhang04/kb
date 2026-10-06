@@ -488,6 +488,15 @@ class ObservedReads:
         return admitted
 
     @_public
+    def resolve_exact_file(self, path: Path) -> Path:
+        """Resolve an existing file only under retained exact-case policy."""
+        key, member = self._member(path)
+        if not member.exact_case:
+            _refuse("member is not admitted for exact-case resolution")
+        self._inspect(key, member, required=True)
+        return member.path
+
+    @_public
     def file(self, path: Path, *, required: bool = False) -> FileObservation | None:
         if type(required) is not bool:
             _refuse("required must be boolean")

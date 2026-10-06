@@ -66,7 +66,7 @@ def _text(value, label, *, empty=False):
     return value.strip()
 
 
-def _path(root: Path, relative: str) -> Path:
+def _path(root: Path, relative: str, *, reads=None) -> Path:
     if not isinstance(relative, str) or "\\" in relative or ":" in relative:
         raise IntakeError("evidence path must be a relative POSIX path")
     parts = relative.split("/")
@@ -74,6 +74,11 @@ def _path(root: Path, relative: str) -> Path:
         raise IntakeError("unsafe evidence path")
     if PurePosixPath(relative).is_absolute():
         raise IntakeError("absolute evidence path refused")
+    if reads is not None:
+        root = Path(root)
+        if not root.is_absolute():
+            raise IntakeError("observed evidence root must be absolute")
+        return reads.resolve_exact_file(root / relative)
     root = Path(root).absolute()
     # Reject symlinks/junctions in ancestors as well as in supplied components.
     for component in (*reversed(root.parents), root):
@@ -94,13 +99,16 @@ def _path(root: Path, relative: str) -> Path:
     return current
 
 
-def _read(root, relative, *, image=False):
+def _read(root, relative, *, image=False, reads=None):
     try:
-        path = _path(root, relative)
-        if path.stat().st_size > MAX_BYTES:
-            raise IntakeError("evidence exceeds byte limit")
-        with path.open("rb") as handle:
-            data = handle.read(MAX_BYTES + 1)
+        path = _path(root, relative, reads=reads)
+        if reads is not None:
+            data = reads.read_bytes(path)
+        else:
+            if path.stat().st_size > MAX_BYTES:
+                raise IntakeError("evidence exceeds byte limit")
+            with path.open("rb") as handle:
+                data = handle.read(MAX_BYTES + 1)
         if len(data) > MAX_BYTES:
             raise IntakeError("evidence exceeds byte limit")
         if image:
@@ -177,7 +185,7 @@ class CanonicalPassportAdapter:
     resolve_descriptors: Callable
 
 
-def canonical_passport_binding(*, creator, selection, passport_adapter):
+def canonical_passport_binding(*, creator, selection, passport_adapter, reads=None):
     """Revalidate registration and descriptors for a fixture-only intake draft."""
     if type(passport_adapter) is not CanonicalPassportAdapter:
         raise IntakeError("trusted canonical passport adapter required")
@@ -202,7 +210,13 @@ def canonical_passport_binding(*, creator, selection, passport_adapter):
                 or not record["path"] or not isinstance(record.get("sha256"), str)
                 or not re.fullmatch(r"[0-9a-f]{64}", record["sha256"])):
             raise IntakeError("canonical passport authority lacks bound evidence")
-    if Path(authority["source_plan"]["path"]).resolve() != Path(selection["source_plan"]).resolve():
+    if reads is None:
+        authority_plan = Path(authority["source_plan"]["path"]).resolve()
+        selected_plan = Path(selection["source_plan"]).resolve()
+    else:
+        authority_plan = reads.resolve_exact_file(Path(authority["source_plan"]["path"]))
+        selected_plan = reads.resolve_exact_file(Path(selection["source_plan"]))
+    if authority_plan != selected_plan:
         raise IntakeError("canonical authority belongs to another original plan")
     if (not isinstance(authority["registered_reference"], str) or not authority["registered_reference"]
             or authority["authority_sha256"] != _hash(_canonical({k: v for k, v in authority.items()
@@ -219,15 +233,17 @@ def canonical_passport_binding(*, creator, selection, passport_adapter):
             "descriptor_projection_sha256": _hash(_canonical(source))}
 
 
-def _passport(root, binding, creator, passport_adapter=None):
+def _passport(root, binding, creator, passport_adapter=None, *, reads=None):
     if isinstance(binding, dict) and binding.get("kind") == "canonical-registration-fixture-intake":
         _keys(binding, ("kind", "creator", "selection", "authority", "descriptors",
                         "descriptor_projection_sha256"), "canonical intake passport")
         current = canonical_passport_binding(creator=creator, selection=binding["selection"],
-                                              passport_adapter=passport_adapter)
+                                              passport_adapter=passport_adapter, reads=reads)
         if current != binding:
             raise IntakeError("canonical passport authority or descriptors changed")
         return
+    if reads is not None:
+        raise IntakeError("observed intake requires canonical passport authority")
     _keys(binding, ("kind", "creator", "image_path", "image_sha256", "registration_path",
                     "registration_sha256", "descriptors"), "passport binding")
     if binding["kind"] != "fixture-registration-only" or binding["creator"] != creator:
@@ -286,7 +302,7 @@ def _compose(raw, binding, aspects):
     return corrected, text, gaps, notes
 
 
-def extract_fixture_draft(root, *, photo_path, creator, passport, aspects, framing, runner, passport_adapter=None):
+def extract_fixture_draft(root, *, photo_path, creator, passport, aspects, framing, runner, passport_adapter=None, reads=None):
     """One deterministic offline fixture attempt. Never calls a model or retries."""
     if type(runner) is not FixtureRunner:
         raise IntakeError("only declarative fixture runners supported")
@@ -294,8 +310,8 @@ def extract_fixture_draft(root, *, photo_path, creator, passport, aspects, frami
         raise IntakeError("explicit supported framing required")
     if not isinstance(aspects, (list, tuple)) or any(a not in ASPECTS for a in aspects) or len(set(aspects)) != len(aspects):
         raise IntakeError("unknown or duplicate selected aspect")
-    _passport(root, passport, creator, passport_adapter)
-    image = _read(root, photo_path, image=True)
+    _passport(root, passport, creator, passport_adapter, reads=reads)
+    image = _read(root, photo_path, image=True, reads=reads)
     staged = StagedEvidence(image)
     if not isinstance(runner.requested_reads, tuple) or len(runner.requested_reads) > 4:
         raise IntakeError("fixture read budget exceeded")
@@ -321,7 +337,7 @@ def extract_fixture_draft(root, *, photo_path, creator, passport, aspects, frami
     return document
 
 
-def _validate_draft(root, draft, passport_adapter=None):
+def _validate_draft(root, draft, passport_adapter=None, *, reads=None):
     fields = ("schema", "fixture", "creator", "photo", "passport", "aspects", "framing",
               "template_sha256", "raw", "corrected", "text", "text_sha256", "gaps", "review_notes",
               "corrections", "runner", "draft_sha256")
@@ -335,7 +351,7 @@ def _validate_draft(root, draft, passport_adapter=None):
                                     passport=draft["passport"], aspects=draft["aspects"], framing=draft["framing"],
                                     runner=FixtureRunner(json.dumps(draft["raw"]),
                                                          elapsed_seconds=draft["runner"]["elapsed_seconds"]),
-                                    passport_adapter=passport_adapter)
+                                    passport_adapter=passport_adapter, reads=reads)
     if rebuilt != draft:
         raise IntakeError("draft or evidence changed")
 
@@ -351,8 +367,8 @@ def _decision(by, at):
         raise IntakeError("invalid decided_at") from exc
 
 
-def approve_fixture_prompt(root, draft, *, decided_by, decided_at, acknowledged_notes, passport_adapter=None):
-    _validate_draft(root, draft, passport_adapter)
+def approve_fixture_prompt(root, draft, *, decided_by, decided_at, acknowledged_notes, passport_adapter=None, reads=None):
+    _validate_draft(root, draft, passport_adapter, reads=reads)
     _decision(decided_by, decided_at)
     if draft["gaps"] or acknowledged_notes != draft["review_notes"]:
         raise IntakeError("descriptor gaps or unacknowledged full-prose review")
@@ -362,7 +378,7 @@ def approve_fixture_prompt(root, draft, *, decided_by, decided_at, acknowledged_
     return result
 
 
-def approved_prompt_projection(root, draft, approval, *, current_passport, live=False, passport_adapter=None):
+def approved_prompt_projection(root, draft, approval, *, current_passport, live=False, passport_adapter=None, reads=None):
     """Text-only downstream projection; no photo bytes or filesystem paths.
 
     Caller still owns canonical passport authority revalidation in future live
@@ -370,14 +386,14 @@ def approved_prompt_projection(root, draft, approval, *, current_passport, live=
     """
     if live:
         raise IntakeError("fixture prompt cannot become live authority")
-    _passport(root, current_passport, draft["creator"], passport_adapter)
+    _passport(root, current_passport, draft["creator"], passport_adapter, reads=reads)
     if current_passport != draft["passport"]:
         raise IntakeError("current passport binding changed")
     _keys(approval, ("schema", "fixture", "draft_sha256", "decided_by", "decided_at",
                      "acknowledged_notes", "approval_sha256"), "approval")
     rebuilt = approve_fixture_prompt(root, draft, decided_by=approval["decided_by"],
                                      decided_at=approval["decided_at"], acknowledged_notes=approval["acknowledged_notes"],
-                                     passport_adapter=passport_adapter)
+                                     passport_adapter=passport_adapter, reads=reads)
     if rebuilt != approval:
         raise IntakeError("approval changed or belongs to another draft")
     result = {"fixture": True, "creator": draft["creator"], "text": draft["text"],

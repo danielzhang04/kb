@@ -487,6 +487,9 @@ class _Router:
     def resolve(self, path):
         return self._call("resolve", path, False)
 
+    def resolve_exact_file(self, path):
+        return self._call("resolve_exact_file", path, True)
+
     def file(self, path, *, required=False):
         return self._call("file", path, True, required=required)
 

@@ -22,10 +22,19 @@ MAX_IMAGE_BYTES = 32 * 1024 * 1024
 MAX_PIXELS = 16_777_216
 MAX_DIMENSION = 8192
 JOB_TYPES = frozenset({"start-frame-head-swap", "still-touch-up"})
-_SPEC = importlib.util.spec_from_file_location(
-    "_figment_tensor_edit_frame_paths", Path(__file__).parent / "video/frame_extract.py")
-_PATHS = importlib.util.module_from_spec(_SPEC)
-_SPEC.loader.exec_module(_PATHS)
+_PATHS = None
+
+
+def _frame_paths():
+    # The canonical observed passport path must not execute an unpinned helper.
+    global _PATHS
+    if _PATHS is None:
+        spec = importlib.util.spec_from_file_location(
+            "_figment_tensor_edit_frame_paths", Path(__file__).parent / "video/frame_extract.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _PATHS = module
+    return _PATHS
 
 
 class EditInputError(ValueError):
@@ -48,39 +57,57 @@ def _digest(value):
     return value
 
 
-def _path(value, base):
+def _path(value, base, *, reads=None):
     if not isinstance(value, str) or not value or ".." in Path(value).parts:
         raise EditInputError("edit path is empty or contains traversal")
     path = Path(value)
     if not path.is_absolute():
         path = base / path
+    if reads is not None:
+        if not path.is_absolute():
+            raise EditInputError("observed edit path must be absolute")
+        return reads.resolve(path)
     try:
-        parent = _PATHS._root(path.parent)
-        return _PATHS._within(parent, Path(path.name), "edit input")
+        paths = _frame_paths()
+        parent = paths._root(path.parent)
+        return paths._within(parent, Path(path.name), "edit input")
     except (OSError, ValueError) as exc:
         raise EditInputError(f"unsafe edit input path: {exc}") from exc
 
 
-def file_binding(value, base, *, limit=MAX_IMAGE_BYTES, image=False):
+def file_binding(value, base, *, limit=MAX_IMAGE_BYTES, image=False, reads=None):
     """Read one link-free bounded file and bind the same bytes that were decoded."""
     _keys(value, {"path", "sha256"})
-    path = _path(value["path"], base)
+    path = _path(value["path"], base, reads=reads)
     digest = _digest(value["sha256"])
     try:
-        if not path.is_file() or not 0 < path.stat().st_size <= limit:
-            raise EditInputError("edit file is empty, nonregular or oversized")
-        raw = bytearray()
-        hashed = hashlib.sha256()
-        total = 0
-        with path.open("rb") as handle:
-            while chunk := handle.read(min(1024 * 1024, limit - total + 1)):
-                total += len(chunk)
-                if total > limit:
-                    raise EditInputError("edit file exceeds bounded size")
-                hashed.update(chunk)
-                if image:
-                    raw.extend(chunk)
-        if hashed.hexdigest() != digest:
+        if reads is not None:
+            observed = reads.file(path, required=True)
+            if not 0 < observed.size <= limit:
+                raise EditInputError("edit file is empty, nonregular or oversized")
+            if image:
+                raw = reads.read_bytes(path)
+                total = len(raw)
+                actual_digest = hashlib.sha256(raw).hexdigest()
+            else:
+                total = observed.size
+                actual_digest = reads.sha256(path)
+        else:
+            if not path.is_file() or not 0 < path.stat().st_size <= limit:
+                raise EditInputError("edit file is empty, nonregular or oversized")
+            raw = bytearray()
+            hashed = hashlib.sha256()
+            total = 0
+            with path.open("rb") as handle:
+                while chunk := handle.read(min(1024 * 1024, limit - total + 1)):
+                    total += len(chunk)
+                    if total > limit:
+                        raise EditInputError("edit file exceeds bounded size")
+                    hashed.update(chunk)
+                    if image:
+                        raw.extend(chunk)
+            actual_digest = hashed.hexdigest()
+        if actual_digest != digest:
             raise EditInputError("edit input bytes differ from approved hash")
         result = {"path": str(path), "bytes": total, "sha256": digest}
         if image:
@@ -97,16 +124,19 @@ def file_binding(value, base, *, limit=MAX_IMAGE_BYTES, image=False):
         raise EditInputError(f"edit input cannot be safely decoded: {exc}") from exc
 
 
-def _json_binding(value, base, *, raw=None):
+def _json_binding(value, base, *, raw=None, reads=None):
     _keys(value, {"path", "sha256"})
-    path = _path(value["path"], base)
+    path = _path(value["path"], base, reads=reads)
     digest = _digest(value["sha256"])
     try:
-        raw = _bounded_bytes(path, MAX_JSON_BYTES) if raw is None else raw
+        supplied_raw = raw is not None
+        raw = _bounded_bytes(path, MAX_JSON_BYTES, reads=reads) if raw is None else raw
         if not 0 < len(raw) <= MAX_JSON_BYTES:
             raise EditInputError("edit JSON is empty or oversized")
         if hashlib.sha256(raw).hexdigest() != digest:
             raise EditInputError("edit JSON changed while reading")
+        if reads is not None and supplied_raw and reads.sha256(path) != digest:
+            raise EditInputError("supplied edit JSON differs from observed file")
         binding = {"path": str(path), "bytes": len(raw), "sha256": digest}
         def unique(pairs):
             result = {}
@@ -123,44 +153,55 @@ def _json_binding(value, base, *, raw=None):
         raise EditInputError("edit JSON is malformed") from exc
 
 
-def _bounded_bytes(path, limit):
-    with path.open("rb") as handle:
-        raw = handle.read(limit + 1)
+def _bounded_bytes(path, limit, *, reads=None):
+    if reads is not None:
+        raw = reads.read_bytes(path)
+    else:
+        with path.open("rb") as handle:
+            raw = handle.read(limit + 1)
     if not 0 < len(raw) <= limit:
         raise EditInputError("edit JSON is empty or oversized")
     return raw
 
 
-def registered_passport_authority(creator, persona, source_plan, image_id, *, validated_anchor):
+def registered_passport_authority(creator, persona, source_plan, image_id, *, validated_anchor, reads=None):
     """Adapt an already-verified original anchor approval to current passport bytes.
 
     ``validated_anchor`` MUST validate the original reviewed/settled anchor transition,
     gate, operator ruling and selected output using the driver's existing lineage.
     A supplied receipt hash alone is never an alternative to that callback.
     """
-    source_plan = _path(str(source_plan), Path.cwd())
+    if reads is not None:
+        if (not Path(source_plan).is_absolute()
+                or not isinstance(persona.get("_persona_path"), str)
+                or not Path(persona["_persona_path"]).is_absolute()):
+            raise EditInputError("observed passport paths must be absolute")
+        base = Path(source_plan).parent
+    else:
+        base = Path.cwd()
+    source_plan = _path(str(source_plan), base, reads=reads)
     approved = validated_anchor(creator, source_plan, image_id)
     if not isinstance(approved, dict) or approved.get("image_id") != image_id:
         raise EditInputError("original anchor authority did not validate selected image")
-    persona_path = _path(persona.get("_persona_path"), Path.cwd())
+    persona_path = _path(persona.get("_persona_path"), base, reads=reads)
     references = persona.get("identity", {}).get("references")
     if not isinstance(references, list) or len(references) != 1:
         raise EditInputError("registered passport requires exactly one identity reference")
     selected = file_binding({"path": approved["path"], "sha256": approved["sha256"]},
-                            source_plan.parent, image=True)
+                            source_plan.parent, image=True, reads=reads)
     registered = file_binding({"path": references[0], "sha256": selected["sha256"]},
-                              persona_path.parent, image=True)
-    chosen_path = _path(str(source_plan.parent / "grade/anchor/chosen-anchor.json"), source_plan.parent)
-    if chosen_path.stat().st_size > MAX_JSON_BYTES:
+                              persona_path.parent, image=True, reads=reads)
+    chosen_path = _path(str(source_plan.parent / "grade/anchor/chosen-anchor.json"), source_plan.parent, reads=reads)
+    if reads is None and chosen_path.stat().st_size > MAX_JSON_BYTES:
         raise EditInputError("chosen-anchor record oversized")
-    chosen_raw = _bounded_bytes(chosen_path, MAX_JSON_BYTES)
+    chosen_raw = _bounded_bytes(chosen_path, MAX_JSON_BYTES, reads=reads)
     if len(chosen_raw) > MAX_JSON_BYTES:
         raise EditInputError("chosen-anchor record oversized")
     chosen, chosen_binding = _json_binding({"path": str(chosen_path),
-        "sha256": hashlib.sha256(chosen_raw).hexdigest()}, source_plan.parent, raw=chosen_raw)
+        "sha256": hashlib.sha256(chosen_raw).hexdigest()}, source_plan.parent, raw=chosen_raw, reads=reads)
     if (chosen.get("schema") != "figment/chosen-anchor@1" or chosen.get("creator") != creator
             or chosen.get("image_id") != image_id or chosen.get("sha256") != selected["sha256"]
-            or _path(chosen.get("path"), source_plan.parent) != Path(registered["path"])):
+            or _path(chosen.get("path"), source_plan.parent, reads=reads) != Path(registered["path"])):
         raise EditInputError("chosen anchor does not match current registered passport")
     proof = {
         "schema": PASSPORT_SCHEMA, "creator": creator, "fixture": bool(approved.get("fixture", False)),
@@ -225,13 +266,13 @@ def read_request(path, creator, *, resolve_identity):
         _keys(frame, {"clip", "extraction_receipt", "frame_index"})
         if type(frame["frame_index"]) is not int or frame["frame_index"] != 0:
             raise EditInputError("head-swap start frame must be exact frame0")
-        clip = file_binding(frame["clip"], path.parent, limit=_PATHS.MAX_VIDEO_BYTES)
+        clip = file_binding(frame["clip"], path.parent, limit=_frame_paths().MAX_VIDEO_BYTES)
         receipt, evidence = _json_binding(frame["extraction_receipt"], path.parent)
         if (not isinstance(receipt.get("video_before"), dict)
                 or not isinstance(receipt.get("video_after"), dict)
                 or not isinstance(receipt.get("frames"), list)
                 or not 1 <= len(receipt["frames"]) <= 3
-                or receipt.get("schema") != _PATHS.SCHEMA or receipt.get("video_before") != receipt.get("video_after")
+                or receipt.get("schema") != _frame_paths().SCHEMA or receipt.get("video_before") != receipt.get("video_after")
                 or any(receipt.get("video_before", {}).get(k) != clip[k] for k in ("bytes", "sha256"))):
             raise EditInputError("frame extraction receipt does not bind exact driving clip")
         first = [r for r in receipt.get("frames", []) if isinstance(r, dict)
