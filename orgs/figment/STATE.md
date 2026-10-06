@@ -1,125 +1,45 @@
-# figment — STATE
+# figment - STATE
 
-_Updated: 2026-09-15_
+_Updated: 2026-10-05; phases2-5 offline fixture implementation verified._
 
 ## Now
 
-- **One resumable `pipeline` command drives the whole chain.** `figment_train.py pipeline
-  --creator <id>` walks `anchor → dataset → smoke → train → tester → gen → detail → video`,
-  halting with a printed `GATE <stage>: awaiting ruling` at every gradeable stage
-  (`anchor`, `dataset`, `tester`, `gen`, `detail`, `video`) and resuming safely from
-  `stage.json`/`grade/<stage>/*.json` receipts already on disk — no separate cursor file,
-  never re-plans/re-runs/re-grades a stage with current evidence. `--import-checkpoints
-  <dir>` is the second entry path: plans `tester` directly against an operator-trained
-  checkpoint ladder (MANDATE.md's tier constraint — explicit-tier LoRA training happens on
-  operator hardware, outside any pod), skipping anchor/dataset/smoke/train. Full detail:
-  `orgs/figment/RUNBOOK.md` (the operator command sequence) and `pipeline/README.md` (the
-  pipeline's own map).
-- **`detail` and `video` are now real `STAGES`/`GRADEABLE_STAGES` entries**, not side CLIs:
-  `detail` always re-detailts a ruled `gen` plan's own kept stills (never an operator glob);
-  `video` compiles a Wan 2.2 review-candidate manifest from a ruled `gen` plan's kept still,
-  runs it, builds local evidence (assembly, reel derivative, frame extraction), and grades
-  every 8th of 81 native frames through the existing identity/judge gate. Run roots default
-  to `orgs/figment/runs/<creator>/<stamp>/`, in-repo — `video` refuses to plan outside the
-  repository (`_video_authority_root`).
-- **One gate writer.** `identity_gate.write_gate_document` is the single writer of
-  `gate.json`, shared by `figment_train.py build_grade` and `identity_gate.py`'s own
-  plan-independent `run` — every `gate.json` on disk is byte-identical regardless of caller.
-  The old SHA-bound `gates.py` `write_gate`/`gate_is_current` pair (a second, incompatible
-  schema, zero non-test callers) was deleted; `gates.py` today is only `sha256_file`.
-- **One prompt composer per era.** `_compose_triggered_prompt` is the single place the
-  persona's trigger is prepended, for every prompt that reaches a pod once a LoRA exists
-  to invoke (`tester`, `gen`, `detail`, the caption trigger clause) — the trigger-word
-  defect of 2026-09-07 (tester prompts carried no trigger while the LoRA was trained with
-  one) was exactly the failure mode multiple independent composers produce. `anchor` and
-  `dataset` generate the training material itself, before any LoRA exists, so they
-  deliberately do NOT route through it — they compose from `persona.identity.look` via
-  `_compose_look_clause` instead, a categorically different clause, not a fourth
-  independent trigger composer (see `_compose_triggered_prompt`'s own docstring).
-- **A plan-time budget preflight** (M2) sums every run a `plan`/`pipeline` call is about to
-  write against the arc cap remaining before writing `plan.json`, and refuses unless
-  `--accept-budget` is passed; the live per-run guards (`enforce_daily_budget`,
-  `enforce_arc_cap`) are unchanged and still the actual authority at launch time.
-- **One ledger, resolved by precedence.** `configured_ledger_dir` (E3) is the single
-  resolver every plan/run goes through: an explicit `--ledger-dir` wins first; then
-  `KB_LEDGER_DIR`; then the managed OPS worktree if present on this machine
-  (`dashboard-ops/ledgers/cost`); the repo's own `ledgers/cost/` is the last-resort
-  fallback only. Per CLAUDE.md's branch rules, real cost rows are a coordination write and
-  live on branch `ops` — this repo checkout carries none of its own.
-- Pins repaired (F7): `flux2-klein-4B`'s HF rename is resolved in `tensor-pins.yaml`;
-  `verify_pins.py` (no `--stage`) reports all 9 stages clean, video pins included (E5).
-  Train profile at target (F5): `training.yaml` reads `steps: 3000` (DOP on, a deliberate
-  deviation from module 11's own recipe), matching `train/TENSOR-TRAINING.md`'s current
-  ruling; the checkpoint ladder is 12 (11 intermediates + final), screened by the tester,
-  never defaulted to the final step.
-- Qwen3-VL auto-captioning (F4) is implemented as a pinned pod job
-  (`build_training_set.py`'s `qwen3vl_caption_job`) rather than the earlier
-  `NotImplementedError` stub. The skin-texture style LoRA (F3) is wired as a per-plan
-  `--style-lora`/`--style-lora-strength` flag on `gen` (M3 — not a persona fork), so an A/B
-  is two `gen` plans on the same persona.
+- Active work is **creator-003 tensor parity**, approved Sept29 spec. Creator-001 reruns are outside this arc. The user selected test fixtures for development and delegated the temporary character choice; missing production body/scene/clip media does not block offline work.
+- Registered **p01** from the completed Sept30 passport run: one keep, eleven not-selected culls, attributed to `codex-worker; test-character selection explicitly delegated by Daniel in this session`. Passport SHA256 `929ecf7d37b4b6f0dd4415dfce0440d4ac429368912f6c6fc94b1f59d6df920c`. Source, promoted copy and approval lineage independently verified. The pre-promotion numeric gate is intentionally stale; do not reselect or pay to rerun the passport.
+- Active branch `codex/figment-phase2-20261005`, worktree `C:/Users/danie/kb/_private/codex-worktrees/figment-phase2-20261005`, based on `claude/figment-e2e` at `afd79e8b`. Local checkpoints: phase2 `f76a73ee`, phase3 `3422ae52`, phase4 `3fea0189`, phase5 `8fe4b036`. Pushed work branch; draft review [PR207](https://github.com/danielzhang04/kb/pull/207). No merge or deployment. The remote parent lags by68 pre-existing local commits; PR207 explicitly separates their review from new range `afd79e8b..8fe4b036`.
+- **Phase2 dataset/train/tester implemented and reviewed:** module10 30-row face/body dataset, stage-specific source/staged binding, module11 3000 steps/save250/DOP off/no textual trigger, checkpoint tester ladder, explicit caption plan. Five trait axes are display-only; historical95-row inventory cannot calibrate them. Verified distinct regression coverage:2412 passed,31 skipped (missing local receipts/legacy admission assets).
+- **Phase3 edit implemented and reviewed:** module07 touch-up/start-frame graph, canonical passport/approved-gen inputs, hash-bound requests, existing grading/rulings and accepted-edit lineage. Relevant134 clean regressions passed; focused graph/input tests passed; two retained fixture boards inspected.
+- **Phase4 driven video implemented and reviewed:** module08 source parity, bounded MP4 output contract/transport, actual frame-zero/movie decode, exact embedded prompt graph,81-frame evidence,11sample grading and existing complete-sequence/playback review.215 regressions and5 final checks passed; transport52 focused tests passed (counts overlap other runs). Root inspected retained synthetic board. One older215-run fixture initialized local scorers; it was isolated and its affected CLI rerun passed. No live pod run occurred.
+- **Phase5 still-image fixture integration implemented and reviewed:** canonical passport/descriptor and selected-checkpoint authority, framing batches, exact prompts, output-role/PNG validation, ruling replay, standalone gen resume and accepted-gen-to-edit.149 focused tests passed. Consumer regression273 passed/1 outdated pin-inventory assertion failed; the corrected assertion and fullchain both passed afterward (2 tests). Both independent reviews ready; canonical preview/all8outputs/fourgroups/final fixture label visually verified,26local links resolve. The final test-file change normalized its UTF-8 BOM and EOF whitespace; reviewed bytes were reconstructed and AST equality confirmed. Production extraction remains unimplemented.
+- Original worktree `C:/Users/danie/kb-worktrees/figment-e2e` and its operator-owned dirty `governance/budget.yaml` remain untouched. Main kb checkout remains on its unrelated work branch.
+
+## Accounting
+
+- Sept30 passport pod `0x35sd25eefiff`:12/12jobs, `dry_run=false`, verified termination, run/ledger estimate$0.877522. Provider reconcile: ledger$0.8775/provider$0.8875/2897billedseconds/difference-$0.0099, MATCH under existing tolerance. No duplicate ledger row or cost rewrite.
+- Creator-003 arc cap is **$75**, counting ledger files dated on/after2026-09-29. The old creator-001$60 cap is historical. No new live spend was authorized or executed this session. Every future run still needs its own exact manifest/cell count/time and dollar ceiling/arc total and approval.
 
 ## Next
 
-1. **Studio: G1 before G2** (per `docs/figment/AUDIT-2026-09-15.md` §G). G1 — a route that
-   renders an existing `grade/<stage>/` board and writes the same rulings JSON
-   `apply-rulings` already consumes (`decided_by` from the verified session, `decided_at`
-   from the server clock, keep/cull + all seven axes) — needs no new execution authority
-   and unblocks Studio recording a real ruling. G2 — launching a prepared plan's own
-   recorded argv — stays deferred behind the four preconditions
-   `2026-09-12-overall-plan-review.md` names (owned host/environment, spend bound,
-   sole-launcher operation, real passkey admission).
-2. Run creator-001 through a live `pipeline --creator creator-001` end to end at least once
-   with real operator rulings at each gate, to prove the eight-stage chain (not just its
-   fixture tests) against the current 3000-step/DOP train profile.
-3. Resolve the three placeholder `gate.yaml` thresholds (`identity_gate.age_delta_max_years`
-   / `gloss_max`; `judge.skin_realism_min` / `gloss_max` / `artifacts_max`) — calibration
-   already ran and reported honestly that these do not separate any evidence set.
+1. Review draft PR207 and the exact new four-commit range `afd79e8b..8fe4b036`; align/review inherited parent history before any merge. All authorized phases2-5 offline checks are complete.
+2. Merge the separately reviewed coordination PR to ops through the human/cloud authority. This state/handoff update is a proposal until merged; Codex does not write directly to ops or merge.
+3. Phase6 offline admission planning is now active after the user said Continue; no phase6 code or live approval yet. Implement phase6 **runtime-admission code**, then prepare a separately approved dependency smoke. The adapter must bind approved nonfixture smoke evidence, exact runtime/pins/node schemas/effective graph/native metadata and verified termination. Current phase4 derives `runtime_admitted=false` and refuses live launch and nonfixture acceptance/delivery. A receipt boolean cannot grant authority.
+4. Only at production-dependent stages obtain real body/scene/driving-clip media, explicit missing face description and operator prompt/body-prefix decisions. No fixture selection or fixture eye gate becomes production approval.
 
-## Blocked / open gaps
+## Open prerequisites and limits
 
-- **No accepted checkpoint yet for creator-001.** Every historical tester candidate (Track-1
-  2000-step run, train-first 1250-step run) was culled or superseded before this arc's
-  3000-step/DOP profile landed; `grade/tester/accepted-checkpoint.json` does not exist for
-  the current profile, so `gen`/`detail`/`video`/the deliverable have never run against it.
-  Live evidence: an imported-ladder tester ran 2026-09-15 (run root
-  `orgs/figment/runs/creator-001/live-20260915`), 5 candidates, gate 0/5 (none passed),
-  $0.3346 (`ledgers/cost/figment-2026-09-15.tsv` on the OPS worktree).
-- **Studio still cannot launch a run or record a ruling** (`docs/figment/
-  AUDIT-2026-09-15.md` §G) — it prepares plans and reads evidence, nothing more. See "Next"
-  item 1.
-- **The qwen3vl caption pod job has never run live** — implemented and unit-tested, no pod
-  receipt exists yet.
-- **Video has never run live** — `video_manifest.py`/`frame_assemble.py`/`frame_extract.py`
-  are wired into `pipeline` and fixture-tested, but no real Wan 2.2 pod has rendered a
-  candidate for creator-001 yet.
-- **`figment_train.py` has not been audited for Windows MAX_PATH.** `video/`'s own
-  extended-length (`\\?\`) path handling (F6b) does not extend to `figment_train.py` itself;
-  a run root deep enough could still push a `grade/<stage>/*.json` path past 260 characters.
-- **`ADMISSION_SHA256` in `expand/local_omnigen2_runtime.py` is dead in practice** — the
-  OmniGen2 branch it belongs to is closed without a paid retry (`docs/figment/
-  AUDIT-2026-09-15.md` §B.5); the constant still has an in-module caller so it was not
-  pruned, but nothing upstream of it plans or runs.
-- **Stages 8–9 (post & measure, optimise) blocked on operator provisioning**: an Instagram
-  professional test account, the Meta app + OAuth grant (Test 0), and Fanvue written
-  confirmation are all still outstanding. The explicit tier is additionally blocked on an
-  owned GPU (MANDATE.md's tier constraint keeps unclothed generation/training off rented
-  compute).
-- Three `gate.yaml` thresholds remain unvalidated placeholders — see "Next" item 3.
+- Fixture prompt intake is implemented; production extraction still needs enforced runner/read confinement. The fixture adapter is not a sandbox or live extractor.
+- Gated Klein9B unauthenticated HEAD returns401; model access/preflight must be resolved without `skip-pin-verify` as a live bypass.
+- Module09 mirror style/NMKD licences and RES4LYF classification remain unresolved; intrinsic readiness refuses them. Static source/pin metadata does not prove installed GPU/node/encoder compatibility.
+- Video input currently conservatively requires CFR16 with enough frames; broader resampling needs evidence. Synthetic solid-colour media does not prove identity/motion/render quality.
+- Trait calibration lacks labeled vectors/held-out validation; thresholds remain unactivated. Operator eye gates remain at dataset cull, checkpoint selection, still/edit decisions and final video acceptance.
+- Live accounts, publishing and creator-001 reruns are outside this work. No merge/deploy/publish approval has been given.
 
-## Reading order
+## Load list
 
-`MANDATE.md` → `pipeline/GUARDRAILS.md` → `pipeline/README.md` → `RUNBOOK.md` → this file →
-`contract.md`. See `_index.md` for the full map.
+- `handoffs/2026-10-05-figment-tensor-offline.md` for exact branches, evidence and next step.
+- In the implementation worktree: `docs/superpowers/specs/2026-09-29-figment-tensor-parity-design.md`, the Oct5 phase2-5 plans, `orgs/figment/contract.md`, `orgs/figment/pipeline/README.md`, `orgs/figment/RUNBOOK.md`.
+- Local session tasklist and detailed evidence: `C:/Users/danie/kb/_private/figment-session-20261005/`.
 
-## History (2026-09-03 through 2026-09-07, pre-pipeline-command arc)
+## Earlier arc
 
-The detailed night-by-night log of the pre-`pipeline` arc — expansion-02/03 shelved,
-Track-1 (module-for-module replication) trained and tested at 2000 steps, the "gate before
-eyes" ruling, the bake-off, train-first (Path-A: r24 method 4 + r21 DOP) landing at 1250
-steps with a trigger-word defect found and fixed — is preserved in git history for this
-file (`git log -p -- orgs/figment/STATE.md`) and in `orgs/figment/pipeline/README.md`'s
-"Live-proven runs to date" table, rather than duplicated here. Read that table for exact
-pod IDs, costs, and verdicts through 2026-09-07; everything after 2026-09-07 up to this arc
-(the `pipeline` command, `detail`/`video` as stages, the pin/train-profile/caption/style-LoRA
-fixes, the one gate writer, the one ledger) is summarized in "Now" above and dated in
-`git log --oneline 701abe22..HEAD`.
+Creator-001's eight-stage pipeline was live-proven through Sept23, with accepted step2000 checkpoint, three passing gen stills, one passing detail and video0/11 owing to face/framing problems. Those historical results do not establish creator-003 tensor runtime/quality. The Sept23 handoff is preserved in git history; implementation history and original run roots remain in `C:/Users/danie/kb-worktrees/figment-e2e`.

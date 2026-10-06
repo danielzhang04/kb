@@ -445,3 +445,33 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
 ## 2026-09-14 - shared handoff delivery
 
 Publish shared handoffs through current ops, not only a private worktree commit. Verify the file is discoverable from the shared checkout (`kb-worktrees/dashboard-ops/handoffs/`) and that STATE points to it; private checkouts are archival, never the load target.
+
+
+## 2026-10-05 - Derived artifacts need independent source checks
+
+### Context
+- A video review cache could be changed together with its editable hash receipt while the original movie stayed unchanged. All local checksums could then agree on the wrong frames.
+### Root Cause / Core Insight
+- Mutable derivative bytes and their mutable receipt are one authority, not independent proof. File-format labels likewise do not establish the actual decoder format.
+### The Pattern (transferable)
+- Next time review depends on cached media, I will rederive bounded pixels/metadata from the bound source at acceptance and compare them, then recheck the source hash. Signal: a caller can coherently edit a derivative and its receipt without changing the original source.
+- Next time a closed output contract declares a media type, I will validate the actual bounded decoded format, not only its extension and declared MIME type.
+
+## 2026-10-05 - Fixture intent is not execution isolation
+
+### Context
+- A legacy test passed `skip_judge=True` but still initialized local identity/advisory scorers on tiny synthetic images. The first regression run therefore was not model-free.
+### Root Cause / Core Insight
+- Skipping one paid/judge layer does not disable other local model consumers. Imported-by-path driver instances can also bypass a fixture patch applied to another module instance.
+### The Pattern (transferable)
+- Next time I claim a test is offline/model-free, I will trace every scorer/provider consumer and patch the exact module instances with fail-closed seams before running it. Signal: a fixture calls the real grading entrypoint while only stubbing one scorer.
+- Record initial evidence limits honestly, then rerun the corrected affected case rather than rewriting the initial run's meaning.
+
+## 2026-10-05 - Milestones do not require another user turn
+
+### Context
+- The boss protocol said to end after dispatch, while the user repeatedly asked to continue authorized work and objected to pauses.
+### Root Cause / Core Insight
+- A local orchestration habit was mistaken for an approval boundary; status milestones and missing optional fixture inputs were treated as reasons to return control.
+### The Pattern (transferable)
+- Next time the user authorizes continued work, I will keep coordinating through implementation, review and verification and ask only at a real unresolved dependency or approval boundary. Signal: the task can progress safely with already chosen fixtures and the user asks why work has paused.
