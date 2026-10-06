@@ -8998,6 +8998,11 @@ def command_pipeline(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    runtime = commands.add_parser("runtime-admission", help="offline evidence inspection; never grants admission")
+    runtime_commands = runtime.add_subparsers(dest="runtime_command", required=True)
+    inspect = runtime_commands.add_parser("inspect", help="bounded metadata-only inspection; exits unavailable")
+    inspect.add_argument("--request", required=True, type=Path)
+    inspect.add_argument("--evidence-root", required=True, type=Path)
     plan = commands.add_parser("plan", help="generate a creator-specific Track-1 plan")
     plan.add_argument("--creator", required=True)
     plan.add_argument("--stage", choices=(*STAGES, "all"), default="all")
@@ -9327,6 +9332,17 @@ def _print_train_budget(result: dict[str, Any]) -> None:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command == "runtime-admission":
+            inspector = _load_module("_figment_tensor_runtime_inspection", HERE / "tensor_runtime_admission.py")
+            try:
+                report = inspector.inspect_request(args.request, args.evidence_root)
+            except (inspector.InspectionError, OSError, ValueError) as exc:
+                report = {"schema": inspector.REPORT_SCHEMA, "runtime_admitted": False,
+                          "production_ready": False, "authority_status": "authority-unavailable",
+                          "evidence_consistent": False, "blockers": ["invalid-local-evidence"],
+                          "error": str(exc)[:1024]}
+            print(json.dumps(report, ensure_ascii=True, allow_nan=False))
+            return 2  # Inspection never supplies production authority, including consistent fixtures.
         if args.command == "plan":
             result = build_plan(
                 args.creator, args.stage, args.out, skip_pin_verify=args.skip_pin_verify,
