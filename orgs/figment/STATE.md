@@ -1,16 +1,17 @@
 # figment - STATE
 
-_Updated: 2026-10-05; phases2-5 offline fixture implementation verified._
+_Updated: 2026-10-05; phases2-5 offline fixture implementation and phase6 inspection slice verified._
 
 ## Now
 
 - Active work is **creator-003 tensor parity**, approved Sept29 spec. Creator-001 reruns are outside this arc. The user selected test fixtures for development and delegated the temporary character choice; missing production body/scene/clip media does not block offline work.
 - Registered **p01** from the completed Sept30 passport run: one keep, eleven not-selected culls, attributed to `codex-worker; test-character selection explicitly delegated by Daniel in this session`. Passport SHA256 `929ecf7d37b4b6f0dd4415dfce0440d4ac429368912f6c6fc94b1f59d6df920c`. Source, promoted copy and approval lineage independently verified. The pre-promotion numeric gate is intentionally stale; do not reselect or pay to rerun the passport.
-- Active branch `codex/figment-phase2-20261005`, worktree `C:/Users/danie/kb/_private/codex-worktrees/figment-phase2-20261005`, based on `claude/figment-e2e` at `afd79e8b`. Local checkpoints: phase2 `f76a73ee`, phase3 `3422ae52`, phase4 `3fea0189`, phase5 `8fe4b036`. Pushed work branch; draft review [PR207](https://github.com/danielzhang04/kb/pull/207). No merge or deployment. The remote parent lags by68 pre-existing local commits; PR207 explicitly separates their review from new range `afd79e8b..8fe4b036`.
+- Active branch `codex/figment-phase2-20261005`, worktree `C:/Users/danie/kb/_private/codex-worktrees/figment-phase2-20261005`, based on `claude/figment-e2e` at `afd79e8b`. Local checkpoints: phase2 `f76a73ee`, phase3 `3422ae52`, phase4 `3fea0189`, phase5 `8fe4b036`, phase6 inspector `1719729a`. Pushed work branch; draft review [PR207](https://github.com/danielzhang04/kb/pull/207). No merge or deployment. The remote parent lags by68 pre-existing local commits; PR207 explicitly separates their review from new range `afd79e8b..1719729a`.
 - **Phase2 dataset/train/tester implemented and reviewed:** module10 30-row face/body dataset, stage-specific source/staged binding, module11 3000 steps/save250/DOP off/no textual trigger, checkpoint tester ladder, explicit caption plan. Five trait axes are display-only; historical95-row inventory cannot calibrate them. Verified distinct regression coverage:2412 passed,31 skipped (missing local receipts/legacy admission assets).
 - **Phase3 edit implemented and reviewed:** module07 touch-up/start-frame graph, canonical passport/approved-gen inputs, hash-bound requests, existing grading/rulings and accepted-edit lineage. Relevant134 clean regressions passed; focused graph/input tests passed; two retained fixture boards inspected.
 - **Phase4 driven video implemented and reviewed:** module08 source parity, bounded MP4 output contract/transport, actual frame-zero/movie decode, exact embedded prompt graph,81-frame evidence,11sample grading and existing complete-sequence/playback review.215 regressions and5 final checks passed; transport52 focused tests passed (counts overlap other runs). Root inspected retained synthetic board. One older215-run fixture initialized local scorers; it was isolated and its affected CLI rerun passed. No live pod run occurred.
 - **Phase5 still-image fixture integration implemented and reviewed:** canonical passport/descriptor and selected-checkpoint authority, framing batches, exact prompts, output-role/PNG validation, ruling replay, standalone gen resume and accepted-gen-to-edit.149 focused tests passed. Consumer regression273 passed/1 outdated pin-inventory assertion failed; the corrected assertion and fullchain both passed afterward (2 tests). Both independent reviews ready; canonical preview/all8outputs/fourgroups/final fixture label visually verified,26local links resolve. The final test-file change normalized its UTF-8 BOM and EOF whitespace; reviewed bytes were reconstructed and AST equality confirmed. Production extraction remains unimplemented.
+- **Phase6 inspection slice implemented and independently reviewed:** checkpoint `1719729a`; strict bounded metadata parser/current-source projection and `runtime-admission inspect` CLI.60 focused tests and5 existing compatibility checks passed. The retained CLI sample is internally consistent but reports runtime_admitted=false, production_ready=false, authority_status=authority-unavailable and exits2. No real verifier, capture, model/media decoding or admission writer; production guards unchanged. File checks detect ordinary mutations, not hostile-writer OS confinement.
 - Original worktree `C:/Users/danie/kb-worktrees/figment-e2e` and its operator-owned dirty `governance/budget.yaml` remain untouched. Main kb checkout remains on its unrelated work branch.
 
 ## Accounting
@@ -20,9 +21,9 @@ _Updated: 2026-10-05; phases2-5 offline fixture implementation verified._
 
 ## Next
 
-1. Review draft PR207 and the exact new four-commit range `afd79e8b..8fe4b036`; align/review inherited parent history before any merge. All authorized phases2-5 offline checks are complete.
+1. Review draft PR207 and the exact new five-commit range `afd79e8b..1719729a`; align/review inherited parent history before any merge. All authorized phases2-5 offline checks are complete.
 2. Merge the separately reviewed coordination PR to ops through the human/cloud authority. This state/handoff update is a proposal until merged; Codex does not write directly to ops or merge.
-3. Phase6 offline admission planning is now active after the user said Continue; no phase6 code or live approval yet. Implement phase6 **runtime-admission code**, then prepare a separately approved dependency smoke. The adapter must bind approved nonfixture smoke evidence, exact runtime/pins/node schemas/effective graph/native metadata and verified termination. Current phase4 derives `runtime_admitted=false` and refuses live launch and nonfixture acceptance/delivery. A receipt boolean cannot grant authority.
+3. Phase6 inspection-only code is complete; trusted admission remains unimplemented. Next, review a bounded authority contract for protected trust roots/freshness/revocation, one-shot launch consumption, authenticated capture/result evidence and smoke bootstrap before any further adapter implementation. A separately approved real dependency smoke is still required later. Local consistent metadata or a receipt Boolean cannot grant runtime or spend authority.
 4. Only at production-dependent stages obtain real body/scene/driving-clip media, explicit missing face description and operator prompt/body-prefix decisions. No fixture selection or fixture eye gate becomes production approval.
 
 ## Open prerequisites and limits
@@ -37,7 +38,7 @@ _Updated: 2026-10-05; phases2-5 offline fixture implementation verified._
 ## Load list
 
 - `handoffs/2026-10-05-figment-tensor-offline.md` for exact branches, evidence and next step.
-- In the implementation worktree: `docs/superpowers/specs/2026-09-29-figment-tensor-parity-design.md`, the Oct5 phase2-5 plans, `orgs/figment/contract.md`, `orgs/figment/pipeline/README.md`, `orgs/figment/RUNBOOK.md`.
+- In the implementation worktree: `docs/superpowers/specs/2026-09-29-figment-tensor-parity-design.md`, the Oct5 phase2-6 plans, `orgs/figment/contract.md`, `orgs/figment/pipeline/README.md`, `orgs/figment/RUNBOOK.md`.
 - Local session tasklist and detailed evidence: `C:/Users/danie/kb/_private/figment-session-20261005/`.
 
 ## Earlier arc

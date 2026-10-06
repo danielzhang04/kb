@@ -10,7 +10,8 @@
 - Phase3 checkpoint `3422ae52`: module07 edit graph/request/canonical authority and existing review integration.134 clean regressions passed plus focused graph/input suites; two fixture boards rendered/inspected.
 - Phase4 checkpoint `3fea0189`: module08 graph/pins, bounded MP4 output transport and deadlines, decoded frame-zero/native81-frame provenance, review/approval adapter.215 regressions passed,5 final affected checks passed,52 focused transport tests passed (overlapping totals). Independent graph/transport/core reviews ready; retained synthetic native board inspected.
 - Phase5 checkpoint `8fe4b036`: canonical fixture intake/stills driver, optional gen-only face projection, actual PNG validation, exact replay and standalone resume.149 focused tests passed. Consumer273 passed/1 outdated pin assertion, then corrected assertion+fullchain2 passed. Both independent reviews ready; canonical board/preview/all8variants/fourgroups/final fixture banner inspected;26 file links resolve.
-- Work branch pushed; draft [PR207](https://github.com/danielzhang04/kb/pull/207). Review new range `afd79e8b..8fe4b036` separately from68 pre-existing parent commits absent from the old remote base. No merge. A test UTF-8 BOM and extra EOF whitespace were normalized after review; reconstructed old hash and AST equality prove no semantic change (phase5-root-checkpoint.json).
+- Phase6 inspector checkpoint `1719729a`: bounded JSON metadata/current-source consistency projection and inspect-only CLI;60 focused plus5 compatibility tests passed, both independent reviews READY and six frozen hashes matched. Sample consistent=true still returns all authority false/unavailable and exit2. Guards unchanged; no actual runtime/media/approval/capture/termination proof.
+- Work branch pushed; draft [PR207](https://github.com/danielzhang04/kb/pull/207). Review new range `afd79e8b..1719729a` separately from68 pre-existing parent commits absent from the old remote base. No merge. A test UTF-8 BOM and extra EOF whitespace were normalized after review; reconstructed old hash and AST equality prove no semantic change (phase5-root-checkpoint.json).
 
 ## What Did NOT Work (and why)
 
@@ -26,7 +27,7 @@
 
 - Merge/deployment of the reviewed offline work. Draft PR207 still needs human review, including alignment of its inherited parent history.
 - A confined production photo extractor; fixture intake is intentionally not a sandbox/live adapter.
-- Phase6 runtime-admission implementation and approved real GPU dependency smoke. Current video code derives runtime_admitted=false and blocks live launch/nonfixture acceptance; this is remaining code, not only missing media.
+- Phase6 trusted approval/capture/result-admission adapter, smoke bootstrap and approved real GPU dependency smoke. Current video code derives runtime_admitted=false and blocks live launch/nonfixture acceptance; this is remaining code, not only missing media.
 - Real dataset/caption/train/tester/stills/edit/video for creator-003; no funded run authorized. Production body/scene/clip inputs, explicit face descriptor, prompt/body-prefix decisions, model access/licences, runtime compatibility and operator eye gates remain.
 - Calibration:95historical rows contain no new trait vectors/labels; no thresholds were fitted or activated.
 
@@ -34,8 +35,8 @@
 
 | File or scope | Status | Notes |
 | --- | --- | --- |
-| Implementation branch `codex/figment-phase2-20261005` | DONE offline / DRAFT PR207 | Four checkpoints through `8fe4b036`, based on `afd79e8b`; no merge. |
-| Oct5 phase2-5 plans and associated pipeline files | DONE offline | Evidence/limits recorded; not installed-runtime or generated-quality proof. |
+| Implementation branch `codex/figment-phase2-20261005` | DONE offline / DRAFT PR207 | Five checkpoints through `1719729a`, based on `afd79e8b`; no merge. |
+| Oct5 phase2-6 plans and associated pipeline files | DONE offline | Evidence/limits recorded; not installed-runtime or generated-quality proof. |
 | Phase5 intake/stills graph/driver/persona/lineage/pins | DONE fixture scope |149 focused tests,273 consumer passes plus corrected assertion/fullchain2 passes; production extractor deferred. |
 | Local `tasklist.txt` | CURRENT | Every step includes instructions, tests, review and exit condition. |
 | `orgs/figment/STATE.md` and `memory/codex-worker.md` | REVIEW READY coordination update | Reach ops only via PR; not canonical until approved/merged. |
@@ -43,13 +44,13 @@
 
 ## Exact Next Step
 
-Review the exact new implementation range `afd79e8b..8fe4b036` in draft PR207 and align its inherited parent history before merge. Phase6 offline admission planning is now active after the user said Continue, with no phase6 code/live approval yet. Review that plan and then implement the versioned phase6 runtime-admission adapter and confined production scene extractor before preparing a real dependency-smoke request. Current fixture plans cannot become production launch/acceptance evidence. Do not repeat passport or paid work already recorded. Obtain real inputs only at production-dependent steps.
+Review the exact new implementation range `afd79e8b..1719729a` in draft PR207 and align its inherited parent history before merge. The phase6 inspection-only slice is complete; all authorized first-slice tests/reviews passed. Next review a bounded authority contract covering protected trust roots/freshness/revocation, one-shot launch consumption, authenticated capture/result evidence and smoke bootstrap before further adapter work. These are unresolved design gates, not a missing fixture choice. Actual T2 smoke needs separate approval. Production extraction/confinement and real inputs remain later dependencies. Do not repeat passport selection or paid work.
 
 ## Load list
 
 - `orgs/figment/STATE.md` and this handoff on the coordination branch.
 - Implementation worktree: `C:/Users/danie/kb/_private/codex-worktrees/figment-phase2-20261005` (branch `codex/figment-phase2-20261005`). Read `CLAUDE.md`, `governance/agent-rules.md`, `orgs/figment/contract.md`, `orgs/figment/pipeline/GUARDRAILS.md` there.
-- In that worktree: `docs/superpowers/specs/2026-09-29-figment-tensor-parity-design.md`; `docs/superpowers/plans/2026-10-05-figment-tensor-phase5.md`; `orgs/figment/pipeline/README.md`; `orgs/figment/RUNBOOK.md`.
-- Local session directory `C:/Users/danie/kb/_private/figment-session-20261005/`: tasklist.txt, phase5-driver-patch-plan.md, phase2/3/4 review and test evidence, phase4-core-hashes.json, phase4-fixture/proof.json, phase5 intake/helper/graph/shared/integration review receipts, phase5-test-evidence.txt, phase5-consumer-regression.log, phase5-freeze-sha256.txt, phase5-visual-qa.txt, phase5-canonical-fixture/ and pin evidence.
+- In that worktree: `docs/superpowers/specs/2026-09-29-figment-tensor-parity-design.md`; `docs/superpowers/plans/2026-10-05-figment-tensor-phase5.md`; `docs/superpowers/plans/2026-10-05-figment-tensor-phase6-admission.md`; `orgs/figment/pipeline/README.md`; `orgs/figment/RUNBOOK.md`.
+- Local session directory `C:/Users/danie/kb/_private/figment-session-20261005/`: tasklist.txt, phase5-driver-patch-plan.md, phase2/3/4 review and test evidence, phase4-core-hashes.json, phase4-fixture/proof.json, phase5 intake/helper/graph/shared/integration review receipts, phase5-test-evidence.txt, phase5-consumer-regression.log, phase5-freeze-sha256.txt, phase5-visual-qa.txt, phase5-canonical-fixture/ and pin evidence; phase6-inspection-test-evidence.txt, phase6-inspection-freeze-sha256.txt, phase6-integration-review.txt, phase6-security-review.txt, phase6-inspection-fixture/ and phase6-inspection-sample-report.json.
 - Original source/run worktree: `C:/Users/danie/kb-worktrees/figment-e2e`, registered run `orgs/figment/runs/creator-003/passport-20260929`. Licensed source package remains ignored and is treated as read-only; active worktree uses a junction to the original package.
 - Apply code-review/security-review for final changes; save-session/growth-log for durable close. No live models, spend, merge, deployment or publishing without the applicable explicit approval.

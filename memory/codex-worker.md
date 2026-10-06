@@ -475,3 +475,8 @@ Publish shared handoffs through current ops, not only a private worktree commit.
 - A local orchestration habit was mistaken for an approval boundary; status milestones and missing optional fixture inputs were treated as reasons to return control.
 ### The Pattern (transferable)
 - Next time the user authorizes continued work, I will keep coordinating through implementation, review and verification and ask only at a real unresolved dependency or approval boundary. Signal: the task can progress safely with already chosen fixtures and the user asks why work has paused.
+
+
+## 2026-10-05 - Metadata consistency is not authenticated runtime evidence
+
+When local declarations and hashes agree, report only consistency. Keep admission false until a trusted approval-to-attempt-to-capture/result chain exists. Canonical JSON comparison avoids Python treating true,1 and1.0 as interchangeable; test coherently rehashed type substitutions. Stable path/reparse checks and freshness rereads detect ordinary mutations but do not establish OS confinement against an actively swapping writer. State that boundary explicitly rather than presenting a metadata inspector as a production verifier.
