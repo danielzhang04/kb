@@ -480,3 +480,8 @@ Publish shared handoffs through current ops, not only a private worktree commit.
 ## 2026-10-05 - Metadata consistency is not authenticated runtime evidence
 
 When local declarations and hashes agree, report only consistency. Keep admission false until a trusted approval-to-attempt-to-capture/result chain exists. Canonical JSON comparison avoids Python treating true,1 and1.0 as interchangeable; test coherently rehashed type substitutions. Stable path/reparse checks and freshness rereads detect ordinary mutations but do not establish OS confinement against an actively swapping writer. State that boundary explicitly rather than presenting a metadata inspector as a production verifier.
+
+
+## 2026-10-06 - Bind the model to the real authority mechanism
+
+The signed commit authenticates committed card metadata even when fields are outside the I3 payload digest. Use precise wording and test new contract serialization against the existing approval_payload/work_order_of functions, including line endings and section extraction. A pure event-history analyzer can test topology, time and replay conflicts but cannot prove the opaque evidence it names or replace global transactional consumption. Keep late cleanup possible after launch expiry; never interpret that as revived dispatch authority.
