@@ -76,10 +76,10 @@ def stills_pin_group(framing="full"):
     }
 
 
-def stills_workflow(framing="full"):
+def stills_workflow(framing="full", *, reads=None):
     _framing(framing)
-    source = json.loads(_read_verified(STILLS_GRAPH, STILLS_GRAPH_SHA256))
-    _read_verified(PACKAGE / "krea2_model_installer.bat", STILLS_INSTALLER_SHA256)
+    source = json.loads(_read_verified(STILLS_GRAPH, STILLS_GRAPH_SHA256, reads=reads))
+    _read_verified(PACKAGE / "krea2_model_installer.bat", STILLS_INSTALLER_SHA256, reads=reads)
     nodes = {str(n["id"]): n for n in source["nodes"]}
     links = {e[0]: e for e in source["links"]}
     setters = {n["widgets_values"][0]: n for n in source["nodes"] if n["type"] == "SetNode"}
@@ -210,8 +210,8 @@ def _contract_problems(job, framing):
     return problems
 
 
-def check_stills(workflow, manifest, *, framing="full", prompt=None, identity_lora=None, approved_prompts=None):
-    expected = stills_workflow(framing)
+def check_stills(workflow, manifest, *, framing="full", prompt=None, identity_lora=None, approved_prompts=None, reads=None):
+    expected = stills_workflow(framing, reads=reads)
     for node, field, value in (("1686", "text", prompt), ("1633_identity", "lora_name", identity_lora)):
         if value is not None:
             expected[node]["inputs"][field] = value

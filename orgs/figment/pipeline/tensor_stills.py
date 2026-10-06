@@ -32,12 +32,18 @@ class StillsError(ValueError):
     pass
 
 
-def read_request(path, creator, *, passport_adapter):
+def read_request(path, creator, *, passport_adapter, reads=None):
     """Bounded local fixture request; all paths are relative to its evidence root."""
-    path = Path(path).absolute()
+    path = Path(path)
+    if reads is not None:
+        if not path.is_absolute():
+            raise StillsError("observed request path must be absolute")
+        path = reads.resolve_exact_file(path)
+    else:
+        path = path.absolute()
     root = path.parent
     def document(relative, expected=None):
-        raw = prompt_intake._read(root, relative)
+        raw = prompt_intake._read(root, relative, reads=reads)
         digest = hashlib.sha256(raw).hexdigest()
         if expected is not None and digest != expected:
             raise StillsError("scene evidence digest changed")
@@ -58,7 +64,7 @@ def read_request(path, creator, *, passport_adapter):
             or request["schema"] != "figment/tensor-stills-request@1" or request["creator"] != creator
             or request["fixture"] is not True):
         raise StillsError("closed fixture tensor-stills-request@1 required")
-    passport = prompt_intake.canonical_passport_binding(creator=creator, selection=request["passport"], passport_adapter=passport_adapter)
+    passport = prompt_intake.canonical_passport_binding(creator=creator, selection=request["passport"], passport_adapter=passport_adapter, reads=reads)
     if not isinstance(request["scenes"], list) or not 1 <= len(request["scenes"]) <= 128:
         raise StillsError("request needs one to128 scenes")
     requests, files = [], []
@@ -74,7 +80,7 @@ def read_request(path, creator, *, passport_adapter):
             parsed[kind], _ = document(binding["path"], binding["sha256"])
             files.append({"kind": kind, "scene_index": row["scene_index"], **binding})
         requests.append(parsed)
-    scenes = revalidate_scenes(root, requests, creator=creator, current_passport=passport, passport_adapter=passport_adapter)
+    scenes = revalidate_scenes(root, requests, creator=creator, current_passport=passport, passport_adapter=passport_adapter, reads=reads)
     return {"request": {"path": str(path), "sha256": digest}, "fixture": True,
             "passport": passport, "scene_files": files, "scenes": scenes}
 
@@ -85,7 +91,7 @@ def _index(value):
     return value
 
 
-def revalidate_scenes(root, requests, *, creator, current_passport, passport_adapter):
+def revalidate_scenes(root, requests, *, creator, current_passport, passport_adapter, reads=None):
     """Re-read frozen fixture scenes through the trusted canonical intake adapter.
 
 No scene photo is returned or uploaded. Canonical callbacks must freshly resolve
@@ -105,14 +111,14 @@ the driver's registered-passport proof and persona descriptor slots.
         seen.add(index)
         projection = prompt_intake.approved_prompt_projection(
             root, request["draft"], request["approval"], current_passport=current_passport,
-            passport_adapter=passport_adapter, live=False)
+            passport_adapter=passport_adapter, live=False, reads=reads)
         if projection["creator"] != creator:
             raise StillsError("scene creator differs from requested creator")
         result.append({**projection, "scene_index": index})
     return result
 
 
-def compile_scene_groups(projections, *, identity_lora, output_prefix):
+def compile_scene_groups(projections, *, identity_lora, output_prefix, reads=None):
     """Group scenes by framing, preserving global seed offsets and prompt authority.
 
 identity_lora must be the canonical staged name from the existing accepted
@@ -140,7 +146,7 @@ Fragments deliberately omit uploads/models/pod fields; the driver adds them.
         if framing not in parity.FRAMINGS or not isinstance(scene["text"], str) or not scene["text"].strip():
             raise StillsError("explicit framing and approved prompt required")
         if framing not in groups:
-            workflow = parity.stills_workflow(framing)
+            workflow = parity.stills_workflow(framing, reads=reads)
             workflow["1633_identity"]["inputs"]["lora_name"] = identity_lora
             groups[framing] = {"framing": framing, "prompt_authorities": [],
                 "approved_prompts": {}, "workflow": workflow, "seed_fields": ["seed"],

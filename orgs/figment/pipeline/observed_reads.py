@@ -149,9 +149,12 @@ def _same_object(named: _Fingerprint, opened: _Fingerprint) -> bool:
     # CPython 3.12 Windows lstat reports creation time as ctime, whereas
     # fstat reports change time. Compare birthtime across APIs and retain
     # each API's complete original fingerprint for subsequent checks.
-    return all(getattr(named, field) == getattr(opened, field) for field in (
-        "device", "inode", "size", "modified", "birthtime", "mode", "attributes",
-    ))
+    # Windows pathname stat infers executable bits from extensions such as .bat;
+    # fd stat cannot. Ignore only those bits across APIs, never within one API.
+    return (named.mode & ~0o111) == (opened.mode & ~0o111) and all(
+        getattr(named, field) == getattr(opened, field) for field in (
+            "device", "inode", "size", "modified", "birthtime", "attributes",
+        ))
 
 
 def _public(method):

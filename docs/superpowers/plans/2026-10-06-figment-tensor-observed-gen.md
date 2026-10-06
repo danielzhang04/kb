@@ -234,3 +234,51 @@ Full tensor source and review entrypoint refusals remain unchanged.
 
 Clean isolated CLI compatibility: 13 passed in32.85s. Final explicit alternate-cwd
 leaf rerun:39passed0.62s (overlaps the511). Scratch lease released.
+
+
+## Released Stage P: stills and constant-source reads
+
+Stage L is committed at2caef0a5. Stage P owns tensor_stills.py,
+tensor_parity.py and tensor_stills_parity.py plus focused tests. Thread reads
+through request/revalidation/scene compilation and the already loaded parity
+instance. Both actual graph and installer bytes must be read through retained
+raw-byte capability and verified against existing constant hashes. Native API
+behavior/defaults and full source/review refusals remain unchanged; no driver or
+bootstrap bundle changes are included.
+
+This supersedes the earlier lexical-only bootstrap proposal: PRESERVE both
+existing HERE=Path(__file__).resolve().parent expressions in the two parity
+modules. Those exact pinned-code __file__ metadata resolutions are a narrowly
+qualified bootstrap boundary, preserving native symlink semantics. The future
+pinned loader must verify both HERE values equal the canonical pipeline directory.
+No arbitrary path, package, data, or subsequent domain-resolution exception is
+allowed; no alternate mode/global or new resolve calls are introduced.
+
+Validation: copied immutable real graph/installer source, native/observed mixed
+framing equality and check_stills, changed constant-bound source/installer refusal,
+raw capability denial, case/reparse/junction refusal, request/draft/approval/photo
+mutation, same-byte duplicate-key parsing, bounded original image verification,
+alternate cwd and domain I/O traps. Run actual native stills helpers/parity and
+native real-writer fixture regressions. No root/quota expansion, models or runtime.
+
+
+### Evidence-led Windows executable-mode compatibility prerequisite
+
+Stage P first run:70passed/2failed17.45s. Both failures reached the real installer
+.bat retained read. Diagnosis shows pathname lstat mode0100777 while descriptor
+fstat reports0100666; device/inode/size/mtime/birthtime/attributes all agree.
+Windows infers execute bits from the pathname extension, unavailable to fd stat.
+This is not fixture timestamp instability. Independent security review and root
+release approve masking ONLY0111 executable bits in cross-API _same_object mode
+comparison. File kind/read/write/other mode bits and every other identity field
+stay exact. Each API still stores full original mode; later same-API executable
+bit drift remains a refusal. No S_IFMT-only comparison, fingerprint weakening,
+source hash, root or quota change. Test real .bat read/hash/final recheck and
+injected read/write/type cross-API mismatches plus same-API mode drift before
+rerunning the corrected Stage P suite. Original failure/diagnostic retained.
+
+Stage P verification after the reviewed correction:77passed17.34s; mode and
+existing retained reader suites366passed/1filesystem-capabilityskip5.08s; affected
+leaf/router/13cleanCLI consumers95passed42.10s. Initial70passed/2failed17.45s
+is retained as the diagnosed product portability failure, not a harness error.
+No full observed tensor adapter, driver integration or runtime authority enabled.

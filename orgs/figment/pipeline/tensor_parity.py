@@ -46,9 +46,9 @@ class ParityError(RuntimeError):
     """A package file is missing, altered, or not in the expected shape."""
 
 
-def _read_verified(path: Path, sha256: str) -> bytes:
+def _read_verified(path: Path, sha256: str, *, reads=None) -> bytes:
     try:
-        data = Path(path).read_bytes()
+        data = Path(path).read_bytes() if reads is None else reads.read_bytes(Path(path))
     except OSError as exc:
         raise ParityError(
             f"package file unavailable (gitignored; restore the package snapshot): {path}"
