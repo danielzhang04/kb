@@ -1,6 +1,6 @@
 # Tensor stills through the retained gen-source observer
 
-Status: feasibility and implementation proposal for independent review, 2026-10-06, baseline61819eac. No implementation or test execution in this planning task. This is an optional offline integration improvement, not a failing released pipeline check. Existing tensor refusal stays in place until the complete path below passes. No launch, approval, runtime admission, model, credential, governance, capture store or spend change is proposed.
+Status: phased offline implementation, 2026-10-06. Original feasibility baseline61819eac; raw-byte prerequisite implemented/reviewed at26d1cb71; opt-in exact-case prerequisite is now an implementation candidate under independent review. Full tensor adapter remains unimplemented and refused. This is an optional offline integration improvement, not a failing released pipeline check. Existing tensor refusal stays in place until the complete path below passes. No launch, approval, runtime admission, model, credential, governance, capture store or spend change is proposed.
 
 ## Concrete gap and supported subset
 
@@ -23,7 +23,7 @@ Tensor domain currently adds these reads:
 5. `tensor_stills.compile_scene_groups -> tensor_stills_parity.stills_workflow` reads the original module09 graph and installer through `tensor_parity._read_verified`. The saved API export alone cannot replace those current source checks. The installer is bytes only.
 6. `tensor_edit` currently executes `video/frame_extract.py` at import for path helpers; `tensor_parity._stills_parity_helper` dynamically executes an uncached helper; neither may silently escape the pinned bootstrap. `prompt_intake.canonical_passport_binding` also uses native `Path.resolve`; even metadata resolution must take the retained router branch.
 
-`ObservedReads` currently exposes resolve/file/sha256/read_json, not raw bytes. Raw-byte observation is a real prerequisite, not permission to call its private stream helper from domain modules or to reopen paths after hashing.
+At the original61819eac feasibility baseline, `ObservedReads` exposed resolve/file/sha256/read_json, not raw bytes;26d1cb71 added explicit opt-in bounded read_bytes. Raw-byte observation is a real prerequisite, not permission to call its private stream helper from domain modules or to reopen paths after hashing.
 
 ## Minimal owned files and APIs
 
@@ -101,3 +101,93 @@ Root and independent reviewer release only `observed_reads.py` plus narrow route
 Shared `_stream(collect=True)` currently enforces max_json_bytes; retain that default for read_json. Raw collection passes a separate fixed32MiB returned-buffer ceiling, still intersected with member/file/unique/stream/operation limits. No existing JSON quota increases. Repeated reads and final rehash charge unchanged stream quotas; capability rejection occurs before metadata/file opening and poisons the observation as usual.
 
 No canonical plumbing, image decoder change, dependency-bundle/config expansion, new data role, caller opt-in, or tensor refusal removal is released yet. Tests cover exact flags/type/positional compatibility, capability refusal without file open, byte/digest same stream,32MiB boundary, existing256KiB JSON limit, repeated/final stream quotas, poison/seal, mutation/ancestor/reparse/outside admission, and compatible/conflicting router ownership. Full-adapter release still needs a concrete reviewed role-consumption table, quota-positive fixture and exact-case semantics.
+
+## Next prerequisite proposal: opt-in retained exact-case metadata
+
+Status: PLAN REVIEW ONLY, after committed raw-byte prerequisite26d1cb71 (272focused/existing boundary tests and13clean CLI consumers passed). No exact-case or full-adapter code is released by this section. Target changes would be observed_reads.py, narrow gen_source_read router policy equality, and focused tests only; no domain plumbing or tensor refusal removal.
+
+Append `exact_case: bool = False` as the final ReadMember field, after allow_bytes, preserving all five existing positional arguments. Validate exact bool in reader policy and router BEFORE duplicate comparison; retain it in copied immutable member policy and compatible-registration tuples. An existing owner cannot be upgraded or downgraded later. With default false, all existing case-normalized path behavior, constructors, quotas and clean observer results remain unchanged. No existing production admission opts in during this prerequisite.
+
+The capability is a restriction, not an enumeration API. No public directory scanner, returned sibling names, new roots or content-file access is introduced. The existing resolve/file/sha256/read_json/read_bytes APIs enforce it for exact-case members and their already-admitted ancestry. Select the longest matching configured root deterministically for each restricted member; that configured root's spelling remains the documented trusted-caller precondition. Every edge strictly below that root (including directories and final leaf) must match an actual directory entry exactly, with exactly one casefold match. Ancestors above or equal to that root are still fingerprinted by the unchanged safety checks, but are not enumerated. Never infer extra operand permissions from discovered siblings.
+
+Build a closed expected-edge map at construction from admitted exact_case member paths and their existing ancestors, without scanning during construction. Required intermediate directories must exist under existing rules. Optional leaves may have zero casefold matches, but only when the admitted member is optional; an actual wrong-case match is NOT absence. `file(required=False)` can then return None; content methods still refuse missing files. Directory operands implied by restricted members must satisfy the same component-spelling rule when resolved, not silently lose the restriction through case-normalized routing. Validate supplied operand's exact component spelling before replacing it with the admitted spelling; router forwards the original lexical operand to its retained owner.
+
+On first use of a restricted operand, scan each required parent using reader-owned os.scandir metadata only, inside an explicitly closed iterator context. Validate all immutable expected child names for that parent in one full scan, including later collisions after an early matching entry. Never call DirEntry.stat, follow links, read file content or return sibling names. Existing lstat/fstat component checks still reject reparse/nonregular targets; this scan does not replace them. Capture/check the retained parent directory fingerprint before and after each scan and compare with the observation's original stamps. Any change or iterator error poisons the reader/router.
+
+The retained per-parent snapshot can be reused within the same observation only after unchanged directory-chain fingerprint checks on each subsequent operation. This is the existing cooperative freshness model, not an atomic guarantee; undetectable ABA reverts/privileged writers remain excluded. Final recheck MUST perform a fresh complete scan of every previously scanned parent, even if all metadata timestamps match; compare the actual exact-name/collision/optional-absence outcome with the retained closed expectations. No final skip based on cached names or mtime. Existing final file byte rehash, directory checks, sealed/poisoned state and operation accounting remain intact. Do not scan never-used members just to mark them consumed.
+
+Add these positive integer ReadLimits fields with maximum defaults below; ordinary validation already forbids raising any maximum. They constrain metadata scans separately without increasing existing256files/1GiB unique/2GiB streamed/1024public operations or A/B/C content partitions:
+
+| Limit | Maximum | Meaning |
+|---|---:|---|
+| max_case_entries_per_directory |1024| Yielded entries in any complete parent scan |
+| max_case_directories |128| Distinct scanned parent directories |
+| max_case_unique_entries |16384| Sum of yielded entries across initial distinct parent snapshots |
+| max_case_unique_name_bytes |1048576| Sum of UTF-8 name bytes across initial distinct parent snapshots |
+| max_case_name_bytes |4096| UTF-8 bytes per entry name; invalid/unencodable names refuse |
+| max_case_scans |512| Actual scan attempts, including final/repeat scans |
+| max_case_probes |65536| Every actual next(iterator) attempt, including EOF probes |
+| max_case_stream_name_bytes |4194304| UTF-8 name bytes encountered across ALL scans, including final/repeats |
+
+Charge a scan before opening its iterator; refuse if no scan budget remains. Charge a probe BEFORE each next call and refuse before performing a call beyond the global probe ceiling. At the per-directory entry limit, one additional already-charged next probe is necessary to distinguish EOF from a1025th entry: EOF succeeds, a yielded limit+1 entry is charged and immediately refuses. All actual yielded names (including a failing limit+1 name) charge cumulative name bytes before refusal; do not charge only retained/successful snapshots. Check all limits before retaining/appending excess data. Finish or close the iterator on success, overflow, mismatch or exception. No partial snapshot is reusable after failure. Public operation budget is still charged once per enclosing method by _public; metadata counters account for internal work that content counters never represented. Repeated/final scans do not recharge unique snapshot counts but do charge scans/probes/stream name bytes.
+
+Retain only bounded internal name-match/absence results needed for the fixed expectation map; no sibling listing reaches reports, exceptions or domain callers. Optional absence from a completed initial scan must remain absent at final actual rescan; even a newly correctly spelled leaf refuses this observation. If a parent was missing, existing constructor/ancestor refusal remains; optional means leaf-only.
+
+### Exact-case tests and independent exit
+
+- Default-off regression preserves accepted case aliases in existing observed and clean adapter suites; positional compatibility and exact-bool validation include0/1/None/string and duplicate-owner equality traps.
+- Positive exact spelling through direct reader and router; wrong-case requested operand; coherently wrong-case admitted+requested path; wrong-case intermediate component; directory resolve cannot drop restriction. Root spelling is explicitly caller-owned and is not falsely tested as verified.
+- Optional absent leaf succeeds only for metadata optional access and stable final absence; wrong-case present leaf refuses; newly present exact leaf, late differently cased collision and missing ancestor refuse. Use real case-sensitive directory fixtures where supported; otherwise report that integration case skipped and exercise a controlled scanner seam separately, without claiming actual filesystem coverage.
+- Consume a scanner whose matching entry is first and colliding entry last; enforce all limits at boundary-1/at/+1 with counters including EOF and failing limit+1 probes. Test very long/malformed names, many distinct parents, cumulative repeat work and iterator exceptions. Every iterator closes; no sibling names are exposed.
+- Parent identity mutation before/during/after scan, reparse replacement and unchanged-mtime mocked collision on final rescan all refuse. Native ancestor replacement and existing byte-mutation checks still pass. Unknown directory/root operands never scan; metadata scanner cannot call file open or DirEntry.stat; domain code still cannot enumerate.
+- Review exact frozen diff and test logs independently. Only this metadata prerequisite may be released afterward; full tensor observation remains refused until the complete canonical chain and actual quota fixture are reviewed separately.
+
+## Full-adapter inventory corrections and release gates
+
+Independent read-only inventory review: `_private/figment-session-20261005/phase6-observed-gen-inventory-review.md`. Its concrete role table is reproduced below so future sessions need not rely solely on a private receipt. Root/role notation: F=canonical Figment root; G=selected gen root; T=train/tester source; H=F/personas/<creator>; P=F/pipeline; R=request parent; O=original passport root. R/O remain disjoint strict descendants of F, outside H/P/G/T. All B/C names derive only from retained A/B documents; no fourth discovery phase.
+
+Fix source/staged checkpoint naming through the EXISTING `ft._artifact_name(training)` producer helper for tensor; current observer's trigger-only derivation is wrong for creator-ID artifact names. Preserve clean naming. Both T.assets.tensor_passport and G.assets.tensor_passport must bind the current H registered image and their own staged anchors: accepted-checkpoint revalidation traverses T's tester subject and consumes its passport too. No raw-byte capability on checkpoints. Initial ownership must already have the precise allow_bytes/exact_case restriction needed by later consumers; never upgrade capabilities while traversing the chain.
+
+Do not admit generic P/train/workflows/tensor_stills_m09_api.json, original-passport run.json, extra upload/model paths or unused gen anchors: native canonical validation does not consume them. Current source graph/installer and fixed launcher remain actual source leaves; selected per-framing workflows are C leaves. The source package junction remains unsupported; real-directory synthetic fixture setup is the positive path. No staged-copy protocol is added.
+
+Quota proof is still required, not inferred from these counts: canonical passport validation runs1+2N times for N scenes, each including historical lineage, descriptor reloads and image checks. Record actual per-reader operations, unique/stream bytes, raw collections and exact-case metadata counters for the real isolated mixed-framing fixture. Retain all final rechecks. If fixed budgets are exceeded, reduce the supported scene subset after review; do not memoize away canonical validations or borrow/raise content/metadata ceilings. Four scenes is a proposed availability ceiling, not a promise until that measurement passes.
+
+| Owner | Exact role/path origin | Cap/capability | Canonical domain consumer |
+|---|---|---|---|
+| A | G/plan.json; T/plan.json from config | J, JSON | _load_plan, _revalidate_planned_gen_authority, _validated_accepted_checkpoint and lineage.file_entry |
+| A | H/persona.yaml; optional H/training.yaml | J, JSON | _current_persona_training -> training_config.load_persona_with_training; intake adapter must use this observed path instead of _load_inputs |
+| A | T/grade/tester/accepted-checkpoint.json | J, JSON | _validated_accepted_checkpoint |
+| A | T/grade/tester/approval-lineage.json, grading-manifest.json | J, JSON | _load_current_approval, _current_review_subject, _validated_accepted_checkpoint |
+| A | T/grade/tester/gate.json | J, hash (existing restriction) | _load_current_approval gate digest and lineage.review_subject |
+| A | optional T/grade/tester/evaluation-inputs.json; optional T/stage.json | J, JSON | _load_current_approval; _current_review_subject/_checkpoint_candidate (in-plan checkpoint requires completed state) |
+| A | P/gate.yaml | J, hash | lineage.review_subject for current tester and historical passport; reuse A ownership |
+| B | Gen manifests from bounded A selected.stages.gen.runs, exact train/runs/<creator>-tensor-stills-<framing>.yaml | J, JSON | _validate_staged_checkpoint_upload; _validate_tensor_stills_inputs; final manifest-to-plan hash check |
+| B | One train and one tester manifest from A source.stages.*.runs; current producer grammar train/runs/*.yaml | J, JSON | _checkpoint_candidate, tester lineage review and receipt validation |
+| B | Frozen gen_inputs.request.path under R, exact absolute canonical path; selection cross-check against frozen passport.selection and authority.source_plan |32KiB, raw bytes | tensor_stills.read_request.document; hash and strict JSON parsing on same returned bytes |
+| B | Each frozen scene_files draft/approval under R; exactly matching actual request kind/index/path/hash set, no extras |32KiB, raw bytes | tensor_stills.read_request.document -> revalidate_scenes -> prompt_intake.approved_prompt_projection |
+| B | O/plan.json named consistently by A frozen selection/authority and B request | J, JSON/hash | _validate_approved_still -> _load_plan; historical lineage |
+| B | O/grade/anchor/{approval-lineage,approved-list,rulings,grading-manifest,evaluation-inputs,gate}.json | J, JSON/hash | _validate_approved_still initial/final digests, normalized rulings and approved list; _historical_anchor_approval |
+| B | O/grade/anchor/chosen-anchor.json |128KiB, raw bytes | tensor_edit.registered_passport_authority -> _json_binding; compare selected image and current registered reference |
+| B | P/train/tensor-pins.yaml (fixed PINS_PATH) | J, JSON | _validate_tensor_stills_inputs -> _tensor_stills_manifest reconstruction |
+| B | F/research/10sorlabs-package/09_krea2_image/10sorlabs_krea2_image.json and krea2_model_installer.bat |256KiB each, raw bytes | tensor_stills_parity.stills_workflow/check_stills -> tensor_parity._read_verified with constant SHA; never execute installer |
+| B | Fixed TESTER_START_PATH current launcher |256KiB, hash | _validate_tensor_stills_inputs final staged/current launcher equality |
+| C | H identity references and identity spec; P register spec; named from A persona with existing lexical producer rules | I references (raw-byte capability needed for current passport), S specs | persona observed validation, canonical registered-passport decode, _validate_tensor_passport_inputs |
+| C | T original tester image rows from A grading plus B tester output names; exact source output dir/id extension rules | I, hash | _current_review_subject and _verify_tester_receipt_evidence |
+| C | T staged anchors from A source.assets.anchors; exact expand/runs/_uploads/<creator>/<name> | I, hash | tester lineage and tensor passport input validation |
+| C | Source checkpoint from A training/B train artifact and tester substitution, and G staged checkpoint from B gen upload | K, hash only, NEVER raw-byte collection | _checkpoint_candidate; _validate_staged_checkpoint_upload |
+| C | T train/tester output run.json under A producer output roots | J, JSON | _checkpoint_candidate train and tester receipt evidence |
+| C | Each scene photo from B draft.photo.path under R; suffix png/jpg/jpeg/webp and exact claimed digest |8MiB, raw bytes | prompt_intake._validate_draft -> extract_fixture_draft -> _read(image=True), decode same observed bytes |
+| C | Every original passport grading image from B grading, max16, exact O anchor output producer roles; chosen image must be included | I, raw bytes only selected original image; hash for others | _historical_anchor_approval -> lineage.review_subject hashes every row; registered_passport_authority decodes chosen original |
+| C | O original anchor references from B plan.assets.anchors, max8; one O anchor manifest from B plan.stages.anchor.runs | I anchors; J/hash manifest | _historical_anchor_approval -> lineage.review_subject; manifest contents are NOT followed |
+| C | G staged passport from A selected.assets.tensor_passport.staged == assets.anchors[0], source must resolve to current H reference | I, hash | _validate_tensor_passport_inputs; do not admit unused extra selected anchors |
+| C | G/train/workflows/tensor_stills_m09_<framing>.json, one per bounded B gen manifest; exact fixed framing spelling | J, JSON/hash | _validate_tensor_stills_inputs compares complete reconstructed inline manifest/graph and run.workflow_sha256 |
+| C | G/train/runs/start-comfy-lorapath.sh.template |256KiB, hash | _validate_tensor_stills_inputs verifies recorded digest and current launcher |
+
+
+The table is a proposed full-adapter inventory, not permission for this exact-case prerequisite to admit any new data member. Full integration requires independent review of path/capability ownership, exact case, eleven pinned modules, real positive fixture/quota evidence and zero unobserved domain I/O before the existing tensor refusal changes.
+
+## Exact-case candidate implementation and review corrections
+
+Implemented only the released metadata prerequisite in observed_reads.py and narrow gen_source_read router policy; no tensor callers, bundles, roots or refusals changed. The first combined run passed389 tests with1skip (real case-sensitive sibling directory unavailable; controlled scanner collision tests passed);13 existing isolated clean CLI consumers passed32.22s. Final affected delta evidence is recorded separately.
+
+Independent review found a shared-directory restriction hole: an earlier unrestricted reader could remain primary directory owner when a later exact-case member imposed an ancestor restriction. The router now retains the original owner AND the first strict restriction owner. A directory resolve passes original lexical spelling through the strict owner's public resolve, then the original owner's observation, and returns the strict canonical spelling. Both remain retained for final checks; added operations must enter future quota accounting. Later strict claims for that directory must have exactly the same canonical(path, longest-matched-root) tuple; differing spelling or root boundary refuses, rather than silently dropping outer-edge requirements. File ownership remains unchanged. Tests cover earlier wrong-case ordinary owner, later restriction, canonical result, operation charging and conflicting spelling/root boundaries.

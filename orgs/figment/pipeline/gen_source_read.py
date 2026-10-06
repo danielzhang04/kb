@@ -388,6 +388,7 @@ class _Router:
         self._files: dict = {}
         self._restrictions: dict = {}
         self._dirs: dict = {}
+        self._exact_dirs: dict = {}
         self._touched: set | None = None
         self._poisoned = False
         self._sealed = False
@@ -408,11 +409,12 @@ class _Router:
             directories = tuple(lexical(directory) for directory in directories)
             fresh: dict = {}
             for member in members:
-                if type(member) is not obs.ReadMember or type(member.allow_bytes) is not bool:
-                    _refuse("member type or raw-byte capability")
+                if (type(member) is not obs.ReadMember or type(member.allow_bytes) is not bool
+                        or type(member.exact_case) is not bool):
+                    _refuse("member type or raw-byte capability or exact-case restriction")
                 path = lexical(member.path)
                 member_key = key(path)
-                restriction = (member.max_bytes, member.allow_json, member.optional, member.allow_bytes)
+                restriction = (member.max_bytes, member.allow_json, member.optional, member.allow_bytes, member.exact_case)
                 prior = self._restrictions.get(member_key)
                 if prior is None and member_key in fresh:
                     prior = fresh[member_key][1]
@@ -434,6 +436,11 @@ class _Router:
             reader = obs.ObservedReads(
                 roots=roots, members=new_members, directories=directories, limits=limits,
             )
+            for dir_key in dirs:
+                prior = self._exact_dirs.get(dir_key)
+                if prior is not None and dir_key in reader._case_paths:
+                    if tuple(map(str, prior._case_paths[dir_key])) != tuple(map(str, reader._case_paths[dir_key])):
+                        _refuse("conflicting exact-case directory restriction")
         except BaseException:
             self._poisoned = True
             raise
@@ -443,6 +450,8 @@ class _Router:
             self._restrictions[member_key] = restriction
         for dir_key, path in dirs.items():
             self._dirs.setdefault(dir_key, reader)
+            if dir_key in reader._case_paths:
+                self._exact_dirs.setdefault(dir_key, reader)
 
     def _route(self, path, *, file_only: bool):
         obs = self._obs
@@ -463,6 +472,13 @@ class _Router:
         self._enter()
         try:
             reader, path = self._route(path, file_only=file_only)
+            strict = None if file_only else self._exact_dirs.get(self._obs._key(path))
+            if strict is not None and strict is not reader:
+                # Preserve primary ownership while retaining a later, stricter
+                # ancestor restriction; never normalize away the caller spelling.
+                exact = strict.resolve(path)
+                getattr(reader, method)(path, **kwargs)
+                return exact
             return getattr(reader, method)(path, **kwargs)
         except BaseException:
             self._poisoned = True

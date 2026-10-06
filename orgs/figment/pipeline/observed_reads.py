@@ -35,6 +35,14 @@ class ReadLimits:
     max_json_entries: int = 256
     max_json_nodes: int = 8192
     max_operations: int = 1024
+    max_case_entries_per_directory: int = 1024
+    max_case_directories: int = 128
+    max_case_unique_entries: int = 16384
+    max_case_unique_name_bytes: int = 1048576
+    max_case_name_bytes: int = 4096
+    max_case_scans: int = 512
+    max_case_probes: int = 65536
+    max_case_stream_name_bytes: int = 4194304
 
 
 @dataclass(frozen=True)
@@ -44,6 +52,7 @@ class ReadMember:
     allow_json: bool = False
     optional: bool = False
     allow_bytes: bool = False
+    exact_case: bool = False
 
 
 @dataclass(frozen=True)
@@ -169,6 +178,10 @@ class ObservedReads:
         self._operations = 0
         self._unique_bytes = 0
         self._stream_bytes = 0
+        self._case_snapshots: dict = {}
+        self._case_scans = self._case_probes = 0
+        self._case_unique_entries = self._case_unique_name_bytes = 0
+        self._case_stream_name_bytes = 0
         self._files: dict[str, _FileRecord | None] = {}
         self._digests: dict[str, str] = {}
         self._directory_stamps: dict[str, tuple[Path, _Fingerprint]] = {}
@@ -215,12 +228,12 @@ class ObservedReads:
                 _refuse("member outside roots")
             if (type(member.max_bytes) is not int or not 0 < member.max_bytes <= limits.max_file_bytes
                     or type(member.allow_json) is not bool or type(member.optional) is not bool
-                    or type(member.allow_bytes) is not bool):
+                    or type(member.allow_bytes) is not bool or type(member.exact_case) is not bool):
                 _refuse("invalid per-member restriction")
             key = _key(path)
             if key in admitted:
                 _refuse("duplicate normalized member")
-            admitted[key] = ReadMember(path, member.max_bytes, member.allow_json, member.optional, member.allow_bytes)
+            admitted[key] = ReadMember(path, member.max_bytes, member.allow_json, member.optional, member.allow_bytes, member.exact_case)
             for ancestor in path.parents:
                 if any(_within(ancestor, root) for root in self._roots):
                     operands.setdefault(_key(ancestor), ancestor)
@@ -230,11 +243,109 @@ class ObservedReads:
             _local_drive(anchor)
         self._members = MappingProxyType(admitted)
         self._directories = MappingProxyType(operands)
+        self._configure_case()
         # Observe every ancestor up to the local drive. Outside-root ancestors
         # are safety observations only, never admitted operands or read roots.
         for directory in operands.values():
             for ancestor in _chain(directory):
                 self._check_directory(ancestor, initial=True)
+
+    def _configure_case(self) -> None:
+        """Compile closed expectations without enumerating or adding operands."""
+        paths, parents = {}, {}
+        for member in self._members.values():
+            if not member.exact_case:
+                continue
+            root = max((r for r in self._roots if _within(member.path, r)), key=lambda r: len(r.parts))
+            child = root
+            parts = member.path.parts[len(root.parts):]
+            for index, part in enumerate(parts):
+                parent, child = child, child / part
+                key = _key(child)
+                previous = paths.get(key)
+                if previous is not None and str(previous[0]) != str(child):
+                    _refuse("conflicting exact-case spelling")
+                paths.setdefault(key, (child, root))
+                parent_key = _key(parent)
+                if parent_key not in parents:
+                    parents[parent_key] = (parent, {})
+                expected = parents[parent_key][1]
+                optional = member.optional and index == len(parts) - 1
+                folded = part.casefold()
+                prior = expected.get(folded)
+                if prior is not None and prior[0] != part:
+                    _refuse("conflicting exact-case expectation")
+                expected[folded] = (part, optional and (prior is None or prior[1]))
+        self._case_paths = MappingProxyType(paths)
+        self._case_parents = MappingProxyType({key: (path, MappingProxyType(expected))
+                                             for key, (path, expected) in parents.items()})
+
+    def _scan_case(self, key: str, *, final: bool = False) -> None:
+        parent, expected = self._case_parents[key]
+        self._check_chain(parent)
+        original = self._case_snapshots.get(key)
+        if original is not None and not final:
+            return  # Original directory stamps still match; never refresh the snapshot.
+        limits = self._limits
+        if original is None and len(self._case_snapshots) >= limits.max_case_directories:
+            _refuse("exact-case directory budget exceeded")
+        if self._case_scans >= limits.max_case_scans:
+            _refuse("exact-case scan budget exceeded")
+        self._case_scans += 1
+        counts = {folded: 0 for folded in expected}
+        spelling = {folded: True for folded in expected}
+        entries = 0
+        with os.scandir(parent) as scanner:
+            while True:
+                if self._case_probes >= limits.max_case_probes:
+                    _refuse("exact-case probe budget exceeded")
+                self._case_probes += 1  # EOF and the failing limit+1 probe are real work.
+                try:
+                    entry = next(scanner)
+                except StopIteration:
+                    break
+                name = entry.name
+                if type(name) is not str:
+                    _refuse("invalid directory entry name")
+                size = len(name.encode("utf-8"))
+                entries += 1
+                self._case_stream_name_bytes += size
+                if original is None:
+                    self._case_unique_entries += 1
+                    self._case_unique_name_bytes += size
+                if (entries > limits.max_case_entries_per_directory
+                        or size > limits.max_case_name_bytes
+                        or self._case_stream_name_bytes > limits.max_case_stream_name_bytes
+                        or self._case_unique_entries > limits.max_case_unique_entries
+                        or self._case_unique_name_bytes > limits.max_case_unique_name_bytes):
+                    _refuse("exact-case metadata budget exceeded")
+                folded = name.casefold()
+                if folded in expected:
+                    counts[folded] += 1
+                    spelling[folded] = spelling[folded] and name == expected[folded][0]
+        self._check_chain(parent)
+        for folded, (_, optional) in expected.items():
+            if counts[folded] == 0 and optional:
+                continue
+            if counts[folded] != 1 or not spelling[folded]:
+                _refuse("exact-case entry unavailable")
+        snapshot = tuple(sorted((folded, counts[folded] != 0) for folded in expected))
+        if original is not None and snapshot != original:
+            _refuse("exact-case observation changed")
+        self._case_snapshots.setdefault(key, snapshot)
+
+    def _case_operand(self, key: str, supplied: Path) -> None:
+        item = self._case_paths.get(key)
+        if item is None:
+            return
+        admitted, root = item
+        depth = len(root.parts)
+        if supplied.parts[depth:] != admitted.parts[depth:]:
+            _refuse("operand exact-case spelling differs")
+        parent = root
+        for component in admitted.parts[depth:]:
+            self._scan_case(_key(parent))
+            parent = parent / component
 
     def _enter(self) -> None:
         if self._poisoned or self._sealed:
@@ -247,8 +358,10 @@ class ObservedReads:
         path = _lexical(path)
         key = _key(path)
         if key in self._members:
+            self._case_operand(key, path)
             return key, self._members[key].path
         if key in self._directories:
+            self._case_operand(key, path)
             return key, self._directories[key]
         _refuse("operand was not admitted")
 
@@ -433,4 +546,6 @@ class ObservedReads:
                 self._inspect(key, member, required=False)
         for directory, _ in self._directory_stamps.values():
             self._check_directory(directory)
+        for key in tuple(self._case_snapshots):
+            self._scan_case(key, final=True)
         self._sealed = True
