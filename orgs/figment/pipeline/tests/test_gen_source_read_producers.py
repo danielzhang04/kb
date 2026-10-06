@@ -219,6 +219,7 @@ def _make_synthetic_persona(personas_root: Path) -> Path:
             "trigger": None, "base_arch": "krea2", "steps": 2000, "save_every": 250,
             "caption_mode": "provided", "pod_class": "l40s",
             "price_ceiling_usd_per_hour": 1.30,
+            "recipe_profile": "clean",
         },
     }
     path = home / "persona.yaml"

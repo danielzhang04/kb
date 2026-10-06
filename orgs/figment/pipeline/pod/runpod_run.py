@@ -9,6 +9,7 @@ import base64
 import calendar
 import copy
 import csv
+import ctypes
 import hashlib
 import importlib.util
 import io
@@ -19,6 +20,7 @@ import os
 import re
 import shlex
 import signal
+import socket
 import sys
 import threading
 import time
@@ -30,7 +32,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
@@ -79,7 +81,7 @@ ARTIFACT_EXTENSIONS = {".safetensors", ".json", ".txt", ".log"}
 # allow-list) are both outside this ban.
 PICKLE_MODEL_EXTENSIONS = {".pt", ".pth", ".ckpt", ".bin", ".pkl", ".pickle"}
 UPLOAD_EXTENSIONS = {
-    ".png", ".jpg", ".jpeg", ".webp", ".txt", ".toml", ".json",
+    ".png", ".jpg", ".jpeg", ".webp", ".mp4", ".txt", ".toml", ".json",
     ".safetensors", ".ready",
 }
 MAX_UPLOAD_FILE_BYTES = 2 * 1024 ** 3
@@ -117,6 +119,30 @@ TRANSIENT_MARKER_ERROR_TYPES = {
     "Timeout", "TimeoutError",
 }
 PERSISTENT_MARKER_502_SECONDS = 5 * 60.0
+# This Windows host drops local DNS for ~10-30 s at a time; three live runs died when a
+# single polling GET's requests.ConnectionError (already retried inside urllib3) was
+# treated as fatal and the pod was torn down. Polling GETs made while a pod is alive
+# therefore tolerate one such outage for this long before failing exactly as before.
+# The window is per outage (it is scoped to one poll call, so any success resets it) and
+# is never allowed to push past a job/readiness deadline or the Watchdog.
+TRANSIENT_NETWORK_TOLERANCE_SECONDS = 180.0
+TRANSIENT_NETWORK_BACKOFF_SECONDS = (2.0, 4.0, 8.0, 15.0)
+# Judged like TRANSIENT_MARKER_ERROR_TYPES, but read over the whole cause chain:
+# requests reports a DNS drop as ConnectionError wrapping urllib3's
+# MaxRetryError/NameResolutionError, so the outermost type name alone says nothing.
+TRANSIENT_NETWORK_CAUSE_TYPES = frozenset({
+    "ConnectionError", "ConnectionRefusedError", "ConnectionResetError",
+    "ConnectTimeout", "ConnectTimeoutError", "MaxRetryError", "NameResolutionError",
+    "NewConnectionError", "ProtocolError", "ReadTimeout", "ReadTimeoutError",
+    "Timeout", "TimeoutError", "gaierror", "timeout",
+})
+TRANSIENT_NETWORK_CAUSE_MARKERS = (
+    "getaddrinfo failed", "failed to resolve", "name or service not known",
+    "temporary failure in name resolution", "nodename nor servname",
+    "max retries exceeded", "connection refused", "connection reset",
+    "connection aborted", "read timed out", "timed out",
+)
+TRANSIENT_NETWORK_CAUSE_DEPTH = 8
 TRAINING_DIAGNOSTIC_FILENAMES = ("_training.heartbeat", "_training.log")
 # The heartbeat file can legitimately change on every poll cycle (it is a live
 # counter); throttle its "saved" log line so an unchanged-content guard alone
@@ -128,6 +154,7 @@ COMFY_OUTPUT_DIR = "/workspace/output"
 COMFY_PROMPT_ERROR_BODY_MAX_BYTES = 64 * 1024
 COMFY_PROMPT_ERROR_SUMMARY_MAX_CHARS = 1024
 COMFY_PROMPT_ERROR_NODE_MAX = 8
+COMFY_EXECUTION_ERROR_MESSAGE_MAX_CHARS = 300
 COMFY_PROMPT_ERROR_TYPES = {
     "required_input_missing",
     "value_not_in_list",
@@ -141,7 +168,13 @@ BOOTSTRAP_LOG_TAIL_LINES = 20
 OPS_LEDGER_DIR = Path("C:/Users/danie/kb-worktrees/dashboard-ops/ledgers/cost")
 LEDGER_LOCK_TIMEOUT = 5.0
 DEFAULT_COMFY_SOURCE_URL = "https://github.com/comfyanonymous/ComfyUI"
-DEFAULT_ARC_CAP_USD = 50.0
+# The one arc-cap source (operator ruling 2026-09-29): figment_train.py and
+# train/experimental_execute.py read it from here. The creator-003 tensor arc counts
+# from $0 on ledger files dated on/after ARC_START_DAY (America/New_York governance
+# day); earlier figment-*.tsv files stay on ops as history and are never opened.
+DEFAULT_ARC_CAP_USD = 75.0
+ARC_START_DAY = "2026-09-29"
+LEDGER_DAY_RE = re.compile(r"(\d{4}-\d{2}-\d{2})\.tsv$")
 DEFAULT_ARC_LEDGER_GLOB = "figment-*.tsv"
 TRAINING_IDENTIFIER_PLACEHOLDERS = {"trigger", "git_ref", "diffusion_pipe_git_ref"}
 ENV_SECRET_NAME_RE = re.compile(r"[A-Z][A-Z0-9_]*")
@@ -400,6 +433,17 @@ class RunPodAPI:
         data = self._request("GET", "/pods?includeMachine=true")
         if not isinstance(data, list):
             raise HarnessError("RunPod list response was not an array")
+        return data
+
+    def pod_billing(self, pod_id: str, start: str, end: str) -> list[dict[str, Any]]:
+        """Read-only GET /billing/pods for one pod, day buckets grouped by pod id."""
+        query = urlencode({
+            "podId": pod_id, "startTime": start, "endTime": end,
+            "bucketSize": "day", "grouping": "podId",
+        })
+        data = self._request("GET", f"/billing/pods?{query}")
+        if not isinstance(data, list):
+            raise HarnessError("RunPod billing response was not an array")
         return data
 
     def delete_pod(self, pod_id: str) -> None:
@@ -942,15 +986,179 @@ def bootstrap_dependency_failure_reason(exc: BootstrapFailed) -> str | None:
     return " ".join(str(exc).split())[:500]
 
 
+SUSPEND_SKEW_WARN_SECONDS = 60.0
+DEFAULT_SLICE_SECONDS = 15.0
+# LOW-2: a forward NTP step (the wall clock jumping ahead on its own, no suspend
+# involved) must not fire the wait early just because the wall side alone looks
+# "over" -- only the monotonic side is trusted to be exact, so this grace is
+# added to the wall-clock remaining time only, never to monotonic.
+WALL_CLOCK_GRACE_SECONDS = 120.0
+# Re-logging the same ongoing skew on every 15s slice floods the log for a long
+# wait; only log again once the skew has moved by at least this much.
+SKEW_LOG_CHANGE_THRESHOLD_SECONDS = 60.0
+
+
+def _sliced_deadline_wait(
+        *, total_seconds: float, poll: Callable[[float], bool],
+        slice_seconds: float = DEFAULT_SLICE_SECONDS,
+        monotonic: Callable[[], float] = time.monotonic,
+        wall_clock: Callable[[], float] = time.time,
+        logger: logging.Logger | None = None,
+) -> bool:
+    """Wait up to `total_seconds`, in short slices, checking BOTH a monotonic and a
+    wall-clock deadline so a host suspend cannot silently stretch the wait.
+
+    On Windows a relative wait (`Event.wait(seconds)`, `Thread.join(timeout)`) does
+    not count time spent in a low-power state -- the 09-21 pod ran 252 minutes
+    against a 185-minute ceiling and the watchdog never logged, because its one long
+    relative wait simply resumed with its remaining budget intact after the host
+    woke up. `time.monotonic()` on this box is backed by QueryPerformanceCounter and
+    keeps counting through a suspend (verified against that log's 12.8-minute gap),
+    so slicing the wait and re-deriving `remaining` from `monotonic()` each slice
+    would, on its own, still be fooled the same way. Checking a `time.time()`
+    wall-clock deadline too means whichever clock says "over" wins: a suspend makes
+    the wall clock jump far ahead of monotonic, so the wall check fires immediately
+    on the next slice even though monotonic still thinks time remains.
+
+    `poll(seconds)` is called with the next slice's duration and must return True to
+    stop the wait early (e.g. `threading.Event.wait`, or a wrapper around
+    `Thread.join`). Returns True if `poll` ever returned True, False once a deadline
+    is reached.
+
+    The wall-clock side carries a `WALL_CLOCK_GRACE_SECONDS` grace (LOW-2): an
+    ordinary forward NTP step, with no suspend involved, must not fire the wait
+    early just because the wall clock alone looks past its deadline -- monotonic
+    is the one trusted to be exact and gets no grace. A suspend-sized jump (minutes
+    to hours) still fires immediately, since it dwarfs the grace. The skew warning
+    is logged once per wait and again only if the skew moves by at least
+    `SKEW_LOG_CHANGE_THRESHOLD_SECONDS`, so a long-running wait under a real,
+    sustained skew does not spam a warning on every slice.
+    """
+    monotonic_deadline = monotonic() + total_seconds
+    wall_deadline = wall_clock() + total_seconds
+    last_logged_skew: float | None = None
+    while True:
+        remaining_monotonic = monotonic_deadline - monotonic()
+        remaining_wall_raw = wall_deadline - wall_clock()
+        skew = abs(remaining_monotonic - remaining_wall_raw)
+        if logger is not None and skew > SUSPEND_SKEW_WARN_SECONDS:
+            if (last_logged_skew is None
+                    or abs(skew - last_logged_skew) >= SKEW_LOG_CHANGE_THRESHOLD_SECONDS):
+                logger.warning(
+                    "host suspend suspected: monotonic vs wall skew %.0fs",
+                    skew,
+                )
+                last_logged_skew = skew
+        remaining_wall = remaining_wall_raw + WALL_CLOCK_GRACE_SECONDS
+        remaining = min(remaining_monotonic, remaining_wall)
+        if remaining <= 0:
+            return False
+        if poll(min(slice_seconds, remaining)):
+            return True
+
+
+ES_CONTINUOUS = 0x80000000
+ES_SYSTEM_REQUIRED = 0x00000001
+KEEP_AWAKE_REASSERT_SECONDS = 30.0
+
+
+class KeepAwake:
+    """Suppresses Windows sleep/Modern-Standby for as long as a rented pod is
+    alive and billing (BLOCKER-2). A relative deadline wait does not count time
+    spent suspended (see `_sliced_deadline_wait`'s docstring for the evidence), so
+    keeping the host awake for the pod's whole life -- from create through verified
+    teardown -- removes that failure mode rather than only detecting it after the
+    fact. Re-asserts `SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)`
+    from a dedicated daemon thread every `KEEP_AWAKE_REASSERT_SECONDS` (the flag is
+    thread-scoped and does not survive the asserting thread exiting, hence a
+    long-lived thread rather than a one-shot call). No-op on non-Windows platforms.
+    `disarm()` is safe to call multiple times and on a never-armed instance.
+
+    LOW-3: because the flag is thread-scoped, the CLEARING call
+    (`SetThreadExecutionState(ES_CONTINUOUS)`) must also come from the same
+    asserting thread -- calling it from `disarm()`'s caller thread would be a
+    silent no-op against the real Windows API. `disarm()` therefore only signals
+    the stop event and joins; the asserting thread itself clears the flag right
+    before it exits. Either call returning 0 (failure) is logged as a warning.
+    """
+
+    def __init__(self, logger: logging.Logger, *,
+                 set_execution_state: Callable[[int], int] | None = None,
+                 reassert_seconds: float = KEEP_AWAKE_REASSERT_SECONDS):
+        self.logger = logger
+        self._set_execution_state = set_execution_state
+        self._reassert_seconds = reassert_seconds
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def _resolve_setter(self) -> Callable[[int], int] | None:
+        if self._set_execution_state is not None:
+            return self._set_execution_state
+        if sys.platform != "win32":
+            return None
+        try:
+            return ctypes.windll.kernel32.SetThreadExecutionState  # type: ignore[attr-defined]
+        except AttributeError:  # pragma: no cover - defensive only
+            return None
+
+    def arm(self) -> None:
+        if self._thread is not None:
+            return
+        setter = self._resolve_setter()
+        if setter is None:
+            return
+        self._set_execution_state = setter
+        self._stop.clear()
+
+        def _run() -> None:
+            while True:
+                result = setter(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
+                if result == 0:
+                    self.logger.warning(
+                        "SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED) "
+                        "returned 0 (failed); host sleep may not be suppressed"
+                    )
+                if self._stop.wait(self._reassert_seconds):
+                    # LOW-3: clear from THIS thread -- the same one that asserted
+                    # the flag -- since SetThreadExecutionState is thread-scoped.
+                    clear_result = setter(ES_CONTINUOUS)
+                    if clear_result == 0:
+                        self.logger.warning(
+                            "SetThreadExecutionState(ES_CONTINUOUS) clear returned 0 "
+                            "(failed)"
+                        )
+                    return
+
+        self._thread = threading.Thread(target=_run, name="pod-keep-awake", daemon=True)
+        self._thread.start()
+        self.logger.info(
+            "keep-awake armed: host sleep suppressed while the pod is alive"
+        )
+
+    def disarm(self) -> None:
+        if self._thread is None:
+            return
+        self._stop.set()
+        self._thread.join(timeout=5.0)
+        self._thread = None
+        self.logger.info("keep-awake disarmed")
+
+
 class Watchdog:
     """Wall-clock guard that directly tears down the lease from a daemon thread."""
 
     def __init__(self, seconds: float, lease: PodLease, cancel: threading.Event,
-                 logger: logging.Logger):
+                 logger: logging.Logger, *,
+                 monotonic: Callable[[], float] = time.monotonic,
+                 wall_clock: Callable[[], float] = time.time,
+                 slice_seconds: float = DEFAULT_SLICE_SECONDS):
         self.seconds = seconds
         self.lease = lease
         self.cancel = cancel
         self.logger = logger
+        self._monotonic = monotonic
+        self._wall_clock = wall_clock
+        self._slice_seconds = slice_seconds
         self._stop = threading.Event()
         self.fired = threading.Event()
         self.error: BaseException | None = None
@@ -960,7 +1168,13 @@ class Watchdog:
         self.thread.start()
 
     def _run(self) -> None:
-        if self._stop.wait(self.seconds):
+        completed = _sliced_deadline_wait(
+            total_seconds=self.seconds, poll=self._stop.wait,
+            slice_seconds=self._slice_seconds,
+            monotonic=self._monotonic, wall_clock=self._wall_clock,
+            logger=self.logger,
+        )
+        if completed:
             return
         self.fired.set()
         self.cancel.set()
@@ -1412,6 +1626,121 @@ def marker_poll_is_transient(status: int | str) -> bool:
     return False
 
 
+def _exception_chain_signatures(exc: BaseException) -> list[tuple[str, str]]:
+    """(type name, lowercased message) for exc and the exceptions it wraps."""
+    seen: set[int] = set()
+    signatures: list[tuple[str, str]] = []
+    pending: list[Any] = [exc]
+    while pending and len(signatures) < TRANSIENT_NETWORK_CAUSE_DEPTH:
+        current = pending.pop(0)
+        if not isinstance(current, BaseException) or id(current) in seen:
+            continue
+        seen.add(id(current))
+        signatures.append((type(current).__name__, str(current).lower()))
+        pending.extend([
+            getattr(current, "__cause__", None),
+            getattr(current, "__context__", None),
+            # urllib3's MaxRetryError keeps the real cause here, not in __cause__.
+            getattr(current, "reason", None),
+        ])
+        pending.extend(
+            arg for arg in getattr(current, "args", ()) if isinstance(arg, BaseException)
+        )
+    return signatures
+
+
+def network_poll_is_transient(exc: BaseException) -> bool:
+    """True for a poll failure caused by a local name-resolution/connection blip.
+
+    Deliberately narrow, and the same judgement marker polling already makes: the
+    outer error must be a requests transport failure — never an SSL or proxy-config
+    error, which retrying cannot fix — and its cause chain must name resolution
+    failure, connection refusal/reset, or a read timeout.
+    """
+    if requests is not None:
+        if isinstance(exc, (requests.exceptions.SSLError, requests.exceptions.ProxyError)):
+            return False
+        if not isinstance(
+                exc, (requests.exceptions.ConnectionError, requests.exceptions.Timeout)):
+            return False
+    return any(
+        name in TRANSIENT_NETWORK_CAUSE_TYPES
+        or any(marker in message for marker in TRANSIENT_NETWORK_CAUSE_MARKERS)
+        for name, message in _exception_chain_signatures(exc)
+    )
+
+
+def poll_through_transient_network_errors(
+        operation: Callable[[], Any], label: str, *,
+        logger: logging.Logger,
+        sleep: Callable[[float], None],
+        monotonic: Callable[[], float],
+        watchdog: Any | None = None,
+        remaining: Callable[[], float] | None = None,
+        tolerance: float = TRANSIENT_NETWORK_TOLERANCE_SECONDS) -> Any:
+    """Run ONE read-only poll, retrying it through a bounded local network outage.
+
+    GUARDRAILS #6 is untouched by design. This helper only ever retries a polling
+    GET made while a pod is already alive; it is never applied to create,
+    terminate, termination-verification, ledger, upload or download calls. It
+    cannot keep a pod alive past its budget: the Watchdog and the caller's own
+    deadline are re-checked before every attempt and after every sleep, no sleep is
+    ever longer than what is left of either, and nothing here extends a deadline.
+    When the tolerance window closes (or the caller's deadline arrives first) the
+    ORIGINAL exception is re-raised, so the caller's existing exit path — verified
+    teardown with its own retry loop — runs exactly as it does today. Because the
+    window lives in this call, any successful poll resets it.
+    """
+    outage_started: float | None = None
+    # Counted as well as the clock so a coarse or stalled monotonic() can never turn
+    # the window into an unbounded retry loop.
+    slept_total = 0.0
+    attempt = 0
+    while True:
+        if watchdog is not None:
+            watchdog.check()
+        try:
+            return operation()
+        # Never BaseException: a KeyboardInterrupt/SystemExit during a poll must reach
+        # the surrounding lease's teardown immediately, exactly as it does today.
+        except Exception as exc:
+            if not network_poll_is_transient(exc):
+                raise
+            now = monotonic()
+            if outage_started is None:
+                outage_started = now
+            waited = max(0.0, now - outage_started, slept_total)
+            delay = TRANSIENT_NETWORK_BACKOFF_SECONDS[
+                min(attempt, len(TRANSIENT_NETWORK_BACKOFF_SECONDS) - 1)
+            ]
+            delay = min(delay, tolerance - waited)
+            if remaining is not None:
+                delay = min(delay, remaining())
+            if delay <= 0:
+                logger.error(
+                    "%s: network unreachable for %.0fs; giving up inside the %.0fs "
+                    "transient tolerance window and failing as before",
+                    label, waited, tolerance,
+                )
+                raise
+            logger.warning(
+                "%s: transient network failure (%s); retrying in %.0fs "
+                "(%.0fs of %.0fs tolerance used)",
+                label, type(exc).__name__, delay, waited, tolerance,
+            )
+            sleep(delay)
+            slept_total += delay
+            attempt += 1
+            if watchdog is not None:
+                watchdog.check()
+            if remaining is not None and remaining() <= 0:
+                logger.error(
+                    "%s: deadline reached during a transient network outage; "
+                    "failing as before", label,
+                )
+                raise
+
+
 def output_view_params(value: Any, label: str) -> dict[str, str]:
     path = _portable_relative_path(value, label)
     parent = path.parent.as_posix()
@@ -1434,6 +1763,8 @@ def retry_transient_proxy(
         try:
             return operation()
         except TransientProxyError:
+            if watchdog.cancel.is_set():
+                raise RunCancelled("cancelled during retry")
             if attempt == 3:
                 raise
             delay = 15.0 * attempt
@@ -1934,6 +2265,8 @@ def require_manifest(
             or comfy_root == volume_root or not comfy_root.is_relative_to(volume_root)):
         raise HarnessError("comfyui.root must be an absolute subdirectory of volume_mount_path")
     for job in manifest["jobs"]:
+        if isinstance(job, dict):
+            job_output_contract(job)
         expected = job.get("expected_images", 1) if isinstance(job, dict) else None
         if (not isinstance(job, dict) or isinstance(expected, bool)
                 or not isinstance(expected, int) or expected <= 0):
@@ -1958,7 +2291,7 @@ def require_manifest(
     for model in manifest.get("models", []):
         if not isinstance(model, dict) or not all(model.get(k) for k in ("repo_id", "filename", "destination_dir")):
             raise HarnessError("each model needs repo_id, filename, and destination_dir")
-        if not re.fullmatch(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", str(model["repo_id"])):
+        if not re.fullmatch(r"(?:datasets/)?[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", str(model["repo_id"])):
             raise HarnessError(f"invalid public Hugging Face repo id: {model['repo_id']!r}")
         filename = PurePosixPath(str(model["filename"]))
         if filename.is_absolute() or ".." in filename.parts:
@@ -2163,6 +2496,18 @@ def enforce_daily_budget(estimate: float, *, budget_path: Path | None = None,
     return daily_limit, spent
 
 
+def ledger_file_day(path: Path) -> str:
+    """The YYYY-MM-DD day a ledger file is named for; fail closed when it has none."""
+    match = LEDGER_DAY_RE.search(path.name)
+    if match is None:
+        raise HarnessError(f"arc ledger file name carries no YYYY-MM-DD day: {path.name}")
+    try:
+        datetime.strptime(match.group(1), "%Y-%m-%d")
+    except ValueError as exc:
+        raise HarnessError(f"arc ledger file name carries an invalid day: {path.name}") from exc
+    return match.group(1)
+
+
 def configured_arc_cap_usd(explicit: float | None = None) -> float:
     """Return the operator's whole-arc cap, validating CLI and environment values."""
     raw_value: float | str = (
@@ -2182,7 +2527,9 @@ def arc_budget_state(*, arc_cap_usd: float | None = None,
                      ledger_dir: Path | None = None,
                      ledger_glob: str = DEFAULT_ARC_LEDGER_GLOB,
                      logger: logging.Logger | None = None) -> tuple[float, float]:
-    """Return the arc cap and all matching Figment ledger spend, regardless of date."""
+    """Return the arc cap and the spend in every matching ledger file dated on or after
+    ARC_START_DAY. Earlier files are history and are never opened; every in-arc file
+    must carry a `usd` column of finite, non-negative values or this fails closed."""
     cap = configured_arc_cap_usd(arc_cap_usd)
     if not isinstance(ledger_glob, str) or not ledger_glob:
         raise HarnessError("--arc-ledger-glob must be a non-empty glob")
@@ -2193,13 +2540,13 @@ def arc_budget_state(*, arc_cap_usd: float | None = None,
     except (OSError, ValueError) as exc:
         raise HarnessError(f"could not enumerate arc cost ledgers: {exc}") from exc
     for path in paths:
+        if ledger_file_day(path) < ARC_START_DAY:
+            continue
         try:
             with path.open("r", encoding="utf-8", newline="") as handle:
                 reader = csv.DictReader(handle, delimiter="\t")
                 if not reader.fieldnames or "usd" not in reader.fieldnames:
-                    if logger:
-                        logger.warning("skipping arc ledger without usd column: %s", path)
-                    continue
+                    raise HarnessError(f"arc cost ledger has no usd column: {path}")
                 for row in reader:
                     value = float(row["usd"])
                     if not math.isfinite(value) or value < 0:
@@ -2226,6 +2573,36 @@ def enforce_arc_cap(estimate: float, *, arc_cap_usd: float | None = None,
             f"exceeds ${cap:.4f} cap"
         )
     return cap, spent
+
+
+RECONCILE_TOLERANCE_USD = 0.01
+
+
+def ledger_pod_totals(ledger_dir: Path,
+                      ledger_glob: str = DEFAULT_ARC_LEDGER_GLOB) -> dict[str, dict[str, Any]]:
+    """Sum every `pod-create <pod_id>` ledger row per pod across all dated files (history
+    included -- reconciliation is a report, not the arc total), with the first day seen."""
+    totals: dict[str, dict[str, Any]] = {}
+    for path in sorted(ledger_dir.glob(ledger_glob)):
+        day = ledger_file_day(path)
+        try:
+            with path.open("r", encoding="utf-8", newline="") as handle:
+                reader = csv.DictReader(handle, delimiter="\t")
+                if not reader.fieldnames or not {"step", "usd"} <= set(reader.fieldnames):
+                    raise HarnessError(f"cost ledger {path} lacks a step or usd column")
+                for row in reader:
+                    step = row.get("step") or ""
+                    if not step.startswith("pod-create "):
+                        continue
+                    pod_id = step.removeprefix("pod-create ").strip()
+                    if not pod_id:
+                        raise HarnessError(f"cost ledger {path} has a pod-create row with a blank pod id")
+                    entry = totals.setdefault(pod_id, {"ledger_usd": 0.0, "first_day": day})
+                    entry["ledger_usd"] += float(row["usd"])
+                    entry["first_day"] = min(entry["first_day"], day)
+        except (OSError, TypeError, ValueError) as exc:
+            raise HarnessError(f"could not read cost ledger {path}: {exc}") from exc
+    return totals
 
 
 def ready_hourly_price(pod: dict[str, Any]) -> float:
@@ -2263,10 +2640,11 @@ def settled_cost_estimate(*, elapsed_seconds: float, dry_run: bool,
 
 def create_payload(
     manifest: dict[str, Any], manifest_path: Path | None = None,
+    max_minutes: float | None = None,
 ) -> dict[str, Any]:
     gpu = manifest["gpu"]
     encoded_bootstrap = base64.b64encode(
-        bootstrap_script(manifest, manifest_path).encode("utf-8")
+        bootstrap_script(manifest, manifest_path, max_minutes).encode("utf-8")
     ).decode("ascii")
     bootstrap_command = (
         'echo "$FIGMENT_BOOTSTRAP_B64" | base64 -d > /workspace/bootstrap.sh '
@@ -2471,7 +2849,16 @@ def wait_ready(api: Any, pod_id: str, timeout: float, watchdog: Watchdog,
     while time.monotonic() < deadline:
         poll_number += 1
         watchdog.check()
-        pod = initial_pod if poll_number == 1 and initial_pod is not None else api.get_pod(pod_id)
+        pod = (
+            initial_pod if poll_number == 1 and initial_pod is not None
+            # Polling GET only; a local DNS blip here used to tear the pod down.
+            else poll_through_transient_network_errors(
+                lambda: api.get_pod(pod_id),
+                f"readiness pod-status poll for {pod_id}",
+                logger=logger, sleep=sleep, monotonic=time.monotonic,
+                watchdog=watchdog, remaining=lambda: deadline - time.monotonic(),
+            )
+        )
         if pod is None:
             raise HarnessError(f"pod {pod_id} disappeared before becoming ready")
         if on_observed is not None:
@@ -2512,7 +2899,10 @@ def _safe_node_name(url: str, explicit: str | None) -> str:
 
 def bootstrap_script(
     manifest: dict[str, Any], manifest_path: Path | None = None,
+    max_minutes: float | None = None,
 ) -> str:
+    if max_minutes is None:
+        max_minutes = effective_max_minutes(None, manifest)
     comfy = manifest.get("comfyui") or {}
     root = str(comfy.get("root", "/workspace/ComfyUI"))
     git_ref = str(comfy["git_ref"])
@@ -2588,6 +2978,106 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
         "fatal() { reason=\"$1\"; rc=\"${2:-1}\"; if [ \"$rc\" -eq 0 ]; then rc=1; fi; fatal_active=1; trap - EXIT; printf '%s\\n' \"$reason\" > \"$BOOTSTRAP_FAILED\"; log_line \"FATAL $reason\"; start_diagnostics || true; sleep 60; exit \"$rc\"; }",
         "on_exit() { rc=$?; if [ \"$rc\" -ne 0 ] && [ \"$fatal_active\" -eq 0 ]; then fatal \"unexpected bootstrap failure at line ${BASH_LINENO[0]} rc=$rc\" \"$rc\"; fi; }",
         "trap on_exit EXIT",
+    ]
+    # BLOCKER-3: a pod-side dead-man switch, independent of the host. The host-side
+    # Watchdog/keep-awake pair (BLOCKER-1/2) protects against the host itself
+    # suspending or dying, but neither helps if the *pod* loses its network path back
+    # to the host (or the host process is killed outright) -- nothing would ever
+    # again ask this pod to stop billing. This backgrounded, detached loop sleeps
+    # `max_minutes + 10` minutes past the harness's own ceiling, then self-terminates
+    # regardless of whether the host is still listening. RunPod DOES inject both
+    # `RUNPOD_POD_ID` and a pod-scoped `RUNPOD_API_KEY` into every pod by default, and
+    # preinstalls `runpodctl` (docs.runpod.io/pods/references/environment-variables;
+    # runpodctl overview) -- this bootstrap still never bakes a real key into the
+    # manifest itself (GUARDRAILS #5); it only ever reads the one RunPod already put
+    # in the pod's own environment, via a literal `$RUNPOD_API_KEY` shell reference.
+    # The chain below tries progressively cruder ways to actually stop GPU billing --
+    # `remove pod` (terminates and stops billing), then `stop pod` (stops the pod,
+    # which also ends GPU billing, without deleting it), then the newer `runpodctl
+    # pod delete`/`runpodctl pod stop` subcommand spelling some CLI versions use
+    # instead of the legacy `remove pod`/`stop pod` form -- before falling back to a
+    # bare `shutdown -h now`. That fallback reliably stops the ComfyUI process (and
+    # everything else) inside the container, but for most RunPod pod types is NOT
+    # guaranteed to stop the platform from billing the still-allocated GPU the way an
+    # explicit `runpodctl` call is -- see RUNBOOK.md's budget-rules note.
+    dead_man_seconds = int(round((max_minutes + 10) * 60))
+    dead_man_body = (
+        'printf "DEADMAN firing after %ss (max_minutes+10 margin)\\n" '
+        '"$DEAD_MAN_SECONDS" >>"$BOOTSTRAP_LOG" 2>&1; '
+        'if command -v runpodctl >/dev/null 2>&1 && [ -n "${RUNPOD_API_KEY:-}" ] '
+        '&& [ -n "${RUNPOD_POD_ID:-}" ]; then '
+        'printf "DEADMAN attempting runpodctl remove pod %s\\n" "$RUNPOD_POD_ID" '
+        '>>"$BOOTSTRAP_LOG" 2>&1; '
+        'if runpodctl remove pod "$RUNPOD_POD_ID" >>"$BOOTSTRAP_LOG" 2>&1; then '
+        'printf "DEADMAN runpodctl remove succeeded\\n" >>"$BOOTSTRAP_LOG" 2>&1; '
+        'exit 0; fi; '
+        'printf "DEADMAN runpodctl remove failed; trying runpodctl stop pod %s\\n" '
+        '"$RUNPOD_POD_ID" >>"$BOOTSTRAP_LOG" 2>&1; '
+        'if runpodctl stop pod "$RUNPOD_POD_ID" >>"$BOOTSTRAP_LOG" 2>&1; then '
+        'printf "DEADMAN runpodctl stop succeeded (GPU billing ended)\\n" '
+        '>>"$BOOTSTRAP_LOG" 2>&1; exit 0; fi; '
+        'printf "DEADMAN runpodctl stop failed; trying newer-CLI runpodctl pod delete '
+        '%s\\n" "$RUNPOD_POD_ID" >>"$BOOTSTRAP_LOG" 2>&1; '
+        'if runpodctl pod delete "$RUNPOD_POD_ID" >>"$BOOTSTRAP_LOG" 2>&1; then '
+        'printf "DEADMAN runpodctl pod delete succeeded\\n" >>"$BOOTSTRAP_LOG" 2>&1; '
+        'exit 0; fi; '
+        'printf "DEADMAN runpodctl pod delete failed; trying runpodctl pod stop '
+        '%s\\n" "$RUNPOD_POD_ID" >>"$BOOTSTRAP_LOG" 2>&1; '
+        'if runpodctl pod stop "$RUNPOD_POD_ID" >>"$BOOTSTRAP_LOG" 2>&1; then '
+        'printf "DEADMAN runpodctl pod stop succeeded (GPU billing ended)\\n" '
+        '>>"$BOOTSTRAP_LOG" 2>&1; exit 0; fi; '
+        'printf "DEADMAN all runpodctl attempts failed; falling back to shutdown -h '
+        'now\\n" >>"$BOOTSTRAP_LOG" 2>&1; '
+        'else printf "DEADMAN no pod-scoped runpodctl credential available '
+        '(runpodctl absent or RUNPOD_API_KEY unset); falling back to shutdown -h '
+        'now\\n" >>"$BOOTSTRAP_LOG" 2>&1; fi; '
+        'shutdown -h now >>"$BOOTSTRAP_LOG" 2>&1 || true'
+    )
+    volume_root = str(manifest.get("volume_mount_path", "/workspace"))
+    deadman_epoch_prefix = shlex.quote(volume_root.rstrip("/") + "/.deadman_epoch.")
+    lines.extend([
+        f"DEAD_MAN_SECONDS={dead_man_seconds}",
+        'if command -v runpodctl >/dev/null 2>&1; then RUNPODCTL_PRESENCE=present; '
+        'else RUNPODCTL_PRESENCE=absent; fi',
+        'if [ -n "${RUNPOD_API_KEY:-}" ]; then API_KEY_PRESENCE=present; '
+        'else API_KEY_PRESENCE=absent; fi',
+        'log_line "dead-man: runpodctl=$RUNPODCTL_PRESENCE api_key=$API_KEY_PRESENCE"',
+        # MEDIUM-2: a container restart (e.g. the bootstrap re-runs after a crash)
+        # must not hand the dead-man switch a fresh `max_minutes + 10` budget --
+        # that would let it keep re-arming forever and never actually fire. Persist
+        # the FIRST start's epoch and sleep only the time remaining against it, so
+        # a restart picks up where the original countdown left off instead of
+        # restarting it.
+        # HIGH-1: key the epoch file by $RUNPOD_POD_ID. A network volume can be
+        # reattached to a brand-new pod carrying a stale epoch file left by a
+        # PRIOR pod's run -- an un-keyed file would then kill the new pod almost
+        # immediately. Keying by pod id means a genuinely new pod always starts a
+        # fresh countdown, while a restart of the SAME pod (same id) still finds
+        # and persists its own file.
+        f'DEADMAN_EPOCH_FILE={deadman_epoch_prefix}"$RUNPOD_POD_ID"',
+        # MEDIUM-1: never trust the epoch file's contents blindly -- an empty
+        # file, non-numeric garbage, or multiple tokens must not corrupt the
+        # arithmetic below (which would otherwise silently arm with a bogus, even
+        # negative, remaining). Any invalid value is replaced with a fresh
+        # `date +%s` epoch (full budget) and written back best-effort; a failed
+        # write just means this boot re-derives it again next time, which is
+        # exactly the "full budget" fallback we want when the directory itself is
+        # unwritable.
+        'DEADMAN_EPOCH="$(cat "$DEADMAN_EPOCH_FILE" 2>/dev/null)"',
+        'case "$DEADMAN_EPOCH" in '
+        "''|*[!0-9]*) DEADMAN_EPOCH=$(date +%s); "
+        'printf \'%s\\n\' "$DEADMAN_EPOCH" > "$DEADMAN_EPOCH_FILE" 2>/dev/null || true;; '
+        'esac',
+        'DEADMAN_ELAPSED=$(( $(date +%s) - DEADMAN_EPOCH ))',
+        'DEADMAN_REMAINING=$((DEAD_MAN_SECONDS - DEADMAN_ELAPSED))',
+        'if [ "$DEADMAN_REMAINING" -lt 0 ]; then DEADMAN_REMAINING=0; fi',
+        # A future epoch (clock skew, or a value someone hand-edited) must not
+        # hand back MORE than the full budget.
+        'if [ "$DEADMAN_REMAINING" -gt "$DEAD_MAN_SECONDS" ]; then DEADMAN_REMAINING=$DEAD_MAN_SECONDS; fi',
+        'log_line "dead-man: epoch=$DEADMAN_EPOCH elapsed=${DEADMAN_ELAPSED}s remaining=${DEADMAN_REMAINING}s"',
+        f'( sleep "$DEADMAN_REMAINING"; {dead_man_body} ) & disown',
+    ])
+    lines.extend([
         "run_required() { label=\"$1\"; shift; \"$@\" >>\"$BOOTSTRAP_LOG\" 2>&1; rc=$?; log_line \"STEP $label rc=$rc\"; if [ \"$rc\" -ne 0 ]; then fatal \"$label failed with rc=$rc\" \"$rc\"; fi; }",
         "retry_required() { label=\"$1\"; shift; attempt=1; while :; do \"$@\" >>\"$BOOTSTRAP_LOG\" 2>&1; rc=$?; log_line \"STEP $label attempt=$attempt rc=$rc\"; if [ \"$rc\" -eq 0 ]; then return 0; fi; if [ \"$attempt\" -ge 3 ]; then fatal \"$label failed after $attempt attempts with rc=$rc\" \"$rc\"; return \"$rc\"; fi; if [ \"$attempt\" -eq 1 ]; then backoff=15; else backoff=30; fi; log_line \"STEP $label retrying in ${backoff}s\"; sleep \"$backoff\"; attempt=$((attempt + 1)); done; }",
         "retry_optional() { label=\"$1\"; shift; attempt=1; while :; do \"$@\" >>\"$BOOTSTRAP_LOG\" 2>&1; rc=$?; log_line \"STEP $label attempt=$attempt rc=$rc\"; if [ \"$rc\" -eq 0 ]; then return 0; fi; if [ \"$attempt\" -ge 3 ]; then return \"$rc\"; fi; if [ \"$attempt\" -eq 1 ]; then backoff=15; else backoff=30; fi; log_line \"STEP $label retrying in ${backoff}s\"; sleep \"$backoff\"; attempt=$((attempt + 1)); done; }",
@@ -2599,7 +3089,7 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
         "run_required gpu-present bash -lc 'gpu_lines=$(nvidia-smi -L) && test -n \"$gpu_lines\" && printf \'%s\\n\' \"$gpu_lines\"'",
         "run_required torch-cuda python -c 'import torch,sys; sys.exit(0 if torch.cuda.is_available() else 3)'",
         "wait_for_network",
-    ]
+    ])
     clone_comfy = (
         f"git clone --branch {shlex.quote(git_ref)} --depth 1 "
         f"{shlex.quote(source_url)} {shlex.quote(root)}"
@@ -2765,6 +3255,196 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
     return "\n".join(lines) + "\n"
 
 
+def _post_join_timeout(per_read_timeout: float) -> float:
+    """LOW-1: the worker-thread join must outlive `per_read_timeout` (the
+    connect/per-read socket timeout given to `session.post(..., timeout=...)`,
+    which itself is unchanged) by enough headroom that a genuinely slow -- but not
+    hung -- transfer's own `requests`-level timeout gets a chance to fail it closed
+    normally, instead of the hard join racing it and firing first on every attempt.
+    """
+    return 1.5 * per_read_timeout + 30.0
+
+
+class _SocketCapture:
+    """Thread-safe single-slot handle for the raw socket backing an in-flight POST,
+    set the moment urllib3 connects it -- well before any data is sent, so it is
+    available long before a stalled body send could block (HIGH-1). `session.close()`
+    alone does not interrupt an in-flight send: `PoolManager.clear()` only closes
+    *idle* pooled connections, not one a worker thread is actively blocked inside
+    (reproduced directly: the worker was still alive 20s after `close()`, and only
+    died at its own socket timeout). Shutting the captured socket down directly
+    unblocks the worker's blocking send/recv call within seconds."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._sock: Any = None
+
+    def set(self, sock: Any) -> None:
+        with self._lock:
+            self._sock = sock
+
+    def shutdown_and_close(self) -> None:
+        with self._lock:
+            sock = self._sock
+        if sock is None:
+            return
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        try:
+            sock.close()
+        except OSError:
+            pass
+
+
+if requests is not None:
+    class _CapturingHTTPAdapter(requests.adapters.HTTPAdapter):
+        """`HTTPAdapter` that hooks the exact pool `send()` resolves for THIS
+        request, not a guessed lookup. `PoolManager.connection_from_url(url)`
+        (the previous approach) returns a *different* `HTTPConnectionPool`
+        object than the one `HTTPAdapter.send()` actually uses internally
+        (via `get_connection_with_tls_context`) -- confirmed live: `pool.py`
+        showed `same pool: False`, and its adapter-selection loop picks the
+        `"https://"` adapter first even for an `http://` URL, so the wrong
+        adapter's pool was inspected too. Overriding
+        `get_connection_with_tls_context` -- the method `send()` itself calls
+        to obtain the pool -- guarantees identity with the pool actually used,
+        for both schemes and both adapters."""
+
+        def __init__(self, *args: Any, capture: "_SocketCapture", **kwargs: Any) -> None:
+            self._capture = capture
+            super().__init__(*args, **kwargs)
+
+        def get_connection_with_tls_context(self, request, verify, proxies=None, cert=None):
+            pool = super().get_connection_with_tls_context(
+                request, verify, proxies=proxies, cert=cert,
+            )
+            capture = self._capture
+            original_new_conn = pool._new_conn
+
+            def _new_conn_capturing():
+                conn = original_new_conn()
+                original_connect = conn.connect
+
+                def _connect_capturing():
+                    original_connect()
+                    capture.set(getattr(conn, "sock", None))
+
+                conn.connect = _connect_capturing
+                return conn
+
+            pool._new_conn = _new_conn_capturing
+            return pool
+else:  # pragma: no cover - offline/dry-run only, `requests` not installed
+    _CapturingHTTPAdapter = None  # type: ignore[assignment,misc]
+
+
+def _post_capturing_socket(
+        session: Any, url: str, *, files: Any, data: Any, timeout: float,
+        capture: "_SocketCapture") -> Any:
+    """A FRESH `requests.Session()` per call, mounted with `_CapturingHTTPAdapter`,
+    wired to `capture` the socket urllib3 opens for this request.
+
+    A fresh session is not just belt-and-suspenders: an *empty* pool guarantees
+    `HTTPConnectionPool._new_conn` actually runs. `reuse.py`'s repro showed a
+    reused (keep-alive) connection on an already-used session never calls
+    `_new_conn` at all -- capture stayed unset even with the pool-identity fix
+    above -- because urlopen only calls it when the pool has no free connection
+    to hand back. A brand-new session's pool is always empty on its first (and
+    only) request, so this path is always taken.
+
+    Copies `trust_env` and headers from `session` so the fresh session carries
+    the same no-credential-discovery posture as the caller's; does not reuse
+    `session`'s connections (that's the point). Only a real `requests.Session`
+    exposes the adapter/pool machinery this needs; a duck-typed test double
+    just posts directly on the ORIGINAL session -- there is no live socket to
+    capture, and nothing past the fake's own behavior that could hang."""
+    if requests is None or not isinstance(session, requests.Session) or _CapturingHTTPAdapter is None:
+        return session.post(url, files=files, data=data, timeout=timeout)
+    fresh = requests.Session()
+    fresh.trust_env = getattr(session, "trust_env", True)
+    fresh.headers.update(getattr(session, "headers", {}) or {})
+    adapter = _CapturingHTTPAdapter(capture=capture)
+    fresh.mount("http://", adapter)
+    fresh.mount("https://", adapter)
+    try:
+        return fresh.post(url, files=files, data=data, timeout=timeout)
+    finally:
+        fresh.close()
+
+
+def _post_with_hard_deadline(
+        session: Any, url: str, *, files: Any, data: Any, timeout: float,
+        logger: logging.Logger, label: str,
+        _worker_handle: list[threading.Thread] | None = None) -> Any:
+    """Run `session.post(...)` under a hard wall-clock bound.
+
+    `requests`' own `timeout` argument bounds connect and each individual read, but
+    NOT a stalled body send -- a live upload once blocked ~3h53m on a single 16 MiB
+    chunk POST despite a computed ~76s timeout (orgs/figment/runs/creator-001/
+    live-20260916b/downstream/gen/gen-harness-stderr.log, pod u86413a8wjzsni,
+    2026-09-21). The true trigger was a host suspend (BLOCKER-1's `Watchdog` fix
+    docstring has the evidence): a relative wait/join does not count suspended time,
+    so both the per-POST join below and the run's own 185-minute `Watchdog` ceiling
+    silently stretched.
+
+    Running the POST on a worker thread and giving the *whole call* a hard,
+    suspend-proof join (`_sliced_deadline_wait`, sized with headroom via
+    `_post_join_timeout` -- LOW-1) bounds it regardless of where the stall is or
+    whether the host slept through part of it. `_post_capturing_socket` (HIGH-1)
+    gives that worker's request its OWN fresh `requests.Session()`, so on expiry
+    the captured socket can be shut down directly to unblock the worker; the
+    original caller-supplied `session` (which never made this request) is also
+    closed as a harmless, best-effort second step. The worker thread is daemon
+    and otherwise abandoned, never left holding a live socket past process
+    exit. The stall is reported as a TransientProxyError so the existing
+    3-attempt loop in `retry_transient_proxy` retries it exactly like any other
+    transient failure.
+    """
+    outcome: dict[str, Any] = {}
+    capture = _SocketCapture()
+
+    def _worker() -> None:
+        try:
+            outcome["response"] = _post_capturing_socket(
+                session, url, files=files, data=data, timeout=timeout, capture=capture,
+            )
+        except BaseException as exc:  # noqa: BLE001 - surfaced to the caller below
+            outcome["error"] = exc
+
+    worker = threading.Thread(target=_worker, name=f"{label}-post", daemon=True)
+    if _worker_handle is not None:
+        _worker_handle.append(worker)  # test hook: HIGH-1 -- prove the WORKER dies too
+    worker.start()
+
+    def _join_poll(seconds: float) -> bool:
+        worker.join(seconds)
+        return not worker.is_alive()
+
+    join_timeout = _post_join_timeout(timeout)
+    completed = _sliced_deadline_wait(
+        total_seconds=join_timeout, poll=_join_poll, logger=logger,
+    )
+    if not completed:
+        logger.error(
+            "%s POST exceeded its %.0fs hard deadline (per-read timeout %.0fs); "
+            "shutting down its socket and closing the session to unblock it",
+            label, join_timeout, timeout,
+        )
+        capture.shutdown_and_close()
+        close = getattr(session, "close", None)
+        if callable(close):
+            close()
+        raise TransientProxyError(f"{label} POST exceeded its {join_timeout:.0f}s hard deadline")
+    if "error" in outcome:
+        exc = outcome["error"]
+        raise TransientProxyError(
+            f"{label} POST transport failed: {type(exc).__name__}"
+        ) from exc
+    return outcome["response"]
+
+
 class ComfyClient:
     def __init__(self, base_url: str, session: Any = None,
                  logger: logging.Logger | None = None,
@@ -2850,18 +3530,37 @@ class ComfyClient:
             "type": "input",
         }
         try:
+            size_bytes = local_path.stat().st_size
+        except OSError as exc:
+            raise HarnessError(
+                f"ComfyUI upload file could not be read: {type(exc).__name__}"
+            ) from exc
+        # MEDIUM-2: the whole-transfer join now covers connect + the entire body
+        # send (not just one read), so a large unchunked file needs more than the
+        # fixed REQUEST_TIMEOUT floor -- size it like a chunk part.
+        upload_timeout = max(REQUEST_TIMEOUT, size_bytes / UPLOAD_CHUNK_ASSUMED_MIN_BYTES_PER_SECOND)
+        try:
             with local_path.open("rb") as handle:
                 try:
-                    response = self.session.post(
-                        self.base_url + "/upload/image",
+                    response = _post_with_hard_deadline(
+                        self.session, self.base_url + "/upload/image",
                         files={"image": (local_path.name, handle)},
                         data={
                             "subfolder": subfolder,
                             "type": "input",
                             "overwrite": "true" if overwrite else "false",
                         },
-                        timeout=REQUEST_TIMEOUT,
+                        timeout=upload_timeout, logger=self.logger,
+                        label=f"upload {local_path.name}",
                     )
+                except RunCancelled:
+                    # MEDIUM-1: a signal handler can raise RunCancelled in the main
+                    # thread while it is blocked inside the hard-deadline join above;
+                    # it must propagate as a real cancellation, never be reinterpreted
+                    # as a retryable transport failure.
+                    raise
+                except TransientProxyError:
+                    raise
                 except Exception as exc:
                     raise TransientProxyError(
                         "ComfyUI POST /upload/image transport failed: "
@@ -2917,16 +3616,21 @@ class ComfyClient:
         REQUEST_TIMEOUT used for a whole small file."""
         expected = {"name": remote_name, "subfolder": subfolder, "type": "input"}
         try:
-            response = self.session.post(
-                self.base_url + "/upload/image",
+            response = _post_with_hard_deadline(
+                self.session, self.base_url + "/upload/image",
                 files={"image": (remote_name, io.BytesIO(data))},
                 data={
                     "subfolder": subfolder,
                     "type": "input",
                     "overwrite": "true" if overwrite else "false",
                 },
-                timeout=timeout,
+                timeout=timeout, logger=self.logger, label=f"upload {remote_name}",
             )
+        except RunCancelled:
+            # MEDIUM-1: see the matching comment in upload_file.
+            raise
+        except TransientProxyError:
+            raise
         except Exception as exc:
             raise TransientProxyError(
                 "ComfyUI POST /upload/image transport failed: "
@@ -3280,15 +3984,70 @@ class ComfyClient:
             pass
         return ""
 
+    @staticmethod
+    def _execution_error_diagnostic(status: Any) -> str:
+        """Return a bounded, single-line summary of ComfyUI's execution_error message.
+
+        ComfyUI's /history status carries `messages: [[type, detail], ...]`; an
+        `execution_error` entry's detail holds node_id/node_type/exception_type/
+        exception_message/traceback. Only a small, sanitized slice is surfaced here
+        (never the traceback) so a HarnessError stays diagnostic without reflecting
+        arbitrary server content.
+        """
+        try:
+            messages = status.get("messages") if isinstance(status, dict) else None
+            if not isinstance(messages, list):
+                return ""
+            for message in messages:
+                if not (
+                    isinstance(message, (list, tuple))
+                    and len(message) == 2
+                    and message[0] == "execution_error"
+                    and isinstance(message[1], dict)
+                ):
+                    continue
+                detail = message[1]
+                parts: list[str] = []
+                node_id = detail.get("node_id")
+                if isinstance(node_id, (str, int)):
+                    parts.append(f"node_id={node_id}")
+                node_type = detail.get("node_type")
+                if isinstance(node_type, str) and node_type:
+                    parts.append(f"node_type={node_type}")
+                exception_type = detail.get("exception_type")
+                if isinstance(exception_type, str) and exception_type:
+                    parts.append(f"exception_type={exception_type}")
+                exception_message = detail.get("exception_message")
+                if isinstance(exception_message, str) and exception_message:
+                    cleaned = "".join(
+                        char if char.isprintable() else " " for char in exception_message
+                    )
+                    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+                    cleaned = cleaned[:COMFY_EXECUTION_ERROR_MESSAGE_MAX_CHARS]
+                    if cleaned:
+                        parts.append(f"exception_message={cleaned}")
+                return " ".join(parts)
+            return ""
+        except (AttributeError, TypeError, ValueError):
+            return ""
+
     def wait_outputs(
         self, prompt_id: str, timeout: float, watchdog: Watchdog,
-        *, expected_images: int = 1,
+        *, expected_images: int = 1, output_contract: dict[str, Any] | None = None,
     ) -> list[dict[str, str]]:
         del expected_images  # live jobs are counted from ComfyUI's own history entry
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             watchdog.check()
-            response = self.session.get(self.base_url + f"/history/{prompt_id}", timeout=REQUEST_TIMEOUT)
+            # Polling GET only; the job's own deadline below still bounds the wait.
+            response = poll_through_transient_network_errors(
+                lambda: self.session.get(
+                    self.base_url + f"/history/{prompt_id}", timeout=REQUEST_TIMEOUT,
+                ),
+                f"ComfyUI history poll for {prompt_id}",
+                logger=self.logger, sleep=self._sleep, monotonic=self._monotonic,
+                watchdog=watchdog, remaining=lambda: deadline - time.monotonic(),
+            )
             if not 200 <= response.status_code < 300:
                 raise HarnessError(f"ComfyUI history returned HTTP {response.status_code}")
             history = response.json()
@@ -3296,8 +4055,15 @@ class ComfyClient:
             if entry:
                 status = entry.get("status") or {}
                 if status.get("status_str") == "error":
-                    raise HarnessError(f"ComfyUI job {prompt_id} failed")
+                    diagnostic = self._execution_error_diagnostic(status)
+                    suffix = f": {diagnostic}" if diagnostic else ""
+                    raise HarnessError(f"ComfyUI job {prompt_id} failed{suffix}")
                 if status.get("completed") is False:
+                    time.sleep(1)
+                    continue
+                if output_contract is not None:
+                    if status.get("completed") is True:
+                        return contract_history_outputs(entry, output_contract)
                     time.sleep(1)
                     continue
                 outputs: list[dict[str, str]] = []
@@ -3315,6 +4081,89 @@ class ComfyClient:
                     raise HarnessError(f"ComfyUI job {prompt_id} completed with zero images")
             time.sleep(1)
         raise HarnessError(f"ComfyUI job {prompt_id} timed out")
+
+
+    def download_contract_output(self, record: dict[str, Any], local_path: Path,
+                                 deadline: float, watchdog: Any) -> None:
+        """Bound the entire GET/body, including a slow stream between chunk yields.
+
+        The worker owns only a temporary file. Only this caller may publish it,
+        after a successful deadline/watchdog check. Cancellation shuts down the
+        captured socket, so a blocked real HTTP read cannot retain the worker.
+        """
+        params = contract_view_params(record["remote"], record["media_type"])
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise HarnessError("contract download deadline exceeded")
+        watchdog.check()
+        capture, cancelled = _SocketCapture(), threading.Event()
+        outcome: dict[str, Any] = {}
+        temporary = local_path.with_suffix(local_path.suffix + ".partial")
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+
+        def transfer():
+            session, fresh, response = self.session, None, None
+            try:
+                if requests is not None and isinstance(session, requests.Session) and _CapturingHTTPAdapter is not None:
+                    fresh = requests.Session()
+                    fresh.trust_env = getattr(session, "trust_env", True)
+                    fresh.headers.update(getattr(session, "headers", {}) or {})
+                    adapter = _CapturingHTTPAdapter(capture=capture)
+                    fresh.mount("http://", adapter)
+                    fresh.mount("https://", adapter)
+                    session = fresh
+                response = session.get(self.base_url + "/view", params=params,
+                                       timeout=min(REQUEST_TIMEOUT, remaining), stream=True)
+                if not 200 <= response.status_code < 300:
+                    raise HarnessError("contract output download failed HTTP " + str(response.status_code))
+                length = response.headers.get("Content-Length")
+                if length is not None and (not str(length).isdigit() or not 0 < int(length) <= record["max_bytes"]):
+                    raise HarnessError("contract output Content-Length exceeds bound or is invalid")
+                size = 0
+                with temporary.open("wb") as handle:
+                    for chunk in response.iter_content(chunk_size=64 * 1024):
+                        if cancelled.is_set() or time.monotonic() >= deadline:
+                            raise HarnessError("contract download deadline exceeded")
+                        size += len(chunk)
+                        if size > record["max_bytes"]:
+                            raise HarnessError("contract output exceeds byte bound")
+                        handle.write(chunk)
+                if cancelled.is_set() or size == 0 or (length is not None and size != int(length)):
+                    raise HarnessError("contract output empty, cancelled or truncated")
+            except BaseException as exc:
+                outcome["error"] = exc
+            finally:
+                if response is not None:
+                    response.close()
+                if fresh is not None:
+                    fresh.close()
+                if cancelled.is_set() or "error" in outcome:
+                    temporary.unlink(missing_ok=True)
+
+        worker = threading.Thread(target=transfer, name="contract-output-download", daemon=True)
+        worker.start()
+        def poll(seconds):
+            watchdog.check()
+            worker.join(seconds)
+            return not worker.is_alive()
+        try:
+            if not _sliced_deadline_wait(total_seconds=max(0, deadline-time.monotonic()),
+                                        poll=poll, slice_seconds=0.1):
+                raise HarnessError("contract download deadline exceeded")
+            watchdog.check()
+            if time.monotonic() >= deadline:
+                raise HarnessError("contract download deadline exceeded")
+            if "error" in outcome:
+                raise outcome["error"]
+            temporary.replace(local_path)
+        finally:
+            cancelled.set()
+            capture.shutdown_and_close()
+            # Real socket shutdown unblocks reads; a hostile injected fake may not
+            # cooperate, but can never publish and will clean up when it returns.
+            worker.join(0.2)
+            if not worker.is_alive():
+                temporary.unlink(missing_ok=True)
 
     def download_output(self, image: dict[str, str], local_path: Path,
                         timeout: float) -> None:
@@ -3352,9 +4201,18 @@ class DryRunComfyClient:
 
     def wait_outputs(
         self, prompt_id: str, _timeout: float, watchdog: Watchdog,
-        *, expected_images: int = 1,
+        *, expected_images: int = 1, output_contract: dict[str, Any] | None = None,
     ) -> list[dict[str, str]]:
         watchdog.check()
+        if output_contract is not None:
+            history = {"outputs": {}}
+            for row in output_contract["outputs"]:
+                video = row["media_type"] == "video/mp4"
+                item = {"filename": prompt_id + "-" + row["role"] + (".mp4" if video else ".png"),
+                        "subfolder": "", "type": "output", "format": "video/h264-mp4" if video else row["media_type"],
+                        "workflow": prompt_id + "-" + row["role"] + "-workflow.png"}
+                history["outputs"][row["node_id"]] = {"gifs" if video else "images": [item]}
+            return contract_history_outputs(history, output_contract)
         if expected_images == 1:
             return [{"filename": f"{prompt_id}.png", "subfolder": "", "type": "output"}]
         return [
@@ -3409,6 +4267,19 @@ class DryRunComfyClient:
             temporary.replace(local_path)
         finally:
             temporary.unlink(missing_ok=True)
+
+    def download_contract_output(self, record: dict[str, Any], local_path: Path,
+                                 deadline: float, watchdog: Any) -> None:
+        watchdog.check()
+        if time.monotonic() >= deadline:
+            raise HarnessError("contract download deadline exceeded")
+        contract_view_params(record["remote"], record["media_type"])
+        # Deliberately simulated transport bytes, never evidence of rendered media.
+        data = ("dry-run simulated " + record["media_type"] + "\n").encode()
+        if len(data) > record["max_bytes"]:
+            raise HarnessError("dry-run output exceeds byte bound")
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        local_path.write_bytes(data)
 
     def download_output(self, image: dict[str, str], local_path: Path,
                         _timeout: float) -> None:
@@ -3466,6 +4337,134 @@ def safe_output_name(value: Any) -> str:
     if not re.fullmatch(r"[A-Za-z0-9._-]+", name):
         raise HarnessError(f"unsafe or missing output_name: {name!r}")
     return name
+
+
+
+OUTPUT_CONTRACT_SCHEMA = "figment/comfy-output-contract@1"
+OUTPUT_IMAGE_CAP = 32 * 1024 ** 2
+OUTPUT_VIDEO_CAP = 512 * 1024 ** 2
+
+
+def job_output_contract(job: dict[str, Any]) -> dict[str, Any] | None:
+    """Validate the closed opt-in contract; legacy jobs retain their image semantics."""
+    if "output_contract" not in job:
+        return None
+    contract = job["output_contract"]
+    if any(key in job for key in ("expected_images", "expected_videos", "output_nodes")):
+        raise HarnessError("output_contract conflicts with legacy output selectors")
+    if (not isinstance(contract, dict) or set(contract) != {"schema", "outputs"}
+            or contract["schema"] != OUTPUT_CONTRACT_SCHEMA):
+        raise HarnessError("invalid output_contract schema")
+    rows = contract["outputs"]
+    if not isinstance(rows, list) or not 1 <= len(rows) <= 16:
+        raise HarnessError("output_contract requires 1..16 output declarations")
+    nodes, roles = set(), set()
+    for row in rows:
+        if not isinstance(row, dict) or set(row) != {
+            "node_id", "role", "media_type", "count", "max_bytes", "workflow_png"
+        }:
+            raise HarnessError("invalid output_contract declaration fields")
+        node, role = row["node_id"], row["role"]
+        if not isinstance(node, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", node):
+            raise HarnessError("invalid output node_id")
+        if not isinstance(role, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,47}", role):
+            raise HarnessError("invalid output role")
+        if node in nodes or role in roles or role.endswith("-workflow"):
+            raise HarnessError("duplicate/reserved output node or role")
+        nodes.add(node)
+        roles.add(role)
+        media = row["media_type"]
+        if media not in ("image/png", "video/mp4"):
+            raise HarnessError("unsupported output media_type")
+        cap = OUTPUT_IMAGE_CAP if media == "image/png" else OUTPUT_VIDEO_CAP
+        if type(row["count"]) is not int or row["count"] != 1:
+            raise HarnessError("output count must be exactly one")
+        if type(row["max_bytes"]) is not int or not 1 <= row["max_bytes"] <= cap:
+            raise HarnessError("invalid output max_bytes")
+        if type(row["workflow_png"]) is not bool or (media == "image/png" and row["workflow_png"]):
+            raise HarnessError("workflow_png must be boolean and video-only")
+    return copy.deepcopy(contract)
+
+
+def contract_view_params(descriptor: dict[str, Any], media_type: str) -> dict[str, str]:
+    """Only output-directory, relative literal paths reach /view; fullpath is ignored."""
+    if not isinstance(descriptor, dict) or descriptor.get("type") != "output":
+        raise HarnessError("contract output must have type output")
+    filename, folder = descriptor.get("filename"), descriptor.get("subfolder", "")
+    def safe_part(value: str) -> bool:
+        return bool(value) and value not in (".", "..") and not any(c in value for c in '\\/:\x00') and not value.endswith((".", " ")) and not any(ord(c) < 32 for c in value)
+    if not isinstance(filename, str) or len(filename) > 255 or not safe_part(filename):
+        raise HarnessError("unsafe output filename")
+    if not isinstance(folder, str) or len(folder) > 1024 or (folder and not all(safe_part(x) for x in folder.split("/"))):
+        raise HarnessError("unsafe output subfolder")
+    suffix = ".png" if media_type == "image/png" else ".mp4"
+    if PurePosixPath(filename).suffix.lower() != suffix:
+        raise HarnessError("output extension does not match declared media_type")
+    return {"filename": filename, "subfolder": folder, "type": "output"}
+
+
+def contract_history_outputs(entry: dict[str, Any], contract: dict[str, Any]) -> list[dict[str, Any]]:
+    contract = job_output_contract({"output_contract": contract})
+    outputs = entry.get("outputs")
+    if not isinstance(outputs, dict):
+        raise HarnessError("contract history outputs must be an object")
+    declared = {row["node_id"]: row for row in contract["outputs"]}
+    for node_id, node in outputs.items():
+        if not isinstance(node, dict):
+            raise HarnessError("malformed history node output")
+        if node_id not in declared and (node.get("images") or node.get("gifs")):
+            raise HarnessError("unexpected media output node")
+    result, paths = [], set()
+    for row in contract["outputs"]:
+        node = outputs.get(row["node_id"], {})
+        key = "images" if row["media_type"] == "image/png" else "gifs"
+        items = node.get(key)
+        other = "gifs" if key == "images" else "images"
+        if not isinstance(items, list) or len(items) != 1 or node.get(other):
+            raise HarnessError("contract output node count/type mismatch")
+        item = items[0]
+        params = contract_view_params(item, row["media_type"])
+        if key == "gifs" and item.get("format") != "video/h264-mp4":
+            raise HarnessError("VHS output format must be source video/h264-mp4")
+        primary = {**row, "remote": params}
+        records = [primary]
+        if row["workflow_png"]:
+            companion = {"filename": item.get("workflow"), "subfolder": params["subfolder"], "type": "output"}
+            records.append({"node_id": row["node_id"], "role": row["role"] + "-workflow",
+                "media_type": "image/png", "max_bytes": OUTPUT_IMAGE_CAP,
+                "companion_of": row["role"], "remote": contract_view_params(companion, "image/png")})
+        for record in records:
+            remote = record["remote"]
+            identity = (remote["subfolder"] + "/" + remote["filename"]).casefold()
+            if identity in paths:
+                raise HarnessError("duplicate output path")
+            paths.add(identity)
+            result.append(record)
+    return result
+
+
+def download_contract_outputs(comfy: Any, records: list[dict[str, Any]], out_dir: Path,
+                              output_name: str, timeout: float, watchdog: Any,
+                              prompt_id: str) -> list[dict[str, Any]]:
+    deadline = time.monotonic() + timeout
+    receipts = []
+    for record in records:
+        watchdog.check()
+        suffix = ".png" if record["media_type"] == "image/png" else ".mp4"
+        path = out_dir / (safe_output_name(output_name) + "--" + record["role"] + suffix)
+        comfy.download_contract_output(record, path, deadline, watchdog)
+        size = path.stat().st_size
+        if not 0 < size <= record["max_bytes"]:
+            raise HarnessError("downloaded contract output has invalid size")
+        with path.open("rb") as handle:
+            digest = hashlib.file_digest(handle, "sha256").hexdigest()
+        receipt = {"path": path.name, "bytes": size, "sha256": digest,
+                   "node_id": record["node_id"], "role": record["role"], "media_type": record["media_type"],
+                   "prompt_id": prompt_id, "remote": record["remote"]}
+        if "companion_of" in record:
+            receipt["companion_of"] = record["companion_of"]
+        receipts.append(receipt)
+    return receipts
 
 
 def view_params(image: dict[str, str]) -> dict[str, str]:
@@ -3792,6 +4791,13 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
         if machine_host is not None:
             active_machine_host = machine_host
 
+    # BLOCKER-2: armed for the pod's whole life (create through verified teardown,
+    # every exit path -- the `finally:` below always runs); a no-op in dry-run,
+    # where no pod is ever actually rented.
+    keep_awake = KeepAwake(logger)
+    if not dry_run:
+        keep_awake.arm()
+
     try:
         for placement_attempt in range(1, max_placement_attempts + 1):
             if placement_attempt > 1:
@@ -3811,7 +4817,7 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                         "placement recreation refused: avoided-pod cost plus the next "
                         "full-run estimate exceeds the arc cap"
                     )
-            payload = create_payload(manifest, manifest_path)
+            payload = create_payload(manifest, manifest_path, max_minutes)
             # This write is intentionally immediately before the create request.  If
             # the desktop dies during POST, a surviving host has one narrow name,
             # manifest digest, receipt path, and budget-bound attempt to reconcile.
@@ -3867,7 +4873,14 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
             )
             lease.__enter__()
             placement_needs_close = True
-            observed = api.get_pod(str(lease.pod_id))
+            # Polling GET only (the pod already exists and the lease already owns it);
+            # bounded by the run's own max_minutes budget, which it cannot extend.
+            observed = poll_through_transient_network_errors(
+                lambda: api.get_pod(str(lease.pod_id)),
+                f"placement pod-status poll for {lease.pod_id}",
+                logger=logger, sleep=sleep, monotonic=time.monotonic,
+                remaining=lambda: started + max_minutes * 60.0 - time.monotonic(),
+            )
             if observed is None:
                 raise HarnessError(
                     f"pod {lease.pod_id} disappeared during placement inspection"
@@ -4205,27 +5218,38 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                     output_name = safe_output_name(job.get("output_name"))
                     workflow = apply_job(base_workflow, job, manifest_seed_fields(manifest))
                     prompt_id = comfy.submit(workflow)
-                    expected_images = job.get("expected_images", 1)
-                    if isinstance(expected_images, bool) or not isinstance(expected_images, int):
-                        raise HarnessError("job expected_images must be a positive integer")
-                    remote_images = comfy.wait_outputs(
-                        prompt_id, per_job_timeout, watchdog,
-                        expected_images=expected_images,
-                    )
-                    paths = download_job_outputs(
-                        comfy, remote_images, out_dir, output_name,
-                        per_job_timeout, expected_images,
-                    )
+                    contract = job_output_contract(job)
+                    if contract is not None:
+                        remote = comfy.wait_outputs(prompt_id, per_job_timeout, watchdog, output_contract=contract)
+                        file_receipts = download_contract_outputs(comfy, remote, out_dir, output_name,
+                                                                  per_job_timeout, watchdog, prompt_id)
+                        paths = [out_dir / row["path"] for row in file_receipts]
+                    else:
+                        expected_images = job.get("expected_images", 1)
+                        if isinstance(expected_images, bool) or not isinstance(expected_images, int):
+                            raise HarnessError("job expected_images must be a positive integer")
+                        remote_images = comfy.wait_outputs(prompt_id, per_job_timeout, watchdog,
+                                                           expected_images=expected_images)
+                        paths = download_job_outputs(comfy, remote_images, out_dir, output_name,
+                                                     per_job_timeout, expected_images)
+                        file_receipts = [{"path": path.name, "bytes": path.stat().st_size} for path in paths]
                     job_result = {
                         "job": job_number,
                         "output_name": output_name,
                         "seed": int(job["seed"]),
                         "prompt_id": prompt_id,
                         "seconds": round(time.monotonic() - job_started, 3),
-                        "files": [{"path": path.name, "bytes": path.stat().st_size} for path in paths],
+                        "files": file_receipts,
                     }
+                    if contract is not None:
+                        job_result["output_contract"] = contract
+                        job_result["effective_workflow_sha256"] = hashlib.sha256(json.dumps(
+                            workflow, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False,
+                        ).encode("utf-8")).hexdigest()
                     result["jobs"].append(job_result)
                     for index, path in enumerate(paths, start=1):
+                        if contract is not None and (file_receipts[index - 1]["media_type"] != "image/png" or "companion_of" in file_receipts[index - 1]):
+                            continue
                         image_id = output_name if len(paths) == 1 else f"{output_name}_{index:02d}"
                         images_manifest.append({
                             "image_id": image_id,
@@ -4241,15 +5265,26 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
         result["error"] = f"{type(exc).__name__}: {exc}"
         if isinstance(exc, ReadinessTimeout):
             result["last_pod_state"] = exc.last_pod_state
-        if isinstance(exc, BootstrapFailed):
-            result["bootstrap_log_tail"] = exc.bootstrap_log_tail
-            host_class_reason = bootstrap_host_class_failure_reason(exc)
-            network_reason = bootstrap_network_failure_reason(exc)
+        # LIVE 2026-09-23 (detail pod w20n3wtn30cceg, host 41actztivcth): a host that
+        # never starts the container (2400 s in desiredStatus=RUNNING, proxy 404, no
+        # runtime status) is a machine-class failure exactly like a host-class bootstrap
+        # failure -- learn it so the next placement avoids it, instead of only learning
+        # hosts whose bootstrap ran far enough to write a marker.
+        if isinstance(exc, (BootstrapFailed, ReadinessTimeout)):
+            if isinstance(exc, BootstrapFailed):
+                result["bootstrap_log_tail"] = exc.bootstrap_log_tail
+                host_class_reason = bootstrap_host_class_failure_reason(exc)
+                network_reason = bootstrap_network_failure_reason(exc)
+                dependency_reason = bootstrap_dependency_failure_reason(exc)
+            else:
+                host_class_reason = "readiness timeout: container never started (no runtime status)"
+                network_reason = None
+                dependency_reason = None
             learned_reason = host_class_reason or network_reason
             reason_class = (
                 "machine" if host_class_reason
                 else "network" if network_reason
-                else "dependency" if bootstrap_dependency_failure_reason(exc)
+                else "dependency" if dependency_reason
                 else "unclassified"
             )
             if learned_reason and active_machine_host:
@@ -4419,6 +5454,14 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
             run_directory_lock.release()
         except BaseException as secondary:
             retain_finalization_failure("recovery run-directory lock release", secondary)
+        # LOW-1: keep the host awake through every other teardown step -- watchdog
+        # stop, the pod-termination `lease.close()`, and all bookkeeping above -- and
+        # disarm last, so nothing in this `finally` can race a host that goes back to
+        # sleep the moment keep-awake is lifted.
+        try:
+            keep_awake.disarm()
+        except BaseException as secondary:
+            retain_finalization_failure("keep-awake disarm", secondary)
     if caught is None and not result["termination_verified"]:
         caught = PodStillRunning(f"POD STILL RUNNING {result['pod_id'] or 'UNKNOWN'}")
     if caught:
@@ -4595,6 +5638,60 @@ def command_probe(_args: argparse.Namespace) -> int:
         session.close()
 
 
+def command_reconcile(args: argparse.Namespace) -> int:
+    """Read-only: compare our pod-create ledger rows with RunPod's own billing per pod."""
+    try:
+        datetime.strptime(args.since, "%Y-%m-%d")
+    except ValueError as exc:
+        raise HarnessError("--since must be YYYY-MM-DD") from exc
+    totals = ledger_pod_totals(configured_ledger_dir(args.ledger_dir))
+    pod_ids = args.pod_id or sorted(
+        pod_id for pod_id, entry in totals.items() if entry["first_day"] >= args.since
+    )
+    if not pod_ids:
+        raise HarnessError("no pod-create ledger rows to reconcile")
+    try:
+        session, redactor = build_authenticated_session()
+    except KeyError as exc:
+        raise HarnessError("RUNPOD_API_KEY is required for live commands") from exc
+    set_active_redactor(redactor)
+    try:
+        api = RunPodAPI(session)
+        end = utc_now().strftime("%Y-%m-%dT%H:%M:%SZ")
+        failures = 0
+        print("pod_id\tledger_usd\trunpod_usd\trunpod_billed_s\tdiff_usd\tstatus")
+        for pod_id in pod_ids:
+            entry = totals.get(pod_id)
+            if entry is None:
+                failures += 1
+                print(redactor.redact(f"{pod_id}\t-\t-\t-\t-\tNO-LEDGER-ROW"))
+                continue
+            start_day = datetime.strptime(entry["first_day"], "%Y-%m-%d") - timedelta(days=1)
+            records = [
+                record for record in api.pod_billing(
+                    pod_id, start_day.strftime("%Y-%m-%dT00:00:00Z"), end,
+                )
+                if record.get("podId") in (None, pod_id)
+            ]
+            ledger_usd = entry["ledger_usd"]
+            if not records:
+                failures += 1
+                print(redactor.redact(
+                    f"{pod_id}\t{ledger_usd:.4f}\t-\t-\t-\tNO-PROVIDER-RECORD"))
+                continue
+            runpod_usd = sum(float(record.get("amount") or 0.0) for record in records)
+            billed_s = sum(float(record.get("timeBilledMs") or 0.0) for record in records) / 1000.0
+            diff = ledger_usd - runpod_usd
+            match = abs(diff) <= max(RECONCILE_TOLERANCE_USD, 0.02 * runpod_usd)
+            failures += 0 if match else 1
+            print(redactor.redact(
+                f"{pod_id}\t{ledger_usd:.4f}\t{runpod_usd:.4f}\t{billed_s:.0f}\t{diff:+.4f}\t"
+                f"{'MATCH' if match else 'MISMATCH'}"))
+        return 0 if failures == 0 else 1
+    finally:
+        session.close()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -4614,7 +5711,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run.add_argument(
         "--arc-cap-usd", type=float,
-        help="whole-arc spending cap (fallback: KB_ARC_CAP_USD, then 50.0)",
+        help=f"whole-arc spending cap (fallback: KB_ARC_CAP_USD, then {DEFAULT_ARC_CAP_USD})",
     )
     run.add_argument(
         "--arc-ledger-glob", default=DEFAULT_ARC_LEDGER_GLOB,
@@ -4639,7 +5736,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     status.add_argument(
         "--arc-cap-usd", type=float,
-        help="whole-arc spending cap (fallback: KB_ARC_CAP_USD, then 50.0)",
+        help=f"whole-arc spending cap (fallback: KB_ARC_CAP_USD, then {DEFAULT_ARC_CAP_USD})",
     )
     status.add_argument(
         "--forget-bad-host", default=None,
@@ -4658,6 +5755,19 @@ def build_parser() -> argparse.ArgumentParser:
         "probe", help="read-only GET /pods response-shape probe",
     )
     probe.set_defaults(func=command_probe)
+    reconcile = sub.add_parser(
+        "reconcile", help="read-only: compare ledger pod-create rows with RunPod billing",
+    )
+    reconcile.add_argument(
+        "--ledger-dir", type=Path,
+        help="cost ledger root (fallback: KB_LEDGER_DIR, ops worktree, then repo ledger)",
+    )
+    reconcile.add_argument("--pod-id", action="append", default=None)
+    reconcile.add_argument(
+        "--since", default=ARC_START_DAY,
+        help="without --pod-id: every pod whose first ledger day is on/after this day",
+    )
+    reconcile.set_defaults(func=command_reconcile)
     return parser
 
 

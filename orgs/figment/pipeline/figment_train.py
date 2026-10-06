@@ -10,6 +10,7 @@ import argparse
 import csv
 import glob
 import html
+import hashlib
 import importlib.util
 import json
 import math
@@ -37,8 +38,15 @@ PINS_PATH = TRAIN_DIR / "tensor-pins.yaml"
 PROMPTS_PATH = EXPAND_DIR / "templates" / "tensor-dataset-prompts.yaml"
 WORKFLOW_PATH = EXPAND_DIR / "workflows" / "tensor_dataset_v2_api.json"
 FULLBODY_WORKFLOW_PATH = EXPAND_DIR / "workflows" / "tensor_dataset_fullbody_api.json"
+# P2 (MANDATE.md stage 2): klein 3-ref generation dataset source -- the bake-off m1
+# winner's own verified graph (ReferenceLatent x3, CFGGuider cfg 4, Flux2Scheduler 50
+# steps, 1024x1280), reused as-is (see TENSOR-TRAINING.md's P2 section).
+KLEIN_MULTIREF_WORKFLOW_PATH = TRAIN_DIR / "workflows" / "klein4b_multiref_api.json"
+BUILD_EXPANSION_SET_MODULE = EXPAND_DIR / "build_expansion_set.py"
 ANCHOR_PROMPTS_PATH = EXPAND_DIR / "templates" / "anchor-prompts.yaml"
 ANCHOR_WORKFLOW_PATH = EXPAND_DIR / "workflows" / "zimage_passport_api.json"
+TENSOR_PASSPORT_WORKFLOW_PATH = EXPAND_DIR / "workflows" / "tensor_passport_m03_api.json"
+TENSOR_PARITY_MODULE = HERE / "tensor_parity.py"
 GEN_PROMPTS_PATH = EXPAND_DIR / "templates" / "gen-prompts.yaml"
 GEN_WORKFLOW_PATH = TRAIN_DIR / "workflows" / "krea2_gen_api.json"
 DETAIL_WORKFLOW_PATH = TRAIN_DIR / "workflows" / "krea2_detail_only_api.json"
@@ -80,17 +88,16 @@ VIDEO_FRAME_SAMPLE_EVERY = 8
 # Compatibility export for older callers. New plans resolve through the pod harness's
 # configured_ledger_dir() so they cannot silently bind this worktree-local fallback.
 LEDGER_DIR = ROOT / "ledgers" / "cost"
-# Operator approval 2026-09-15 (Daniel): +$20 for the passport-set rebuild + 3000-step
-# train; arc cap 50 -> 60.
-ARC_CAP_USD = "60.00"
 ARC_LEDGER_GLOB = "figment-*.tsv"
-STAGES = ("anchor", "dataset", "smoke", "train", "tester", "gen", "detail", "video")
+CLEAN_STAGES = ("anchor", "dataset", "smoke", "train", "tester", "gen", "detail", "video")
+TENSOR_STAGES = ("anchor", "dataset", "smoke", "train", "tester", "gen", "edit", "video")
+STAGES = (*CLEAN_STAGES[:-1], "edit", "video")
 # Track-2 Task D2 (review H3): the one, single source of truth for "which stages have a
 # grading board" -- `build_grade`, `apply_rulings`, and `command_gate` each used to carry
 # their own local tuple, so widening one and not the others silently reopened the exact
 # gap H3 first closed for "anchor". "gen"/"detail"/"video" are gradeable; "smoke"/"train"
 # never are (no per-cell operator ruling makes sense for either).
-GRADEABLE_STAGES = ("anchor", "dataset", "tester", "gen", "detail", "video")
+GRADEABLE_STAGES = ("anchor", "dataset", "tester", "gen", "detail", "edit", "video")
 # m5/F6a: `pipeline --from-stage` may name any stage the driver actually runs itself,
 # which since F6a includes "video" -- `command_pipeline`'s own loop plans and runs it
 # exactly like every other stage. Naming `--from-stage video` still never jumps
@@ -121,23 +128,23 @@ PIN_ENFORCEMENT_NOTE = (
     "ref, so these pins are RECORDED, NOT ENFORCED. Tightening this means changing "
     "runpod_run.py, not this file."
 )
-# Which `pins.pins` profile(s) each STAGES entry consumes -- the anchor stage alone spans
-# two profiles (passport + edit arms); "smoke" reuses the "train" profile exactly as
-# `_train_manifest` does. Drives the `plan` preflight's pin verification (HIGH-1 / LOW-15):
-# only the profiles an actual `--stage` selection will use are HEAD-checked.
-STAGE_PIN_PROFILES = {
-    "anchor": ("anchor", "anchor_edit"),
-    "dataset": ("dataset",),
-    "smoke": ("train",),
-    "train": ("train",),
-    "tester": ("tester",),
-    "gen": ("gen",),
-    "detail": ("detail",),
-    # "video" is deliberately absent: its pins live in
-    # video/wan22_ti2v_5b.model-pins.json, which verify_pins.py does not cover today
-    # (AUDIT-2026-09-15.md E5) -- unchanged by F6, which is scoped to the stage entry,
-    # not a new pin-verification path.
-}
+def _stage_pin_groups(pins: dict[str, Any], training: dict[str, Any], stage: str) -> list[str]:
+    """The `pins.pins` groups `stage` consumes under the persona's recipe profile
+    (`tensor-pins.yaml` `profiles`, spec 2026-09-29 §6). A stage the profile does not map
+    is not built for that profile yet: refused, never served by another profile's groups.
+    `detail`'s legacy `--detail-images` side mode and `style_loras` are added by the
+    callers exactly as before."""
+    profile = training["recipe_profile"]
+    try:
+        stages = pins["profiles"][profile]
+    except (KeyError, TypeError) as exc:
+        raise FigmentTrainError(f"tensor-pins.yaml has no recipe profile {profile!r}") from exc
+    if stage not in stages:
+        raise FigmentTrainError(
+            f"stage {stage!r} is not built for recipe profile {profile!r} yet "
+            "(docs/superpowers/specs/2026-09-29-figment-tensor-parity-design.md §10)"
+        )
+    return list(stages[stage])
 SHARD_NOTES = (
     "face-row and half-body-row cells (framing: half), part 1 of 3",
     "face-row and half-body-row cells (framing: half), part 2 of 3",
@@ -202,12 +209,33 @@ def _persona_module():
     return _load_module("_figment_train_persona", PERSONA_MODULE)
 
 
+def _build_expansion_set_module():
+    """P2: the one, already-reviewed home for `_rebind_workflow` (nodes 6/7/8 ->
+    persona.identity.references) -- klein-multiref reuses it exactly rather than
+    writing a second rebind implementation."""
+    return _load_module("_figment_train_build_expansion_set", BUILD_EXPANSION_SET_MODULE)
+
+
 def _pod_runner_module():
     return _load_module("_figment_train_pod_runpod_run", POD_RUNNER)
 
 
+def _arc_cap_usd() -> str:
+    """The one arc cap (pod/runpod_run.py DEFAULT_ARC_CAP_USD, or KB_ARC_CAP_USD),
+    frozen into each plan as a string the same way ledger_dir is."""
+    pod = _pod_runner_module()
+    try:
+        return f"{pod.configured_arc_cap_usd():.2f}"
+    except pod.HarnessError as exc:
+        raise FigmentTrainError(str(exc)) from exc
+
+
 def _verify_pins_module():
     return _load_module("_figment_train_verify_pins", VERIFY_PINS_MODULE)
+
+
+def _tensor_parity_module():
+    return _load_module("_figment_train_tensor_parity", TENSOR_PARITY_MODULE)
 
 
 def _video_manifest_module():
@@ -262,9 +290,9 @@ def _default_pipeline_out(creator_id: str) -> Path:
 
 
 def _verify_pins_preflight(
-    pins: dict[str, Any], selected_stages: list[str], training: dict[str, Any] | None = None,
+    pins: dict[str, Any], selected_stages: list[str], training: dict[str, Any],
 ) -> None:
-    """Run `verify_pins.verify_pins` for every pin profile `selected_stages` will actually
+    """Run `verify_pins.verify_pins` for every pin group the recipe profile maps each selected stage to
     consume, before a single model is ever bootstrapped on a pod (review HIGH-1: all four
     `pins.anchor` sha256 digests were wrong and only failed at pod readiness, burning the
     full cost ceiling for zero images). Raises `FigmentTrainError` on any mismatch.
@@ -273,20 +301,28 @@ def _verify_pins_preflight(
     profile (`verify_pins._stage_models` already recognizes that shape, precedent
     `skin_loras`) whenever `training["style_lora"]` names one -- caller resolves that
     key (the plan-time `--style-lora` override, or a persona default, or -- for
-    `detail` -- the upstream gen plan's own choice) into `training` before calling."""
-    profiles: list[str] = []
+    `detail` -- the upstream gen plan's own choice) into `training` before calling.
+
+    P2: `dataset` swaps its `"dataset"` profile for `"dataset_multiref"` when
+    `training["dataset_source"] == "klein-multiref"` -- the two pin profiles carry
+    different models (klein-base-4b vs. the qwen-edit + klein-4b-edit chain), so
+    verifying the wrong one would silently pass while the plan itself pulls the other."""
+    groups: list[str] = []
     for stage in selected_stages:
-        for profile in STAGE_PIN_PROFILES.get(stage, ()):
-            if profile not in profiles:
-                profiles.append(profile)
-        if (stage in ("gen", "detail") and training and training.get("style_lora")
-                and "style_loras" not in profiles):
-            profiles.append("style_loras")
-    if not profiles:
+        for group in _stage_pin_groups(pins, training, stage):
+            if (stage == "dataset" and group == "dataset"
+                    and training.get("dataset_source") == "klein-multiref"):
+                group = "dataset_multiref"
+            if group not in groups:
+                groups.append(group)
+        if (stage in ("gen", "detail") and training.get("style_lora")
+                and "style_loras" not in groups):
+            groups.append("style_loras")
+    if not groups:
         return
     module = _verify_pins_module()
     try:
-        results = module.verify_pins(pins, stages=profiles)
+        results = module.verify_pins(pins, stages=groups)
     except module.VerifyPinsError as exc:
         raise FigmentTrainError(f"pin verification could not run: {exc}") from exc
     if results:
@@ -352,6 +388,75 @@ def _resolve_gen_style_lora(
     return {**training, "style_lora": effective_key, "style_lora_strength": float(strength)}
 
 
+def _resolve_gen_prompt_style(
+    training: dict[str, Any], *, gen_prompt_style: str | None,
+) -> dict[str, Any]:
+    """`plan --stage gen --gen-prompt-style <look-clause|trigger-scene>` override for
+    this one plan -- mirrors `_resolve_gen_style_lora`'s shape exactly: a no-op when the
+    flag is omitted (the persona's own `training.gen_prompt_style`, default
+    "look-clause" per `training_config.DEFAULT_TRAINING`, passes through unchanged so
+    `_generalized_gen_prompts` behaves exactly as before this key existed), never a
+    persona fork (the flag is transient, never written back to `training.yaml`).
+
+    2026-09-22 fix (live evidence, orgs/figment/runs/creator-001/live-20260916b): "gen
+    on the accepted step-2000 checkpoint scored 0/12 -- judge same_person 45-68 (floor
+    70.2) and face_px 475-695 (floor 600) -- while the SAME checkpoint's tester prompt
+    (no identity.look feature words, close framing) scored judge 88. "trigger-scene"
+    lets an operator plan a gen run with the tester's proven prompt shape instead of
+    the default look-clause one, without touching the persona or any gate threshold."""
+    if gen_prompt_style is None:
+        return training
+    allowed = _training_config_module().ALLOWED_GEN_PROMPT_STYLES
+    if gen_prompt_style not in allowed:
+        raise FigmentTrainError(
+            f"--gen-prompt-style must be one of {sorted(allowed)}"
+        )
+    return {**training, "gen_prompt_style": gen_prompt_style}
+
+
+def _resolve_gen_denoise(
+    training: dict[str, Any], *, flag_name: str, key: str, value: float | None,
+) -> dict[str, Any]:
+    """Shared body for `_resolve_gen_refine_denoise`/`_resolve_gen_detailer_denoise` --
+    both are a `plan --stage gen <flag> <0..1>` override for this one plan, mirroring
+    `_resolve_gen_prompt_style`'s shape exactly: a no-op when the flag is omitted (the
+    persona's own `training.<key>`, defaulting to today's shipped value per
+    `training_config.DEFAULT_TRAINING`, passes through unchanged so `_gen_workflow`
+    behaves exactly as before this key existed), never a persona fork (the flag is
+    transient, never written back to `training.yaml`)."""
+    if value is None:
+        return training
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not (0.0 <= value <= 1.0):
+        raise FigmentTrainError(f"{flag_name} must be a number between 0.0 and 1.0")
+    return {**training, key: float(value)}
+
+
+def _resolve_gen_refine_denoise(
+    training: dict[str, Any], *, gen_refine_denoise: float | None,
+) -> dict[str, Any]:
+    """2026-09-23 fix (live evidence, orgs/figment/runs/creator-001 tester-vs-gen A/B):
+    the gen stage's refine pass (`_gen_workflow` node 15, KSampler off the 4x-upscaled
+    base) runs at denoise 0.35 by default -- an operator override to 0.0 removes the
+    pass entirely (see `_gen_workflow`), letting a gen plan skip the post-processing
+    that the tester's own proven prompt shape never goes through."""
+    return _resolve_gen_denoise(
+        training, flag_name="--gen-refine-denoise", key="gen_refine_denoise",
+        value=gen_refine_denoise,
+    )
+
+
+def _resolve_gen_detailer_denoise(
+    training: dict[str, Any], *, gen_detailer_denoise: float | None,
+) -> dict[str, Any]:
+    """2026-09-23 fix: the gen stage's face-detail pass (`_gen_workflow` node 33,
+    DetailerForEach) runs at denoise 0.15 by default -- an operator override to 0.0
+    removes the detailer entirely (see `_gen_workflow`)."""
+    return _resolve_gen_denoise(
+        training, flag_name="--gen-detailer-denoise", key="gen_detailer_denoise",
+        value=gen_detailer_denoise,
+    )
+
+
 def _read_json(path: Path, *, reads=None) -> Any:
     try:
         if reads is not None:
@@ -391,6 +496,25 @@ def _sha256(path: Path, *, reads=None) -> str:
     if reads is not None:
         return reads.sha256(Path(path))
     return _gates_module().sha256_file(Path(path))
+
+
+def _git_head_sha() -> str:
+    """Best-effort `git rev-parse HEAD` in ROOT for a receipt's provenance field --
+    never raises; "unknown" when git isn't on PATH, the checkout isn't a git repo, or
+    the command otherwise fails. Used by `--retry-caption-after-fix`'s
+    `training.retry_after_fix.git_head` so the regenerated manifest records which
+    commit the operator believed fixed the underlying cause."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT,
+            capture_output=True, text=True, check=False,
+        )
+    except OSError:
+        return "unknown"
+    if result.returncode != 0:
+        return "unknown"
+    sha = result.stdout.strip()
+    return sha if sha else "unknown"
 
 
 def _relative(path: Path, root: Path, *, reads=None, walk_up: bool = False) -> str:
@@ -679,19 +803,19 @@ def _pod_base(pins: dict[str, Any], pod_class: str, stage: str) -> dict[str, Any
     return result
 
 
-def _load_inputs(creator_id: str, personas_root: Path) -> tuple[dict, dict, dict]:
+def _load_inputs(creator_id: str, personas_root: Path, *, reads=None) -> tuple[dict, dict, dict]:
     persona_path = Path(personas_root) / creator_id / "persona.yaml"
-    if not persona_path.is_file():
+    if not (reads.file(persona_path, required=False) if reads is not None else persona_path.is_file()):
         raise FigmentTrainError(f"persona not found: {persona_path}")
     try:
-        persona = _training_config_module().load_persona_with_training(persona_path)
+        persona = _training_config_module().load_persona_with_training(persona_path, reads=reads)
     except ValueError as exc:
         raise FigmentTrainError(str(exc)) from exc
     if persona.get("id") != creator_id:
         raise FigmentTrainError(
             f"persona.id {persona.get('id')!r} does not match requested creator {creator_id!r}"
         )
-    pins = _read_json(PINS_PATH)
+    pins = _read_json(PINS_PATH, reads=reads)
     training = persona["training"]
     try:
         pod_price = float(pins["pod_classes"][training["pod_class"]]["price_usd_per_hour"])
@@ -769,12 +893,16 @@ def _generalized_prompts(persona: dict) -> dict[str, Any]:
     return prompts
 
 
-def _compose_look_clause(look: dict[str, Any]) -> str:
+def _compose_look_clause(look: dict[str, Any], *, exclude: tuple[str, ...] = ()) -> str:
     """Join `identity.look`'s eight fields into one comma-separated descriptive clause,
-    with no trailing punctuation -- the caller decides how the clause continues."""
+    with no trailing punctuation -- the caller decides how the clause continues.
+    `exclude` drops named fields entirely (HIGH-1 review fix): a caller that is about to
+    append its OWN wardrobe/clothing clause passes `exclude=("clothing",)` so the composed
+    clause never carries a second, contradictory "wearing ..." from `look["clothing"]`."""
     return ", ".join(
         look[key] for key in
         ("age_stage", "hair", "eyes", "skin", "brows", "makeup", "build", "clothing")
+        if key not in exclude
     )
 
 
@@ -838,48 +966,97 @@ def _chunks(items: list[Any], count: int) -> list[list[Any]]:
     return chunks
 
 
-def _dataset_jobs(persona: dict, prompts: dict[str, Any]) -> list[dict[str, Any]]:
-    """Build every face + body job, each tagged with its own `framing` ("half"|"full",
-    Track-2 Task B1/D24-D25). Face rows are always plain strings (already close framings,
-    never routed to the fullbody face-repair pass); body rows are now `{"text",
-    "framing"}` objects. A "full" body job's `832`/`images` substitution points at the
-    fullbody workflow's face-repair composite output instead of the raw refine decode, so
-    the same job dict works unchanged whichever manifest (`_dataset_manifests`) it lands in.
+# P2 task 2 (2026-09-16): seed stride between two `dataset_replicates` copies of the
+# same prompt row -- distinct from every other hardcoded seed/base already in this file
+# (see the comment above `KLEIN_MULTIREF_SEED_BASE`). Applied to BOTH the job-level
+# outer seed and the seed-node substitution (previously a single constant shared by
+# every row in a branch) so replicate k>=2 renders a genuinely different image for the
+# same prompt row instead of a byte-identical duplicate.
+DATASET_REPLICATE_SEED_STRIDE = 7919
+
+
+def _dataset_jobs(
+    persona: dict, prompts: dict[str, Any], *, replicates: int = 1,
+) -> list[dict[str, Any]]:
+    """Build every face + body job, each tagged with its own `framing` ("close"|"half"|
+    "full", Track-2 Task B1/D24-D25; "close" added by the 2026-09-15 per-framing face
+    floor ruling -- see `identity_gate.identity_floor_gate`). Face rows are always plain
+    strings (already close framings, never routed to the fullbody face-repair pass) and
+    always tagged "close"; body rows are now `{"text", "framing"}` objects, or a plain
+    string defaulting to "half". A "full" body job's `832`/`images` substitution points
+    at the fullbody workflow's face-repair composite output instead of the raw refine
+    decode, so the same job dict works unchanged whichever manifest (`_dataset_manifests`)
+    it lands in. `framing` stays on the job dict all the way into the written manifest
+    (`_dataset_manifests` no longer pops it) so `_grading_images` can carry it onto the
+    gate row that grades this cell -- `pod/runpod_run.py`'s `apply_job` reads only the
+    specific keys it needs and ignores unknown ones, so this is not a schema change for
+    the pod harness.
+
+    P2 task 2 (2026-09-16): `replicates` (`training.dataset_replicates`, default 1)
+    emits `replicates` jobs per prompt row instead of one, to push dataset yield above
+    the identity gate's approval floor when a chunk of cells fail it. Replicate 1 is
+    BYTE-IDENTICAL to the pre-replicates job (same seed, same substitution seed, same
+    output_name) -- `replicates=1` (the default) reproduces every existing fixture and
+    manifest unchanged. Replicate k>=2 offsets both the job-level `seed` and the
+    seed-node substitution's value by `DATASET_REPLICATE_SEED_STRIDE * (k - 1)`, and its
+    `output_name` carries an `r{k:02d}` suffix so it never collides with another
+    replicate's rendered file.
     """
     short = _creator_output_code(persona["id"])
     jobs: list[dict[str, Any]] = []
     branches = (
-        ("f", "174", "791", "788", 241731167782064, prompts["face"]),
-        ("b", "676", "776", "778", 269789944143426, prompts["body"]),
+        ("f", "174", "791", "788", 241731167782064, prompts["face"], "close"),
+        ("b", "676", "776", "778", 269789944143426, prompts["body"], "half"),
     )
-    for label, prompt_node, image_node, seed_node, outer_seed, block in branches:
+    for label, prompt_node, image_node, seed_node, outer_seed, block, default_framing in branches:
         for index, row in enumerate(block["rows"], start=1):
             if isinstance(row, dict):
                 text, framing = row["text"], row["framing"]
             else:
-                text, framing = row, "half"
+                text, framing = row, default_framing
             output_node = FULLBODY_OUTPUT_NODE if framing == "full" else image_node
-            substitutions = [
-                {"node_id": "832", "field": "images", "value": [output_node, 0]},
-                {"node_id": seed_node, "field": "seed", "value": 1098688918602660},
-                {"node_id": prompt_node, "field": "prompt", "value": block["identity"] + text},
-            ]
-            if framing == "full":
-                # D25: the face-repair tail's own TextEncodeQwenImageEditPlus (node 952)
-                # needs its placeholder prompt substituted too -- a fixed instruction, not
-                # a per-row scene description (see fullbody_repair_prompt_note).
-                substitutions.append({
-                    "node_id": "952", "field": "prompt",
-                    "value": prompts["fullbody_repair_prompt"],
+            for replicate in range(1, replicates + 1):
+                offset = DATASET_REPLICATE_SEED_STRIDE * (replicate - 1)
+                substitutions = [
+                    {"node_id": "832", "field": "images", "value": [output_node, 0]},
+                    {"node_id": seed_node, "field": "seed", "value": 1098688918602660 + offset},
+                    {"node_id": prompt_node, "field": "prompt", "value": block["identity"] + text},
+                ]
+                if framing == "full":
+                    # D25: the face-repair tail's own TextEncodeQwenImageEditPlus (node 952)
+                    # needs its placeholder prompt substituted too -- a fixed instruction, not
+                    # a per-row scene description (see fullbody_repair_prompt_note).
+                    substitutions.append({
+                        "node_id": "952", "field": "prompt",
+                        "value": prompts["fullbody_repair_prompt"],
+                    })
+                suffix = "" if replicate == 1 else f"r{replicate:02d}"
+                jobs.append({
+                    "seed": outer_seed + offset,
+                    "output_name": f"{short}-tds-{label}{index:02d}{suffix}",
+                    "expected_images": 1,
+                    "framing": framing,
+                    "substitutions": substitutions,
                 })
-            jobs.append({
-                "seed": outer_seed,
-                "output_name": f"{short}-tds-{label}{index:02d}",
-                "expected_images": 1,
-                "framing": framing,
-                "substitutions": substitutions,
-            })
     return jobs
+
+
+HALF_CLOSE_SHARD_COUNT_BASE = 3
+FULLBODY_SHARD_COUNT_BASE = 1
+
+
+def _half_close_shard_note(index: int, total: int) -> str:
+    """Same wording `SHARD_NOTES` freezes for the `replicates=1` 3-shard case (kept as
+    the tuple below for that exact byte-for-byte case), generalized to any shard count
+    -- P2 task 2 (2026-09-16): `dataset_replicates > 1` scales the shard COUNT (never
+    the pinned per-shard `max_minutes`), so this needs to describe more than 3 parts."""
+    return f"face-row and half-body-row cells (framing: half), part {index + 1} of {total}"
+
+
+def _fullbody_shard_note(index: int, total: int) -> str:
+    if total == 1:
+        return FULLBODY_SHARD_NOTE
+    return f"{FULLBODY_SHARD_NOTE}, part {index + 1} of {total}"
 
 
 def _dataset_manifests(
@@ -888,13 +1065,29 @@ def _dataset_manifests(
     """Three shards of face + half-body-framed cells on the v2 workflow, plus one
     `fullbody` manifest of full-body-framed cells on the face-repair workflow (Track-2
     Task B1). `full` cells are never mixed into the v2 shards -- the repair tail only
-    exists in `tensor_dataset_fullbody_api.json`."""
-    jobs = _dataset_jobs(persona, prompts)
+    exists in `tensor_dataset_fullbody_api.json`.
+
+    P2 task 2 (2026-09-16): `training.dataset_replicates` (default 1) multiplies both
+    the job count AND the shard count by the same factor -- `HALF_CLOSE_SHARD_COUNT_BASE
+    * replicates` half/close shards, `FULLBODY_SHARD_COUNT_BASE * replicates` fullbody
+    manifests -- so each shard's job count (and therefore its
+    `minimum_runtime_minutes`) stays the same as the proven `replicates=1` shape instead
+    of growing past the pinned `max_minutes` floor in `tensor-pins.yaml`. Per the P2
+    task 2 brief: prefer more pods of the proven size over an unproven longer one, so
+    this never raises `max_minutes` itself -- it only ever changes how many manifests
+    the (now larger) job list is split across. `replicates=1` reproduces today's shard
+    counts (3, 1) and shard notes exactly."""
+    replicates = training.get("dataset_replicates", 1)
+    jobs = _dataset_jobs(persona, prompts, replicates=replicates)
     half_jobs: list[dict[str, Any]] = []
     full_jobs: list[dict[str, Any]] = []
     for job in jobs:
-        framing = job.pop("framing")
-        (full_jobs if framing == "full" else half_jobs).append(job)
+        # `framing` stays on the job dict (not popped) so it survives into the written
+        # manifest -- `_grading_images` reads it back off `manifest["jobs"]` to carry
+        # onto the gate row (2026-09-15 per-framing face floor ruling). This bucketing
+        # split is unaffected: only a "full" job routes to the fullbody manifest, "close"
+        # (face) and "half" (body) jobs both land in the v2 shards below.
+        (full_jobs if job["framing"] == "full" else half_jobs).append(job)
     references = [Path(value).name for value in persona["identity"]["references"]]
     upload = {
         "files": [f"_uploads/{persona['id']}/{name}" for name in references],
@@ -903,10 +1096,11 @@ def _dataset_manifests(
         "overwrite": True,
     }
     manifests: list[dict[str, Any]] = []
-    for index, shard_jobs in enumerate(_chunks(half_jobs, 3)):
+    half_close_shard_count = HALF_CLOSE_SHARD_COUNT_BASE * replicates
+    for index, shard_jobs in enumerate(_chunks(half_jobs, half_close_shard_count)):
         manifests.append({
             "_replicates": REPLICATION_NOTE,
-            "_shard": SHARD_NOTES[index],
+            "_shard": _half_close_shard_note(index, half_close_shard_count),
             "_pin_enforcement": PIN_ENFORCEMENT_NOTE,
             **_pod_base(pins, training["pod_class"], "dataset"),
             "models": deepcopy(pins["pins"]["dataset"]["models"]),
@@ -916,24 +1110,366 @@ def _dataset_manifests(
             "uploads": [dict(upload)],
             "jobs": shard_jobs,
         })
-    manifests.append({
-        "_replicates": REPLICATION_NOTE,
-        "_shard": FULLBODY_SHARD_NOTE,
-        "_pin_enforcement": PIN_ENFORCEMENT_NOTE,
-        **_pod_base(pins, training["pod_class"], "dataset_fullbody"),
-        # Review-precedent D23 (anchor_edit): the fullbody manifest reuses the dataset
-        # profile's own models/custom_nodes verbatim -- the repair tail (FaceBoundingBox,
-        # ImageResizeKJv2, core KSampler/VAEEncode/VAEDecode/ImageScale/
-        # ImageCompositeMasked/ConditioningZeroOut) needs no model or node this profile
-        # doesn't already carry.
-        "models": deepcopy(pins["pins"]["dataset"]["models"]),
-        "custom_nodes": deepcopy(pins["pins"]["dataset"]["custom_nodes"]),
-        "workflow": "../workflows/tensor_dataset_fullbody_api.json",
-        "seed_fields": ["seed"],
-        "uploads": [dict(upload)],
-        "jobs": full_jobs,
-    })
+    fullbody_shard_count = FULLBODY_SHARD_COUNT_BASE * replicates
+    for index, shard_jobs in enumerate(_chunks(full_jobs, fullbody_shard_count)):
+        manifests.append({
+            "_replicates": REPLICATION_NOTE,
+            "_shard": _fullbody_shard_note(index, fullbody_shard_count),
+            "_pin_enforcement": PIN_ENFORCEMENT_NOTE,
+            **_pod_base(pins, training["pod_class"], "dataset_fullbody"),
+            # Review-precedent D23 (anchor_edit): the fullbody manifest reuses the dataset
+            # profile's own models/custom_nodes verbatim -- the repair tail (FaceBoundingBox,
+            # ImageResizeKJv2, core KSampler/VAEEncode/VAEDecode/ImageScale/
+            # ImageCompositeMasked/ConditioningZeroOut) needs no model or node this profile
+            # doesn't already carry.
+            "models": deepcopy(pins["pins"]["dataset"]["models"]),
+            "custom_nodes": deepcopy(pins["pins"]["dataset"]["custom_nodes"]),
+            "workflow": "../workflows/tensor_dataset_fullbody_api.json",
+            "seed_fields": ["seed"],
+            "uploads": [dict(upload)],
+            "jobs": shard_jobs,
+        })
     return manifests
+
+
+# P2 (MANDATE.md stage 2): klein 3-ref generation dataset source. Deterministic base
+# seed, distinct from every other hardcoded seed already in this file (anchor
+# 148+i, edit 1098688918602660/241731167782064/269789944143426, tester/gen 100001,
+# build_expansion_set.py's own SEED_BASE=520001, dataset-replicate stride 7919 below).
+KLEIN_MULTIREF_SEED_BASE = 610001
+# module 10's own fixed 15+15 cell counts (r15b-training.md).
+KLEIN_MULTIREF_FACE_CELL_COUNT = 15
+KLEIN_MULTIREF_BODY_CELL_COUNT = 15
+# HIGH-2 (adversarial review): the face shard's angle ALWAYS comes from angles[:3] --
+# persona.grammar's own angle order leads with front/three-quarter-l/three-quarter-r
+# before profile-l/near-back (module 10's own ordering) -- so a face cell can never be
+# a profile or near-back view, which MTCNN/FaceNet cannot gate (no frontal face to
+# measure). Body cells keep drawing their angle from the same first-3 slice.
+KLEIN_MULTIREF_FACE_ANGLES = 3
+KLEIN_MULTIREF_BODY_ANGLES = 3
+
+
+def _klein_multiref_phrase(table: dict[str, str], token: str, *, kind: str) -> str:
+    """LOW (adversarial review): an unknown persona.grammar token must fail closed with
+    FigmentTrainError, never a bare KeyError."""
+    try:
+        return table[token]
+    except KeyError as exc:
+        raise FigmentTrainError(
+            f"unknown klein-multiref grammar {kind} token: {token!r}"
+        ) from exc
+
+
+def _klein_multiref_cells(persona: dict) -> tuple[list[dict], list[dict]]:
+    """Derive the 15 face-angle + 15 body-pose cells for the klein-multiref dataset
+    source -- module 10's own fixed 15+15 cell counts (r15b-training.md), composed
+    from `persona["grammar"]` (the SAME grammar `build_expansion_set.generate_allocation`
+    already reads for expansion-02/03) instead of a second hand-authored 15-row prompt
+    template. Deterministic: the same persona always yields the same 30 cells, in a
+    fixed face-then-body order, each carrying a base-seed-plus-ordinal seed (module 10
+    fixes seed per cell)."""
+    grammar = persona["grammar"]
+    angles = list(grammar["angles"])
+    lights = list(grammar["lights"])
+    wardrobe_families = list(grammar["wardrobe_families"])
+    if len(angles) < KLEIN_MULTIREF_BODY_ANGLES or not lights:
+        raise FigmentTrainError(
+            "persona.grammar needs at least "
+            f"{KLEIN_MULTIREF_BODY_ANGLES} angles and one light for the klein-multiref "
+            "dataset source"
+        )
+    # HIGH-2: never angles[3:] (profile-l/near-back) for the face shard.
+    face_angles = angles[:KLEIN_MULTIREF_FACE_ANGLES]
+    body_angles = angles[:KLEIN_MULTIREF_BODY_ANGLES]
+
+    ordinal = 0
+    face_cells: list[dict[str, Any]] = []
+    for angle in face_angles:
+        for light in lights:
+            ordinal += 1
+            face_cells.append({
+                "cell_id": f"mr-f{len(face_cells) + 1:02d}", "ordinal": ordinal,
+                "angle": angle, "distance": "close", "light": light,
+                "seed": KLEIN_MULTIREF_SEED_BASE + ordinal,
+            })
+    if len(face_cells) > KLEIN_MULTIREF_FACE_CELL_COUNT:
+        raise FigmentTrainError(
+            "persona.grammar's angles[:3] x lights grid already produces more than "
+            f"{KLEIN_MULTIREF_FACE_CELL_COUNT} face cells; trim angles or lights"
+        )
+    # HIGH-2: fewer than 5 lights (the shipped grammar has 4) means angles[:3] x lights
+    # falls short of 15 -- pad with more front-angle cells, cycling back through the
+    # SAME lights, rather than reaching into the forbidden profile-l/near-back angles.
+    # MEDIUM-3 (opus review, 2026-09-15): cycling the SAME lights back through the SAME
+    # front angle used to make these pad cells byte-identical prompts to f01-f03 (angle,
+    # light, AND crop clause all repeated) -- useless training signal, wasted spend. Tag
+    # each pad cell `crop: "tight"` so `_klein_multiref_face_prompt` swaps in a tighter
+    # head-and-shoulders crop clause instead of the wide chest-up one, keeping the pad
+    # cells gateable (still `distance: "close"`, so `identity_floor_gate` applies the
+    # same 600px close floor) while making every one of the 15 face prompts unique.
+    while len(face_cells) < KLEIN_MULTIREF_FACE_CELL_COUNT:
+        light = lights[len(face_cells) % len(lights)]
+        ordinal += 1
+        face_cells.append({
+            "cell_id": f"mr-f{len(face_cells) + 1:02d}", "ordinal": ordinal,
+            "angle": face_angles[0], "distance": "close", "light": light,
+            "seed": KLEIN_MULTIREF_SEED_BASE + ordinal, "crop": "tight",
+        })
+
+    body_cells: list[dict[str, Any]] = []
+    for angle in body_angles:
+        for wardrobe_family in wardrobe_families:
+            ordinal += 1
+            body_cells.append({
+                "cell_id": f"mr-b{len(body_cells) + 1:02d}", "ordinal": ordinal,
+                "angle": angle, "distance": "half", "wardrobe_family": wardrobe_family,
+                "seed": KLEIN_MULTIREF_SEED_BASE + ordinal,
+            })
+    if len(face_cells) != KLEIN_MULTIREF_FACE_CELL_COUNT or len(body_cells) != KLEIN_MULTIREF_BODY_CELL_COUNT:
+        raise FigmentTrainError(
+            f"expected {KLEIN_MULTIREF_FACE_CELL_COUNT} face + {KLEIN_MULTIREF_BODY_CELL_COUNT} "
+            f"body klein-multiref cells, got {len(face_cells)} + {len(body_cells)}"
+        )
+    return face_cells, body_cells
+
+
+# LOW (opus review, 2026-09-15): `build_expansion_set.LIGHT_PHRASES["flat-white"]`
+# names a specific setting ("daylight through a bedroom window") that contradicts the
+# klein-multiref face composer's own fixed "plain white wall background" clause -- a
+# bedroom is not a bare white-walled studio. Fixed HERE, in the composer that owns the
+# background clause, never by editing the shared table other callers (expansion-02's
+# `build_prompt`) also read.
+_KLEIN_MULTIREF_LIGHT_TOKENS_NAMING_A_SETTING = frozenset({"flat-white"})
+
+
+# 2026-09-16 fix (live evidence, orgs/figment/runs/creator-001/live-20260915b): the
+# prior shape prepended `_compose_look_clause` (a long textual hair/eyes/brows/makeup/
+# skin description) ahead of the reference images, and the text encoder followed that
+# description over the three `ReferenceLatent` inputs -- identity_own vs g01 landed
+# median ~0.61 (range 0.16-0.85) against the 0.7907 floor, gating 0/30. The prior
+# proven graph run (expansion-03, n=35) never described the face in text at all -- it
+# opened with a minimal reference-lock sentence ("Keep her identity, face shape, and
+# features exactly as shown in the reference images; do not alter, blend, or invent
+# any facial feature.") and scored identity_own median 0.842 (0.678-0.91). These two
+# composers now follow that proven shape exactly: NO `_compose_look_clause` call, NO
+# `identity.look` value (hair/eyes/brows/makeup/skin text) anywhere in the prompt --
+# the adult-framing sentence (shared verbatim with `build_expansion_set.build_prompt`
+# via `ADULT_FRAMING_SENTENCE`, so the two dataset sources never drift), then the
+# reference-lock clause FIRST (before any angle/crop/wardrobe phrase -- the earlier
+# shape put it last, after everything else the encoder could latch onto), then angle +
+# distance/crop, then (body only) the one "wearing {wardrobe}" clause, then light (body
+# cells carry no light field) + plain background, then a phone-camera/no-retouch
+# clause. NOT yet live-validated -- see TENSOR-TRAINING.md's P2 "Prompt template shape"
+# row.
+_KLEIN_MULTIREF_REFERENCE_LOCK_CLAUSE = (
+    "The same woman as the reference images, identical face; keep her identity, "
+    "face shape, and features exactly as shown; do not alter, blend, or invent any "
+    "facial feature."
+)
+_KLEIN_MULTIREF_PHONE_CAMERA_CLAUSE = (
+    "Shot on a phone camera, straight out of the camera with no edits afterward, "
+    "fine vellus hair and natural micro-texture, no retouching."
+)
+
+
+def _klein_multiref_face_prompt(cell: dict[str, Any]) -> str:
+    """LOW (adversarial review): angle/distance phrases come from `build_expansion_set`'s
+    own `ANGLE_PHRASES`/`DISTANCE_PHRASES` (the same tables expansion-02's `build_prompt`
+    reads) rather than a second, near-duplicate hand-authored table drifting from it.
+
+    MEDIUM-3 (opus review, 2026-09-15): a `crop: "tight"` cell (the pad cells
+    `_klein_multiref_cells` adds when the grammar has fewer than 5 lights) swaps the
+    wide "framed close from the chest up" clause for a tighter head-and-shoulders one
+    -- same `distance: "close"` bucket for gating purposes, but a visibly different
+    prompt from the angle/light combinations it would otherwise duplicate.
+
+    LOW (opus review, 2026-09-15): when the cell's light phrase names its own setting
+    (`_KLEIN_MULTIREF_LIGHT_TOKENS_NAMING_A_SETTING`), the background clause drops
+    "white" -- a bedroom's own wall, not a studio backdrop -- so the prompt never
+    asserts two different rooms in one breath.
+
+    2026-09-16 fix: no `clause` parameter -- this prompt never describes the face in
+    text (see the module-level comment above `_KLEIN_MULTIREF_REFERENCE_LOCK_CLAUSE`).
+    """
+    expansion = _build_expansion_set_module()
+    angle = _klein_multiref_phrase(expansion.ANGLE_PHRASES, cell["angle"], kind="angle")
+    light = _klein_multiref_phrase(expansion.LIGHT_PHRASES, cell["light"], kind="light")
+    crop_clause = (
+        "framed tight head-and-shoulders portrait"
+        if cell.get("crop") == "tight"
+        else expansion.DISTANCE_PHRASES["close"]
+    )
+    background_clause = (
+        "plain undecorated wall behind her"
+        if cell["light"] in _KLEIN_MULTIREF_LIGHT_TOKENS_NAMING_A_SETTING
+        else "plain white wall background"
+    )
+    return (
+        f"{expansion.ADULT_FRAMING_SENTENCE} {_KLEIN_MULTIREF_REFERENCE_LOCK_CLAUSE} "
+        f"She is {angle}, {crop_clause}. {light}, {background_clause}. "
+        f"{_KLEIN_MULTIREF_PHONE_CAMERA_CLAUSE}"
+    )
+
+
+def _klein_multiref_body_prompt(cell: dict[str, Any]) -> str:
+    """HIGH-1 (adversarial review): `identity.look.clothing` is never composed into
+    this prompt at all (2026-09-16 fix dropped `_compose_look_clause` entirely), so
+    appending "wearing {wardrobe}" below is this cell's only "wearing" clause.
+
+    2026-09-16 fix: no `clause` parameter -- see the module-level comment above
+    `_KLEIN_MULTIREF_REFERENCE_LOCK_CLAUSE`."""
+    expansion = _build_expansion_set_module()
+    angle = _klein_multiref_phrase(expansion.ANGLE_PHRASES, cell["angle"], kind="angle")
+    wardrobe = _klein_multiref_phrase(
+        expansion.WARDROBE_PHRASES, cell["wardrobe_family"], kind="wardrobe_family",
+    )
+    distance = expansion.DISTANCE_PHRASES["half"]
+    return (
+        f"{expansion.ADULT_FRAMING_SENTENCE} {_KLEIN_MULTIREF_REFERENCE_LOCK_CLAUSE} "
+        f"She is {angle}, {distance}, wearing {wardrobe}. Plain white wall "
+        f"background. {_KLEIN_MULTIREF_PHONE_CAMERA_CLAUSE}"
+    )
+
+
+# UPSCALE TAIL (ruling: adopt): `klein4b_multiref_api.json` renders natively at
+# 1024x1280 (`EmptyFlux2LatentImage`), but the dataset identity gate's `face_px_min:
+# 600` is measured on the SAVED image -- close-framed cells at 1024x1280 land
+# 535-885px, about half failing the floor (TENSOR-TRAINING.md P2 "Resolution/gate"
+# row). New node ids, one past the committed graph's own 1-28.
+_KLEIN_MULTIREF_UPSCALE_LOADER_NODE = "29"
+_KLEIN_MULTIREF_UPSCALE_MODEL_NODE = "30"
+_KLEIN_MULTIREF_UPSCALE_SCALE_NODE = "31"
+
+
+def _klein_multiref_dataset_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
+    """Graft an upscale tail (`UpscaleModelLoader` + `ImageUpscaleWithModel` with the
+    pinned `4xNomosWebPhoto_RealPLKSR`, then `ImageScaleBy 0.5`, net 2x) between the
+    rebound graph's `VAEDecode` (node 27) and `SaveImage` (node 28), so `SaveImage`
+    receives 2048x2560. The committed `klein4b_multiref_api.json` FILE carries no such
+    nodes at all -- this function grafts them onto the in-memory graph at build time,
+    every time a dataset plan is built, never onto the checked-in file. This mirrors
+    `tensor_dataset_v2_api.json`'s own resolution-boost tail in spirit (same upscale
+    model, same 0.5 scale-back), though that graph's tail sits ahead of its refine
+    `KSampler` (denoise 0.23), feeding it a higher-resolution latent, rather than
+    directly before its `SaveImage` -- the klein-multiref graph has no such refine
+    pass, so the grafted tail here goes straight to `SaveImage`. Only the
+    dataset-stage code path grafts this -- the committed `klein4b_multiref_api.json`
+    graph stays exactly as bake-off m1 verified it for
+    `build_expansion_set.build_manifests`'s own (unrelated) expansion-02 consumer of
+    the same file."""
+    workflow = deepcopy(workflow)
+    decode, save = workflow.get("27"), workflow.get("28")
+    if not isinstance(decode, dict) or decode.get("class_type") != "VAEDecode":
+        raise FigmentTrainError(
+            "klein-multiref workflow node '27' is not a VAEDecode node -- refusing to "
+            "graft an upscale tail onto an unverified graph"
+        )
+    if not isinstance(save, dict) or save.get("class_type") != "SaveImage":
+        raise FigmentTrainError(
+            "klein-multiref workflow node '28' is not a SaveImage node -- refusing to "
+            "graft an upscale tail onto an unverified graph"
+        )
+    new_ids = (
+        _KLEIN_MULTIREF_UPSCALE_LOADER_NODE, _KLEIN_MULTIREF_UPSCALE_MODEL_NODE,
+        _KLEIN_MULTIREF_UPSCALE_SCALE_NODE,
+    )
+    collisions = [node_id for node_id in new_ids if node_id in workflow]
+    if collisions:
+        raise FigmentTrainError(
+            f"klein-multiref workflow already has node id(s) {collisions} -- cannot "
+            "graft the upscale tail without an id collision"
+        )
+    workflow[_KLEIN_MULTIREF_UPSCALE_LOADER_NODE] = {
+        "class_type": "UpscaleModelLoader",
+        "inputs": {"model_name": "4xNomosWebPhoto_RealPLKSR.safetensors"},
+    }
+    workflow[_KLEIN_MULTIREF_UPSCALE_MODEL_NODE] = {
+        "class_type": "ImageUpscaleWithModel",
+        "inputs": {
+            "upscale_model": [_KLEIN_MULTIREF_UPSCALE_LOADER_NODE, 0],
+            "image": ["27", 0],
+        },
+    }
+    workflow[_KLEIN_MULTIREF_UPSCALE_SCALE_NODE] = {
+        "class_type": "ImageScaleBy",
+        "inputs": {
+            "image": [_KLEIN_MULTIREF_UPSCALE_MODEL_NODE, 0],
+            "upscale_method": "lanczos", "scale_by": 0.5,
+        },
+    }
+    workflow["28"]["inputs"]["images"] = [_KLEIN_MULTIREF_UPSCALE_SCALE_NODE, 0]
+    return workflow
+
+
+def _dataset_manifests_klein_multiref(
+    persona: dict, training: dict, pins: dict,
+) -> list[dict[str, Any]]:
+    """Klein 3-ref generation dataset source (MANDATE.md stage 2 / P2): FLUX.2 klein 4B
+    Base, `ReferenceLatent` x3 off `persona.identity.references` -- the bake-off m1
+    winner (facenet 0.87-0.93, `pipeline/README.md` "Live-proven runs" 09-07) --
+    producing 30 clothed cells (15 face-angle + 15 body-pose) at fixed deterministic
+    seeds. Reuses `build_expansion_set._rebind_workflow` (never a second rebind) and
+    the SAME dataset gate path every other dataset source feeds (`_grading_images`
+    iterates `plan["stages"]["dataset"]["runs"]` generically). Two manifests (face,
+    body shards) so each pod's readiness overhead (klein-base-4b + qwen_3_4b download)
+    is paid once per shard, not once per cell -- see TENSOR-TRAINING.md's P2 section
+    for the per-cell time estimate, its source, and the resulting dataset ceiling."""
+    expansion = _build_expansion_set_module()
+    try:
+        workflow = expansion._rebind_workflow(KLEIN_MULTIREF_WORKFLOW_PATH, persona)
+    except expansion.ExpansionBuildError as exc:
+        raise FigmentTrainError(f"cannot rebind klein-multiref workflow: {exc}") from exc
+    workflow = _klein_multiref_dataset_workflow(workflow)
+
+    face_cells, body_cells = _klein_multiref_cells(persona)
+    short = _creator_output_code(persona["id"])
+
+    def _job(cell: dict[str, Any], prompt: str) -> dict[str, Any]:
+        return {
+            "seed": cell["seed"],
+            "output_name": f"{short}-tds-{cell['cell_id']}",
+            "expected_images": 1,
+            # 2026-09-15 per-framing face floor ruling: `cell["distance"]` is already
+            # "close" for face cells / "half" for body cells (`_klein_multiref_cells`)
+            # -- reused as-is, never a second hand-authored framing label, so
+            # `_grading_images` -> `identity_floor_gate` picks the right face_px_min.
+            "framing": cell["distance"],
+            "substitutions": [{"node_id": "4", "field": "text", "value": prompt}],
+        }
+
+    references = [Path(value).name for value in persona["identity"]["references"]]
+    upload = {
+        "files": [f"_uploads/{persona['id']}/{name}" for name in references],
+        "subfolder": persona["id"],
+        "type": "input",
+        "overwrite": True,
+    }
+
+    def _shard(label: str, jobs: list[dict[str, Any]]) -> dict[str, Any]:
+        return {
+            "_replicates": (
+                "orgs/figment/research/10sorlabs-package/10_dataset_generator_v2/"
+                "10sorlabs_dataset_generator_v2.json (module 10's 15+15 cell counts); "
+                "conditioning graph is train/workflows/klein4b_multiref_api.json, the "
+                "bake-off m1 winner (r24/r25). See train/TENSOR-TRAINING.md's P2 section."
+            ),
+            "_shard": label,
+            "_pin_enforcement": PIN_ENFORCEMENT_NOTE,
+            **_pod_base(pins, training["pod_class"], "dataset_multiref"),
+            "models": deepcopy(pins["pins"]["dataset_multiref"]["models"]),
+            "custom_nodes": deepcopy(pins["pins"]["dataset_multiref"]["custom_nodes"]),
+            "workflow": deepcopy(workflow),
+            "seed_fields": ["noise_seed"],
+            "uploads": [deepcopy(upload)],
+            "jobs": jobs,
+        }
+
+    face_jobs = [_job(cell, _klein_multiref_face_prompt(cell)) for cell in face_cells]
+    body_jobs = [_job(cell, _klein_multiref_body_prompt(cell)) for cell in body_cells]
+    return [
+        _shard("15 face-angle cells (framing: close)", face_jobs),
+        _shard("15 body-pose cells (framing: half, clothed register)", body_jobs),
+    ]
 
 
 def _fullbody_dataset_workflow(dataset_workflow: dict[str, Any]) -> dict[str, Any]:
@@ -997,6 +1533,60 @@ def _anchor_manifests(
     return [passport, edit]
 
 
+TENSOR_PASSPORT_JOBS = 12
+
+
+def _passport_tensor_manifest(persona: dict, training: dict, pins: dict) -> dict[str, Any]:
+    """Module 03 on the tensor profile (spec 2026-09-29 §4.1): the copy-block passport
+    prompt with only its hair/eye slots filled from identity.look, seeds 148-159 (D19),
+    and the pickle hatch for the two Impact detector weights (spec §6)."""
+    groups = _stage_pin_groups(pins, training, "anchor")
+    if len(groups) != 1:
+        raise FigmentTrainError(f"tensor anchor must map to exactly one pin group, got {groups}")
+    group = groups[0]
+    parity = _tensor_parity_module()
+    look = persona["identity"]["look"]
+    try:
+        prompt = parity.render_passport_prompt(
+            parity.passport_prompt_template(), look["hair"], look["eyes"],
+        )
+    except parity.ParityError as exc:
+        raise FigmentTrainError(str(exc)) from exc
+    short = _creator_output_code(persona["id"])
+    return {
+        **_pod_base(pins, training["pod_class"], group),
+        "diagnostic_non_commercial": True,
+        "models": deepcopy(pins["pins"][group]["models"]),
+        "custom_nodes": deepcopy(pins["pins"][group]["custom_nodes"]),
+        "workflow": f"../workflows/{TENSOR_PASSPORT_WORKFLOW_PATH.name}",
+        "seed_fields": ["seed"],
+        "jobs": [{"seed": 148 + index, "output_name": f"{short}-passport-p{index + 1:02d}",
+                  "expected_images": 1,
+                  "substitutions": [{"node_id": "4", "field": "text", "value": prompt}]}
+                 for index in range(TENSOR_PASSPORT_JOBS)],
+    }
+
+
+def _check_passport_parity(manifest: dict[str, Any], persona: dict) -> None:
+    """Spec §9 preflight: the plan refuses a passport manifest that is not at parity."""
+    parity = _tensor_parity_module()
+    try:
+        problems = parity.check_passport(
+            _read_json(TENSOR_PASSPORT_WORKFLOW_PATH), manifest, persona["identity"]["look"],
+        )
+    except parity.ParityError as exc:
+        raise FigmentTrainError(f"tensor parity could not run: {exc}") from exc
+    if problems:
+        raise FigmentTrainError("tensor parity failed:\n" + "\n".join(problems))
+
+
+def _copy_passport_support_files(out: Path) -> dict[str, Any]:
+    """A pre-passport plan's only support file: the module-03 API workflow."""
+    target = out / "expand" / "workflows" / TENSOR_PASSPORT_WORKFLOW_PATH.name
+    _write_json(target, _read_json(TENSOR_PASSPORT_WORKFLOW_PATH))
+    return {"anchors": [], "passport_workflow": _relative(target, out)}
+
+
 def _training_runtime(trigger: str, caption_mode: str, steps: list[int], final: int) -> dict:
     return {
         "repository": "https://github.com/ostris/ai-toolkit.git",
@@ -1055,7 +1645,7 @@ def _train_manifest(
     persona: dict, training: dict, pins: dict, *, smoke: bool, dataset_dirname: str | None = None,
 ) -> dict[str, Any]:
     creator_id = persona["id"]
-    trigger = training["trigger"]
+    trigger = _artifact_name(training)
     if smoke:
         final = 100
         intermediates = [50]
@@ -1147,6 +1737,99 @@ def _train_manifest(
     return manifest
 
 
+def _tensor_approved_prompt(training: dict) -> str:
+    entry = training.get("tensor_tester_prompt") or {}
+    text = entry.get("text")
+    if (not isinstance(text, str) or not text.strip()
+            or entry.get("sha256") != hashlib.sha256(text.encode("utf-8")).hexdigest()
+            or not entry.get("decided_by") or not entry.get("decided_at")):
+        raise FigmentTrainError("tensor tester requires a hash-bound approved scene prompt")
+    return text
+
+
+def _tensor_body_input(persona: dict, training: dict) -> tuple[Path, str]:
+    entry = training.get("tensor_body") or {}
+    path = Path(entry.get("path", ""))
+    if not path.is_absolute():
+        path = Path(persona["_persona_path"]).parent / path
+    text = entry.get("description")
+    if (not path.is_file() or path.suffix.lower() not in (".png", ".jpg", ".jpeg")
+            or entry.get("sha256") != _sha256(path)
+            or not isinstance(text, str) or not text.strip()
+            or entry.get("description_sha256") != hashlib.sha256(text.encode("utf-8")).hexdigest()
+            or entry.get("faceless") is not True or entry.get("clothed") is not True
+            or not entry.get("decided_by") or not entry.get("decided_at")):
+        raise FigmentTrainError("tensor dataset requires a hash-bound approved faceless clothed body reference and description")
+    return path, text
+
+
+def _tensor_dataset_assets(persona: dict, training: dict, pins: dict) -> tuple[dict, dict]:
+    parity = _tensor_parity_module()
+    body, description = _tensor_body_input(persona, training)
+    passport = Path(persona["identity"]["references"][0])
+    if body.name.casefold() == passport.name.casefold():
+        raise FigmentTrainError("passport and body upload basenames must differ")
+    look = persona["identity"]["look"]
+    prompts = parity.dataset_prompt_blocks(look["hair"], look["eyes"], description)
+    workflow = _read_json(HERE / "expand/workflows/tensor_dataset_m10_api.json")
+    for node, path in (("836", passport), ("837", body)):
+        workflow[node]["inputs"]["image"] = f"{persona['id']}/{path.name}"
+    for node, block in (("800", "face"), ("780", "body")):
+        workflow[node]["inputs"]["text"] = prompts[block]["identity"]
+    return prompts, workflow
+
+
+def _tensor_dataset_manifest(persona: dict, training: dict, pins: dict, prompts: dict, workflow: dict) -> dict:
+    body, description = _tensor_body_input(persona, training)
+    passport = Path(persona["identity"]["references"][0])
+    jobs = _dataset_jobs(persona, prompts, replicates=1)
+    if len(jobs) != 30 or len({j["output_name"] for j in jobs}) != 30:
+        raise FigmentTrainError("tensor dataset must contain exactly 30 unique jobs")
+    for job in jobs:
+        face = job["substitutions"][0]["value"] == ["791", 0]
+        job["substitutions"].append({"node_id": "800" if face else "780", "field": "text",
+                                      "value": prompts["face" if face else "body"]["identity"]})
+    manifest = {**_pod_base(pins, training["pod_class"], "dataset"),
+        "models": deepcopy(pins["pins"]["dataset_tensor"]["models"]),
+        "custom_nodes": deepcopy(pins["pins"]["dataset_tensor"]["custom_nodes"]),
+        "workflow": "../workflows/tensor_dataset_m10_api.json", "seed_fields": ["seed"],
+        "uploads": [{"files": [f"_uploads/{persona['id']}/{p.name}" for p in (passport, body)],
+                     "subfolder": persona["id"], "type": "input", "overwrite": True}],
+        "jobs": jobs}
+    errors = _tensor_parity_module().check_dataset(workflow, manifest, persona["identity"]["look"], description)
+    if errors:
+        raise FigmentTrainError("tensor dataset parity failed: " + "; ".join(errors))
+    return manifest
+
+
+def _copy_tensor_support(out: Path, persona: dict, training: dict, selected: list[str], pins: dict) -> tuple[dict, dict | None, dict | None]:
+    assets = {"anchors": _copy_anchors(out, persona)}
+    assets["tensor_passport"] = _tensor_passport_binding(out, persona, assets["anchors"])
+    runs = out / "train/runs"
+    runs.mkdir(parents=True, exist_ok=True)
+    for source in (TRAIN_START_PATH, TESTER_START_PATH):
+        text = source.read_text(encoding="utf-8").replace("creator-001", persona["id"])
+        text = text.replace("creator001krea2", _artifact_name(training))
+        (runs / source.name).write_text(text, encoding="utf-8")
+    prompts = workflow = None
+    if "dataset" in selected:
+        prompts, workflow = _tensor_dataset_assets(persona, training, pins)
+        target = out / "expand/workflows/tensor_dataset_m10_api.json"
+        _write_json(target, workflow)
+        assets["dataset_workflow"] = _relative(target, out)
+        body, _ = _tensor_body_input(persona, training)
+        upload = out / "expand/runs/_uploads" / persona["id"] / body.name
+        upload.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(body, upload)
+        assets["tensor_body"] = _relative(upload, out)
+    return assets, prompts, workflow
+
+
+def _artifact_name(training: dict) -> str:
+    """Tensor's toolkit job name is the creator id, never a caption trigger."""
+    return training.get("artifact_name", training["trigger"])
+
+
 def _persona_trigger_clause(training: dict) -> str:
     """The `"<trigger> <noun>, "` prefix every tester/gen/detail-only prompt must open
     with (r24/r25 evidence: the train-first LoRA's own tester prompt carried NO trigger
@@ -1162,7 +1845,7 @@ def _persona_trigger_clause(training: dict) -> str:
     -- the one shared, dependency-free home also used by `build_training_set.py` and
     `select_training_cells.py`'s DOP-required captions -- so this function only adds the
     trailing punctuation a *prompt* (as opposed to a bare caption) needs."""
-    trigger = training["trigger"]
+    trigger = _artifact_name(training)
     noun = training.get("dop_class") or "woman"
     return _training_config_module().persona_trigger_clause(trigger, noun) + ", "
 
@@ -1176,7 +1859,7 @@ def _compose_triggered_prompt(training: dict, body: str) -> str:
     exists to invoke, so they compose from `persona.identity.look` via
     `_compose_look_clause` instead (`_generalized_anchor_prompts`, `_generalized_prompts`)
     -- a categorically different clause, not a fourth independent trigger composer."""
-    return _persona_trigger_clause(training) + body
+    return body if training.get("recipe_profile") == "tensor" else _persona_trigger_clause(training) + body
 
 
 def _tester_age_stage(persona: dict[str, Any]) -> str:
@@ -1208,6 +1891,8 @@ def _tester_age_stage(persona: dict[str, Any]) -> str:
 
 def _tester_prompt(persona: dict[str, Any], training: dict[str, Any]) -> str:
     """Build the fixed, clothed portrait prompt for a persona's checkpoint ladder."""
+    if training.get("recipe_profile") == "tensor":
+        return _tensor_approved_prompt(training)
     return _compose_triggered_prompt(training, (
         f"Close-up portrait photograph of {_tester_age_stage(persona)}. "
         "She is an adult woman, fully clothed in a plain fitted black crew-neck top, "
@@ -1271,7 +1956,13 @@ def _tester_base_workflow(prompt_text: str, filename_prefix: str) -> dict[str, A
 
 def _tester_workflow(persona: dict[str, Any], training: dict[str, Any]) -> dict[str, Any]:
     creator_id = persona["id"]
-    trigger = training["trigger"]
+    trigger = _artifact_name(training)
+    if training.get("recipe_profile") == "tensor":
+        workflow = _read_json(HERE / "train/workflows/tensor_tester_m11_api.json")
+        workflow["408"]["inputs"]["text"] = _tensor_approved_prompt(training)
+        workflow["411"]["inputs"]["lora_name"] = f"{trigger}.safetensors"
+        workflow["900"]["inputs"]["filename_prefix"] = f"{creator_id}-tensor-tester"
+        return workflow
     workflow = _tester_base_workflow(
         _tester_prompt(persona, training), f"{creator_id}-tensor-tester",
     )
@@ -1293,7 +1984,7 @@ def _tester_manifest(
     upload_glob: str | None = None,
 ) -> dict[str, Any]:
     creator_id = persona["id"]
-    trigger = training["trigger"]
+    trigger = _artifact_name(training)
     # Path-A train-first (r24 method 4): the tester's checkpoint upload glob must point
     # at the SAME `out/<dirname>/` the matching train manifest's harness run wrote its
     # local output into (`_planned_run`'s `run_root / path.stem`), never the module-10
@@ -1312,6 +2003,9 @@ def _tester_manifest(
     ]
     if include_final:
         checkpoints.append((None, "final"))
+    if training.get("recipe_profile") == "tensor" and (
+            intermediates != list(range(250, 3000, 250)) or not include_final):
+        raise FigmentTrainError("tensor tester requires the full twelve-checkpoint ladder")
     return {
         **_pod_base(pins, training["pod_class"], "tester"),
         "models": deepcopy(pins["pins"]["tester"]["models"]),
@@ -1336,7 +2030,7 @@ def _tester_manifest(
             "expected_images": 1,
             **({"wait_for": "_loras.assembled"} if index == 0 else {}),
             "substitutions": [{
-                "node_id": "4",
+                "node_id": "411" if training.get("recipe_profile") == "tensor" else "4",
                 "field": "lora_name",
                 "value": _checkpoint_name(trigger, step),
             }],
@@ -1641,7 +2335,7 @@ def compile_held_out_diagnostic(
     start_script.write_text(
         TESTER_START_PATH.read_text(encoding="utf-8")
         .replace("creator-001", creator_id)
-        .replace("creator001krea2", training["trigger"]),
+        .replace("creator001krea2", _artifact_name(training)),
         encoding="utf-8",
     )
 
@@ -1653,13 +2347,13 @@ def compile_held_out_diagnostic(
         "seed_fields": ["seed", "noise_seed"],
         "uploads": [{
             "files": [f"inputs/{candidate_checkpoint.name}"],
-            "subfolder": training["trigger"],
+            "subfolder": _artifact_name(training),
             "type": "input",
             "overwrite": True,
             "chunk_bytes": 16777216,
         }],
         "training": {
-            "lora_source_dir": f"/workspace/ComfyUI/input/{training['trigger']}",
+            "lora_source_dir": f"/workspace/ComfyUI/input/{_artifact_name(training)}",
             "start_script_path": "/workspace/start-comfy-lorapath.sh",
             "start_script_file": TESTER_START_PATH.name,
         },
@@ -1727,34 +2421,96 @@ GEN_ROW_SEED_BASE = 269789944143426
 DETAIL_SEED_BASE = 100200300
 
 
+# 2026-09-22 fix (live evidence, orgs/figment/runs/creator-001/live-20260916b): the
+# default "look-clause" gen prompt prepends the ENTIRE identity.look clause (hair/
+# eyes/brows/lips/makeup/build/clothing) ahead of the scene -- the SAME checkpoint's
+# tester prompt carries none of that text (only the age_stage sentence, a fixed
+# clothed/skin-texture clause, and a close framing) and scored judge same_person 88
+# against the look-clause gen prompt's 45-68. "trigger-scene" reuses that proven
+# shape: the tester's own adult-framing/clothing/skin base sentence (age_stage is
+# kept -- it is age-safety wording, not a drifting facial feature; hair/eyes/skin/
+# brows/makeup/build/clothing are never composed in) plus a close-framed scene
+# clause (`gen-prompts.yaml`'s `scenes_close`, same order/count as `scenes`).
+_GEN_TRIGGER_SCENE_BASE_SENTENCE = (
+    "She is an adult woman, fully clothed in a plain fitted black crew-neck top, "
+    "facing the camera, neutral relaxed expression with a faint smile. Natural skin "
+    "texture with visible pores and fine flyaway hairs, no retouching."
+)
+
+
 def _generalized_gen_prompts(persona: dict, training: dict) -> dict[str, Any]:
     """Build the gen-stage's rows entirely from `gen-prompts.yaml`'s generic photography
     vocabulary plus the persona's own `identity.look` (same discipline as
     `_generalized_anchor_prompts` -- never a template-hardcoded face/body clause), each
     row opening with the persona's own trigger (`_compose_triggered_prompt`) so the LoRA
-    is always explicitly invoked."""
+    is always explicitly invoked. `training["gen_prompt_style"] == "trigger-scene"`
+    (default "look-clause") switches to the tester-proven shape instead -- see the
+    module comment above `_GEN_TRIGGER_SCENE_BASE_SENTENCE`. "look-clause-close"
+    (2026-09-23) keeps today's look-clause composition but against the close-framed
+    `scenes_close` rows instead of `scenes` -- a cheaper diagnostic than switching all
+    the way to "trigger-scene": does closer framing alone (without dropping the
+    identity.look feature words) already help the same_person/face_px floors."""
     prompts = _read_json(GEN_PROMPTS_PATH)
     prompts["persona"] = persona["id"]
+    if training.get("gen_prompt_style") == "trigger-scene":
+        age_stage = _tester_age_stage(persona)
+        prompts["rows"] = [
+            _compose_triggered_prompt(
+                training, f"{age_stage}. {_GEN_TRIGGER_SCENE_BASE_SENTENCE} {scene}",
+            )
+            for scene in prompts["scenes_close"]
+        ]
+        return prompts
     look = persona.get("identity", {}).get("look")
     if not isinstance(look, dict):
         raise FigmentTrainError(
             "persona.identity.look is required to compose the gen-stage prompts"
         )
     clause = _compose_look_clause(look)
+    scenes = (
+        prompts["scenes_close"] if training.get("gen_prompt_style") == "look-clause-close"
+        else prompts["scenes"]
+    )
     prompts["rows"] = [
         _compose_triggered_prompt(
             training, prompts["base_clause"].format(look=clause, scene=scene),
         )
-        for scene in prompts["scenes"]
+        for scene in scenes
     ]
     return prompts
+
+
+def _rewire_gen_workflow_references(
+    workflow: dict[str, Any], old_ref: list, new_ref: list,
+) -> None:
+    """Every input across every remaining node that points at `old_ref` (a `[node_id,
+    output_index]` link) now points at `new_ref` instead -- used by `_gen_workflow`
+    when a node is deleted so no remaining node ever links to a node that no longer
+    exists ("every remaining link resolves")."""
+    for node in workflow.values():
+        inputs = node.get("inputs")
+        if not isinstance(inputs, dict):
+            continue
+        for field, value in inputs.items():
+            if value == old_ref:
+                inputs[field] = list(new_ref)
 
 
 def _gen_workflow(training: dict, pins: dict) -> dict[str, Any]:
     """Load `krea2_gen_api.json` and, when `training.style_lora` is unset, delete node
     `40` (the style `LoraLoaderModelOnly`) and rewire nodes `8`/`15`/`33`'s `model` input
     back to the identity LoRA (node `4`) -- no bypassed node ever ships in a manifest
-    (Track-2 Task D2)."""
+    (Track-2 Task D2).
+
+    2026-09-23: `training.gen_refine_denoise`/`gen_detailer_denoise` (default 0.35/0.15,
+    today's shipped values) then apply to the refine pass (node 15's KSampler, fed by
+    node 14's VAEEncode of the upscaled/scaled node-13 image, decoded back by node 16)
+    and the detail pass (node 33's DetailerForEach) respectively. A denoise of 0.0
+    removes that pass's own node(s) entirely and rewires every remaining reference to
+    the deleted node's output onto the image it would otherwise have refined/detailed
+    -- never a bypassed node left dangling in the shipped manifest, the same discipline
+    the style-LoRA branch above already follows. Any other value just sets that node's
+    `denoise` field, reproducing today's workflow byte-for-byte at the defaults."""
     workflow = _read_json(GEN_WORKFLOW_PATH)
     style_key = training.get("style_lora")
     if style_key is None:
@@ -1770,6 +2526,31 @@ def _gen_workflow(training: dict, pins: dict) -> dict[str, Any]:
                 f"unknown training.style_lora key {style_key!r}"
             ) from exc
         workflow["40"]["inputs"]["strength_model"] = training["style_lora_strength"]
+
+    refine_denoise = training.get("gen_refine_denoise", 0.35)
+    if refine_denoise == 0.0:
+        # Node 14 (VAEEncode) feeds only node 15's latent_image -- delete both, then
+        # node 16 (VAEDecode of 15) and rewire every remaining ["16", 0] reference
+        # (node 33's detailer image, node 35's face-landmark image, node 20's SaveImage)
+        # onto node 13's own upscaled/scaled image directly.
+        del workflow["15"]
+        del workflow["14"]
+        del workflow["16"]
+        _rewire_gen_workflow_references(workflow, ["16", 0], ["13", 0])
+    else:
+        workflow["15"]["inputs"]["denoise"] = refine_denoise
+
+    detailer_denoise = training.get("gen_detailer_denoise", 0.15)
+    if detailer_denoise == 0.0:
+        # Node 34 (SaveImage) is node 33's only consumer -- rewire it (and any other
+        # remaining reference to node 33's output) onto whatever node 33 itself was
+        # reading as its own `image` input, then delete node 33.
+        detailer_image_source = workflow["33"]["inputs"]["image"]
+        _rewire_gen_workflow_references(workflow, ["33", 0], detailer_image_source)
+        del workflow["33"]
+    else:
+        workflow["33"]["inputs"]["denoise"] = detailer_denoise
+
     return workflow
 
 
@@ -1787,7 +2568,7 @@ def _gen_manifest(
             "gen requires a chosen checkpoint; run apply-rulings --stage tester first"
         )
     creator_id = persona["id"]
-    trigger = training["trigger"]
+    trigger = _artifact_name(training)
     short = _creator_output_code(creator_id)
     checkpoint_name = _checkpoint_name(trigger, chosen_step)
     prompts = _generalized_gen_prompts(persona, training)
@@ -1804,13 +2585,18 @@ def _gen_manifest(
         substitutions = [
             {"node_id": "5", "field": "text", "value": row},
             {"node_id": "4", "field": "lora_name", "value": checkpoint_name},
-            # seed_fields sweeps every "seed" input (including nodes 15/33) to the job's
-            # own seed for base-image diversity; pin the refine and detail passes back to
-            # a fixed seed the same way the hand-written manifest pinned node 15 (module
-            # 09's own convention -- only the base render varies per job).
-            {"node_id": "15", "field": "seed", "value": 40},
-            {"node_id": "33", "field": "seed", "value": 40},
         ]
+        # seed_fields sweeps every "seed" input (including nodes 15/33, when present) to
+        # the job's own seed for base-image diversity; pin the refine and detail passes
+        # back to a fixed seed the same way the hand-written manifest pinned node 15
+        # (module 09's own convention -- only the base render varies per job). A
+        # gen_refine_denoise/gen_detailer_denoise of 0.0 (2026-09-23) deletes that node
+        # from the workflow entirely (`_gen_workflow`), so its seed substitution must
+        # not reference a node id the manifest no longer ships.
+        if "15" in workflow:
+            substitutions.append({"node_id": "15", "field": "seed", "value": 40})
+        if "33" in workflow:
+            substitutions.append({"node_id": "33", "field": "seed", "value": 40})
         if style_key is not None:
             substitutions.append({
                 "node_id": "40", "field": "lora_name",
@@ -1888,7 +2674,7 @@ def _detail_manifest(
             "gen requires a chosen checkpoint; run apply-rulings --stage tester first"
         )
     creator_id = persona["id"]
-    trigger = training["trigger"]
+    trigger = _artifact_name(training)
     short = _creator_output_code(creator_id)
     checkpoint_name = _checkpoint_name(trigger, chosen_step)
     workflow = _read_json(DETAIL_WORKFLOW_PATH)
@@ -1972,7 +2758,12 @@ def _caption_manifest(
     for field in ("repo_id", "revision", "destination_dir"):
         if not isinstance(model_pin.get(field), str) or not model_pin[field].strip():
             raise FigmentTrainError(f"pins.pins.caption model pin is missing {field!r}")
-    settings = _build_set_module().QWEN3VL_CAPTION_SETTINGS
+    pip_specs = caption_pin.get("pip")
+    if (not isinstance(pip_specs, list) or not pip_specs
+            or not all(isinstance(spec, str) and spec.strip() for spec in pip_specs)):
+        raise FigmentTrainError("pins.pins.caption.pip must be a non-empty list of strings")
+    build_set_module = _build_set_module()
+    settings = build_set_module.QWEN3VL_CAPTION_SETTINGS
     return {
         **_pod_base(pins, pod_class, "caption"),
         "models": deepcopy(models),
@@ -1994,6 +2785,12 @@ def _caption_manifest(
             "caption_model_dtype": settings["dtype"],
             "caption_max_resolution": settings["max_resolution"],
             "caption_max_new_tokens": settings["max_new_tokens"],
+            # LIVE FAILURE 2026-09-16 (third caption pod, $0.15): rendered into the
+            # template's own mirror check instead of a hardcoded 500 (which
+            # contradicted max_new_tokens=128's up-to-~900-char output); the
+            # authoritative bound is build_training_set.CAPTIONS_MAX_BODY_CHARS.
+            "caption_max_body_chars": build_set_module.CAPTIONS_MAX_BODY_CHARS,
+            "caption_pip_specs": " ".join(pip_specs),
             "hf_home": "/workspace/hf",
             "complete_marker": "/workspace/output/_caption.complete",
             "failed_marker": "/workspace/output/_caption.failed",
@@ -2013,6 +2810,16 @@ def _caption_manifest(
             "expected_images": 1,
         }],
     }
+
+
+def _render_profile_training_config(training: dict, *, smoke: bool = False) -> dict:
+    config = _render_training_config(_artifact_name(training),
+        100 if smoke else training["steps"], 50 if smoke else training["save_every"])
+    if training.get("recipe_profile") == "tensor" and not smoke:
+        errors = _render_module().check_module_11(config, tensor=True)
+        if errors:
+            raise FigmentTrainError("tensor training parity failed: " + "; ".join(errors))
+    return config
 
 
 def _render_training_config(
@@ -2063,6 +2870,70 @@ def _render_training_config(
     return config
 
 
+
+def _tensor_passport_binding(out: Path, persona: dict, anchors: list[str]) -> dict:
+    """Freeze the selected identity source and its actual upload bytes together."""
+    references = persona.get("identity", {}).get("references") or []
+    if not references or not anchors:
+        raise FigmentTrainError("tensor downstream plans require a selected passport")
+    source = (Path(persona["_persona_path"]).parent / references[0]).resolve()
+    source_entry = _lineage_module().file_entry(source)
+    staged_entry = _lineage_module().file_entry(out / anchors[0])
+    if any(source_entry[key] != staged_entry[key] for key in ("bytes", "sha256")):
+        raise FigmentTrainError("tensor passport changed while staging")
+    return {"source": _config_path_value(source), "staged": anchors[0],
+            "bytes": source_entry["bytes"], "sha256": source_entry["sha256"]}
+
+
+def _validate_tensor_passport_inputs(plan: dict, root: Path, *, persona=None, reads=None) -> None:
+    """Reject source selection or byte drift before launch, grading, or approval."""
+    binding = plan.get("assets", {}).get("tensor_passport")
+    if not isinstance(binding, dict) or not all(key in binding for key in ("source", "staged", "bytes", "sha256")):
+        raise FigmentTrainError("tensor passport binding missing; create a fresh plan")
+    if persona is None:
+        persona, _ = _current_persona_training(plan, reads=reads)
+    refs = persona.get("identity", {}).get("references") or []
+    anchors = plan.get("assets", {}).get("anchors") or []
+    if not refs or not anchors or anchors[0] != binding["staged"]:
+        raise FigmentTrainError("tensor passport selection changed after planning")
+    source_operand = Path(persona["_persona_path"]).parent / refs[0]
+    source = reads.resolve(source_operand) if reads is not None else source_operand.resolve()
+    if source != _resolve_config_path(binding["source"], reads=reads):
+        raise FigmentTrainError("tensor passport source selection changed after planning")
+    staged_operand = root / binding["staged"]
+    staged = reads.resolve(staged_operand) if reads is not None else staged_operand.resolve()
+    root_resolved = reads.resolve(root) if reads is not None else root.resolve()
+    if not staged.is_relative_to(root_resolved):
+        raise FigmentTrainError("tensor passport upload escapes the plan root")
+    try:
+        for label, path in (("source", source), ("staged upload", staged)):
+            entry = _lineage_module().file_entry(path, reads=reads)
+            if any(entry[key] != binding[key] for key in ("bytes", "sha256")):
+                raise FigmentTrainError(f"tensor passport {label} changed after planning")
+    except (OSError, ValueError) as exc:
+        raise FigmentTrainError(f"tensor passport input unavailable: {exc}") from exc
+
+
+def _validate_tensor_training_inputs(plan: dict, current_training: dict, stage: str) -> None:
+    """Compare semantic inputs, retaining imported training's separate authority."""
+    lineage = _lineage_module()
+    recorded = lineage.training_input_projection(plan["training"])
+    current = lineage.training_input_projection(current_training)
+    imported = plan.get("imported_training_config") if stage == "tester" else None
+    if imported is not None:
+        if not isinstance(imported, dict) or not isinstance(imported.get("path"), str):
+            raise FigmentTrainError("tensor imported training authority is malformed")
+        source = _resolve_config_path(imported["path"])
+        reloaded = _reload_imported_training_projection(plan["creator"], source)
+        if reloaded != recorded:
+            raise FigmentTrainError("tensor imported training inputs changed after planning")
+        # Actual training values come from the imported config; live prompt/caption/
+        # runtime fields remain owned by the persona, as at checkpoint promotion.
+        current = {k: v for k, v in current.items() if k not in lineage.TRAIN_TIME_KEYS}
+        recorded = {k: v for k, v in recorded.items() if k not in lineage.TRAIN_TIME_KEYS}
+    if current != recorded:
+        raise FigmentTrainError(f"tensor {stage} inputs changed after planning")
+
 def _copy_anchors(out: Path, persona: dict) -> list[str]:
     """Copy this persona's identity reference images into `out`'s own upload tree and
     return their `out`-relative paths, in `persona.yaml` order. Shared by `build_plan`
@@ -2111,7 +2982,7 @@ def _copy_support_files(out: Path, persona: dict, prompts: dict, workflow: dict)
     for source in (TRAIN_START_PATH, TESTER_START_PATH):
         text = source.read_text(encoding="utf-8")
         text = text.replace("creator-001", persona["id"])
-        text = text.replace("creator001krea2", persona["training"]["trigger"])
+        text = text.replace("creator001krea2", _artifact_name(persona["training"]))
         (train_runs / source.name).write_text(text, encoding="utf-8")
 
     return {
@@ -2146,7 +3017,7 @@ def _planned_run(
         "--max-usd", ceiling,
         "--max-minutes", str(manifest["max_minutes"]),
         "--ledger-dir", str(ledger_dir),
-        "--arc-cap-usd", ARC_CAP_USD,
+        "--arc-cap-usd", _arc_cap_usd(),
         "--arc-ledger-glob", ARC_LEDGER_GLOB,
     ]
     result = {
@@ -2159,13 +3030,16 @@ def _planned_run(
     }
     if "_budget" in manifest:
         result["budget"] = manifest["_budget"]
+    if Path(str(manifest.get("workflow", ""))).name in (TENSOR_PASSPORT_WORKFLOW_PATH.name, "tensor_dataset_m10_api.json"):
+        # Final review F5: pin the plan's parity-checked workflow copy; launch re-hashes it.
+        result["workflow_sha256"] = _sha256(manifest_path.parent / manifest["workflow"])
     return result
 
 
 def plan_qwen3vl_caption(
     creator_id: str, trigger: str, image_paths: list[Path], plan_root: Path,
     *, pod_class: str = "l40s", ledger_dir: Path | None = None,
-    skip_pin_verify: bool = False,
+    skip_pin_verify: bool = False, retry_after_fix_reason: str | None = None,
 ) -> dict[str, Any]:
     """M4: plan (never run) one qwen3vl captioning pod job -- the exact `_planned_run`
     pattern `build_plan` uses for every other stage. Exposed for
@@ -2192,22 +3066,161 @@ def plan_qwen3vl_caption(
             raise FigmentTrainError("pin verification failed:\n" + "\n".join(lines))
     names = _copy_detail_images(plan_root, {"id": creator_id}, image_paths)
     upload_dir = plan_root / "train" / "runs" / "_uploads" / creator_id
-    (upload_dir / "_images.ready").write_text("", encoding="utf-8")
+    # LIVE FAILURE 2026-09-16 (run creator-001/live-20260916b): a zero-byte sentinel
+    # here got rejected by pod/runpod_run.py's own upload preflight -- it only
+    # exempts the exact name `_dataset.ready` (the train path's sentinel) from its
+    # "positive byte count" check, so `_images.ready` needs real content. The
+    # pod-side consumer (start-qwen3vl-caption.sh.template) only tests `-f`
+    # existence, so the content itself is free -- but it must be non-empty.
+    ready_payload = json.dumps({
+        "schema": "figment/images-ready@1",
+        "images": len(names),
+        "trigger": trigger,
+    }) + "\n"
+    (upload_dir / "_images.ready").write_text(ready_payload, encoding="utf-8")
     manifest = _caption_manifest(pins, creator_id, trigger, names, pod_class=pod_class)
-    manifest_path = plan_root / "train" / "runs" / f"{trigger}-tensor-caption.yaml"
-    if manifest_path.exists():
-        raise FigmentTrainError(
-            f"refusing to overwrite an existing caption manifest: {manifest_path}"
-        )
+    train_runs = plan_root / "train" / "runs"
+    manifest_path = train_runs / f"{trigger}-tensor-caption.yaml"
+    # pod/runpod_run.py resolves `training.start_script_file` relative to the
+    # manifest's own directory (`_manifest_local_path`) -- unlike `_copy_support_files`
+    # (called once, at `build_plan` time, for the train/tester scripts), this caption
+    # job is planned fresh here (also standalone from `build_training_set.py
+    # --plan-root`, which never runs `_copy_support_files` at all), so the template
+    # must be staged beside the manifest every time, not assumed already present.
+    # Found alongside the live upload-preflight failure this fixes: the manifest
+    # would otherwise have failed the very next preflight check, still before any pod
+    # was created.
+    train_runs.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(QWEN3VL_CAPTION_START_PATH, train_runs / QWEN3VL_CAPTION_START_PATH.name)
+    run_out = plan_root / "train" / "runs" / "out" / manifest_path.stem
+    # MEDIUM-1 (adversarial review): a bare `manifest_path.exists()` check permanently
+    # blocked every future `apply-rulings --stage dataset` retry after a single failed
+    # caption pod job -- the manifest is written before the pod ever runs, and nothing
+    # removes it on failure. Only refuse when a RUN RECORD (run.json) actually names
+    # this manifest's own out dir -- proof a pod already consumed it, so overwriting it
+    # now would sever that receipt's lineage. No run record yet means the previous
+    # attempt never got as far as a pod completing (or never launched), so
+    # regenerating it is safe.
+    #
+    # P5 (LIVE 2026-09-16, creator-001/live-20260916b): a RunPod capacity 500 at
+    # create time DOES leave a run.json behind (fail-closed), so the bare-existence
+    # check above would otherwise jam this manifest forever even though no pod was
+    # ever created and no money was ever at risk. When the recorded run is eligible
+    # under the same rule `--retry-failed` uses
+    # (`_out_dir_retry_eligibility_reason`: verified teardown with zero output, or --
+    # routine for RunPod capacity -- `_prior_attempt_never_created`), rename the prior
+    # out dir to `.failed-N` (the same helper `--retry-failed` uses) and regenerate
+    # rather than refusing forever. P6 (2026-09-16): prior `.failed-*` dirs are
+    # classified (`_count_prior_retry_attempts`) into never-created (spent nothing,
+    # bounded by the much larger `MAX_NEVER_CREATED_RETRIES`) vs real (bounded by
+    # `MAX_RUN_RETRIES`) -- capacity 500s at create time are routine and free, so they
+    # must not lock this manifest at the same tight bound a real spend-eligible
+    # failure does.
+    if manifest_path.exists() and (run_out / "run.json").is_file():
+        reason = _out_dir_retry_eligibility_reason(run_out)
+        # `--retry-caption-after-fix <reason>` (operator path, 2026-09-16): a prior
+        # attempt that fails ONLY the error-class-substring check -- i.e. it proves a
+        # verified pod teardown, every placement/journal verified, and zero
+        # job/artifact output, but its recorded `error` doesn't match
+        # `RETRY_ELIGIBLE_ERROR_SUBSTRINGS` (a JOB-class failure, e.g. "training failed
+        # marker appeared") -- is admitted here ONLY when the operator explicitly
+        # names a reason the underlying cause is fixed. Never widens admission for an
+        # attempt with real output, an unverified teardown, or one already over
+        # MAX_RUN_RETRIES: those still fail `skip_error_class_check=True` the same way
+        # they fail the ordinary check, and the retry-count caps below still apply
+        # unconditionally (this counts as a REAL retry, same as any other).
+        used_retry_after_fix = False
+        if reason is not None and retry_after_fix_reason:
+            if _out_dir_retry_eligibility_reason(run_out, skip_error_class_check=True) is None:
+                reason = None
+                used_retry_after_fix = True
+        if reason is not None:
+            raise FigmentTrainError(
+                "refusing to overwrite a caption manifest with a recorded run: "
+                f"{manifest_path} ({reason})"
+            )
+        prior_failures = list(run_out.parent.glob(f"{run_out.name}.failed-*"))
+        never_created_count, real_count = _count_prior_retry_attempts(prior_failures)
+        # P6.1: the operator-flagged path (a recorded reason the cause is fixed) is
+        # bounded by the wider MAX_RETRY_AFTER_FIX instead of the tight MAX_RUN_RETRIES
+        # every other, unflagged retry shares -- see MAX_RETRY_AFTER_FIX's own comment.
+        real_retry_limit = MAX_RETRY_AFTER_FIX if retry_after_fix_reason else MAX_RUN_RETRIES
+        if real_count >= real_retry_limit:
+            raise FigmentTrainError(
+                f"caption manifest {manifest_path} out dir {run_out} has already been "
+                f"retried {real_count} time(s) (limit {real_retry_limit}); "
+                "create a reviewed new plan to retry further"
+            )
+        if never_created_count >= MAX_NEVER_CREATED_RETRIES:
+            raise FigmentTrainError(
+                f"caption manifest {manifest_path} out dir {run_out} has already been "
+                f"retried {never_created_count} never-created time(s) "
+                f"(limit {MAX_NEVER_CREATED_RETRIES}); create a reviewed new plan to "
+                "retry further"
+            )
+        renamed = _first_free_retry_rename_path(run_out, len(prior_failures) + 1)
+        run_out.rename(renamed)
+        if used_retry_after_fix:
+            manifest["training"]["retry_after_fix"] = {
+                "reason": retry_after_fix_reason,
+                "prior_out": renamed.name,
+                "template_sha256": _sha256(QWEN3VL_CAPTION_START_PATH),
+                "git_head": _git_head_sha(),
+            }
     _write_json(manifest_path, manifest)
     resolved_ledger_dir = _resolved_ledger_dir(ledger_dir)
-    run_out = plan_root / "train" / "runs" / "out" / manifest_path.stem
     return _planned_run(plan_root, manifest_path, run_out, ledger_dir=resolved_ledger_dir)
+
+
+def _tensor_caption_job_runner(creator_id: str, training: dict, plan_root: Path, ledger_dir: Path, *, retry_after_fix_reason: str | None = None):
+    """Plan or consume a separately executed caption job; NEVER launch one here."""
+    def consume(job: dict[str, Any]) -> list[str]:
+        images = [Path(value) for value in job["images"]]
+        subject = [{"name": p.name, "sha256": _sha256(p)} for p in images]
+        receipt = plan_root / "train/caption-plan.json"
+        if receipt.is_file():
+            document = _read_json(receipt)
+            if document.get("images") != subject:
+                raise FigmentTrainError("caption inputs changed; create a new reviewed plan")
+            planned = document["run"]
+            if retry_after_fix_reason and (plan_root / planned["out"] / "run.json").is_file():
+                # The existing planner owns bounded retry eligibility and archives failures.
+                # This remains a plan-only operation: no launch occurs on a retry.
+                planned = plan_qwen3vl_caption(creator_id, _artifact_name(training), images,
+                    plan_root, pod_class=training["pod_class"], ledger_dir=ledger_dir,
+                    skip_pin_verify=True, retry_after_fix_reason=retry_after_fix_reason)
+                _write_json(receipt, {"schema": "figment/tensor-caption-plan@1",
+                                      "images": subject, "run": planned})
+        else:
+            planned = plan_qwen3vl_caption(creator_id, _artifact_name(training), images,
+                plan_root, pod_class=training["pod_class"], ledger_dir=ledger_dir, skip_pin_verify=True)
+            _write_json(receipt, {"schema": "figment/tensor-caption-plan@1", "images": subject,
+                                  "run": planned})
+        manifest_path = plan_root / planned["manifest"]
+        if _sha256(manifest_path) != planned["sha256"]:
+            raise FigmentTrainError("caption manifest changed after planning")
+        for row in subject:
+            staged = plan_root / "train/runs/_uploads" / creator_id / row["name"]
+            if not staged.is_file() or _sha256(staged) != row["sha256"]:
+                raise FigmentTrainError("caption staged image changed after planning")
+        run_out = plan_root / planned["out"]
+        if not (run_out / "run.json").is_file():
+            raise FigmentTrainError(f"caption plan ready at {receipt}; separate approved execution required; no pod launched")
+        verify_run_record("caption", _read_json(manifest_path), run_out, ledger_dir)
+        path = run_out / CAPTION_ARTIFACT_NAME
+        if not path.is_file() or path.stat().st_size > CAPTIONS_MAX_JSON_BYTES:
+            raise FigmentTrainError("caption artifact missing or exceeds size limit")
+        captions = _read_json(path)
+        if not isinstance(captions, dict) or set(captions) != {p.name for p in images}:
+            raise FigmentTrainError("caption artifact must match exactly the approved images")
+        return [captions[p.name] for p in images]
+    return consume
 
 
 def _live_qwen3vl_job_runner(
     creator_id: str, trigger: str, plan_root: Path, *, pod_class: str = "l40s",
     ledger_dir: Path | None = None, skip_pin_verify: bool = False,
+    retry_after_fix_reason: str | None = None,
 ):
     """M4: the real dispatcher `build_training_set.py`'s `qwen3vl` caption mode
     requires -- never invoked by build_training_set.py itself (GUARDRAILS:
@@ -2226,6 +3239,7 @@ def _live_qwen3vl_job_runner(
         planned = plan_qwen3vl_caption(
             creator_id, trigger, images, plan_root, pod_class=pod_class,
             ledger_dir=resolved_ledger_dir, skip_pin_verify=skip_pin_verify,
+            retry_after_fix_reason=retry_after_fix_reason,
         )
         manifest_path = plan_root / planned["manifest"]
         run_out = plan_root / planned["out"]
@@ -2420,6 +3434,522 @@ def _plan_video_manifest(
     }, manifest_path
 
 
+def _tensor_edit_module():
+    return _load_module("_figment_tensor_edit", HERE / "tensor_edit.py")
+
+
+def _tensor_stills_module():
+    return _load_module("_figment_tensor_stills", HERE / "tensor_stills.py")
+
+
+def _canonical_intake_adapter(creator, personas_root, *, reads=None):
+    intake = _tensor_stills_module().prompt_intake
+    def current():
+        persona, _, _ = _load_inputs(creator, Path(personas_root), reads=reads)
+        persona["_persona_path"] = str(Path(personas_root) / creator / "persona.yaml")
+        return persona
+    def resolve(selected_creator, selection):
+        if selected_creator != creator:
+            raise FigmentTrainError("intake creator changed")
+        return _validate_registered_passport(creator, current(), selection["source_plan"], selection["image_id"], reads=reads)
+    def descriptors(selected_creator, authority):
+        if selected_creator != creator or authority["creator"] != creator:
+            raise FigmentTrainError("intake descriptor creator changed")
+        look = current()["identity"]["look"]
+        return {key: look.get(key, "") for key in ("face", "hair", "eyes", "skin")}
+    return intake.CanonicalPassportAdapter(resolve, descriptors)
+
+
+def _resolve_stills_request(creator, request, personas_root, *, reads=None):
+    try:
+        return _tensor_stills_module().read_request(request, creator,
+            passport_adapter=_canonical_intake_adapter(creator, personas_root, reads=reads), reads=reads)
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise FigmentTrainError(f"stills intake refused: {exc}") from exc
+
+
+def _tensor_stills_manifest(group, training, pins, checkpoint_upload):
+    pin_group = deepcopy(pins["pins"]["gen_tensor"])
+    if group["framing"] == "close-up":
+        pin_group["models"] = [row for row in pin_group["models"] if not row["filename"].endswith("4xNMKDSuperscale_4xNMKDSuperscale.pt")]
+    return {**_pod_base(pins, training["pod_class"], "gen_tensor"),
+        "models": pin_group["models"], "custom_nodes": pin_group["custom_nodes"],
+        "diagnostic_non_commercial": True,
+        "workflow": deepcopy(group["workflow"]), "seed_fields": group["seed_fields"],
+        "output_roles": group["output_roles"], "framing": group["framing"], "jobs": deepcopy(group["jobs"]),
+        "uploads": [{"files": [checkpoint_upload], "subfolder": _artifact_name(training),
+                     "type": "input", "overwrite": True, "chunk_bytes": 16777216}],
+        "training": {"lora_source_dir": "/workspace/ComfyUI/input/" + _artifact_name(training),
+                     "start_script_path": "/workspace/start-comfy-lorapath.sh",
+                     "start_script_file": "start-comfy-lorapath.sh.template"}}
+
+
+def _build_tensor_stills_plan(creator, out, request, *, personas_root, skip_pin_verify, ledger_dir, accept_budget):
+    persona, training, pins = _load_inputs(creator, Path(personas_root))
+    persona = {**persona, "_persona_path": str(Path(personas_root) / creator / "persona.yaml")}
+    if training["recipe_profile"] != "tensor":
+        raise FigmentTrainError("--stills-request requires tensor profile")
+    _identity_gate_module().load_thresholds(persona)
+    frozen = _resolve_stills_request(creator, request, personas_root)
+    accepted = _validated_accepted_checkpoint(persona, training)
+    authority = _accepted_checkpoint_snapshot(accepted)
+    name = _checkpoint_name(_artifact_name(training), accepted["step"])
+    groups = _tensor_stills_module().compile_scene_groups(frozen["scenes"], identity_lora=name,
+        output_prefix=_creator_output_code(creator) + "-stills")
+    manifests = [_tensor_stills_manifest(group, training, pins, "accepted-checkpoint/" + name) for group in groups]
+    for group, manifest in zip(groups, manifests):
+        errors = _tensor_parity_module().check_stills(group["workflow"], manifest, framing=group["framing"],
+            identity_lora=name, approved_prompts=group["approved_prompts"])
+        if errors:
+            raise FigmentTrainError("tensor stills parity failed: " + "; ".join(errors))
+    if not skip_pin_verify:
+        _verify_pins_preflight(pins, ["gen"], training)
+    out = Path(out).resolve()
+    if out.exists() and any(out.iterdir()):
+        raise FigmentTrainError(f"plan output directory must be empty: {out}")
+    out.mkdir(parents=True, exist_ok=True)
+    assets = {"anchors": _copy_anchors(out, persona), "persona_dir": _persona_dir_asset(persona)}
+    assets["tensor_passport"] = _tensor_passport_binding(out, persona, assets["anchors"])
+    _stage_accepted_checkpoint(out, persona, training, accepted_checkpoint=accepted)
+    launcher = out / "train/runs/start-comfy-lorapath.sh.template"
+    shutil.copy2(TESTER_START_PATH, launcher)
+    assets["stills_launcher_sha256"] = _sha256(launcher)
+    ledger = _resolved_ledger_dir(ledger_dir)
+    runs = []
+    for group, manifest in zip(groups, manifests):
+        suffix = group["framing"]
+        workflow_path = out / "train/workflows" / f"tensor_stills_m09_{suffix}.json"
+        _write_json(workflow_path, manifest.pop("workflow"))
+        manifest["workflow"] = "../workflows/" + workflow_path.name
+        manifest_path = out / "train/runs" / f"{creator}-tensor-stills-{suffix}.yaml"
+        _write_json(manifest_path, manifest)
+        run = _planned_run(out, manifest_path, _stage_run_root(out, "gen") / manifest_path.stem, ledger_dir=ledger)
+        run.update(workflow_sha256=_sha256(workflow_path), framing=suffix)
+        runs.append(run)
+    stages = {"gen": {"runs": runs}}
+    budget = _budget_preflight(stages, ledger_dir=ledger, arc_cap_usd=_arc_cap_usd(), accept_budget=accept_budget)
+    plan = {"schema": "figment/train-plan@1", "creator": creator, "fixture": True,
+        "generated_utc": datetime.now(timezone.utc).isoformat(), "generator": _sha256(Path(__file__)),
+        "persona_sha256": _sha256(Path(persona["_persona_path"])), "training": training,
+        "assets": assets, "configs": {}, "ledger_dir": str(ledger), "arc_cap_usd": _arc_cap_usd(),
+        "arc_ledger_glob": ARC_LEDGER_GLOB, "budget_preflight": budget, "stages": stages,
+        "gen_authority": authority, "gen_inputs": frozen}
+    _write_json(out / "plan.json", plan)
+    _validate_tensor_stills_inputs(plan, out)
+    intake = _tensor_stills_module().prompt_intake
+    adapter = _canonical_intake_adapter(creator, personas_root)
+    evidence_root = Path(frozen["request"]["path"]).parent
+    for row in frozen["scene_files"]:
+        if row["kind"] == "draft":
+            raw = intake._read(evidence_root, row["path"])
+            if hashlib.sha256(raw).hexdigest() != row["sha256"]:
+                raise FigmentTrainError("stills preview draft changed after approval binding")
+            draft = json.loads(raw)
+            preview = intake.preview_fixture_html(evidence_root, draft, passport_adapter=adapter)
+            preview_path = out / "intake" / f"scene-{row['scene_index']}.html"
+            preview_path.parent.mkdir(parents=True, exist_ok=True)
+            preview_path.write_text(preview, encoding="utf-8")
+    _validate_tensor_stills_inputs(plan, out)
+    return plan
+
+
+def _validate_tensor_stills_inputs(plan, root, *, launch=False, reads=None):
+    persona, training = _current_persona_training(plan, reads=reads)
+    if training["recipe_profile"] != "tensor":
+        raise FigmentTrainError("tensor stills profile changed")
+    personas_root = _persona_path_for_plan(plan, reads=reads).parent.parent
+    frozen = plan.get("gen_inputs", {})
+    current = _resolve_stills_request(plan["creator"], frozen.get("request", {}).get("path"), personas_root, reads=reads)
+    if current != frozen or plan.get("fixture") is not True:
+        raise FigmentTrainError("stills source inputs or fixture authority changed")
+    _validate_tensor_passport_inputs(plan, root, persona=persona, reads=reads)
+    accepted = _validated_accepted_checkpoint(persona, training, reads=reads)
+    name = _checkpoint_name(_artifact_name(training), accepted["step"])
+    groups = _tensor_stills_module().compile_scene_groups(current["scenes"], identity_lora=name,
+        output_prefix=_creator_output_code(plan["creator"]) + "-stills", reads=reads)
+    pins = _read_json(PINS_PATH, reads=reads)
+    runs = plan["stages"]["gen"]["runs"]
+    if len(runs) != len(groups):
+        raise FigmentTrainError("stills framing groups changed")
+    for run, group in zip(runs, groups):
+        expected_manifest = f"train/runs/{plan['creator']}-tensor-stills-{group['framing']}.yaml"
+        if run.get("manifest") != expected_manifest:
+            raise FigmentTrainError("stills manifest location changed")
+        manifest_path = root / run["manifest"]
+        manifest = _read_json(manifest_path, reads=reads)
+        if manifest.get("workflow") != f"../workflows/tensor_stills_m09_{group['framing']}.json":
+            raise FigmentTrainError("stills workflow location changed")
+        workflow_path = (root / "train/workflows" / f"tensor_stills_m09_{group['framing']}.json"
+                         if reads is not None else manifest_path.parent / manifest["workflow"])
+        if (_sha256(manifest_path, reads=reads) != run["sha256"] or _sha256(workflow_path, reads=reads) != run["workflow_sha256"]
+                or run.get("framing") != group["framing"]):
+            raise FigmentTrainError("stills manifest, workflow or framing changed")
+        inline = {**manifest, "workflow": _read_json(workflow_path, reads=reads)}
+        expected = _tensor_stills_manifest(group, training, pins, "accepted-checkpoint/" + name)
+        if inline != expected:
+            raise FigmentTrainError("stills manifest differs from current approved scene/checkpoint projection")
+        stills_parity = _tensor_stills_module().parity if reads is not None else _tensor_parity_module()
+        errors = stills_parity.check_stills(inline["workflow"], inline, framing=group["framing"],
+            identity_lora=name, approved_prompts=group["approved_prompts"],
+            **({"reads": reads} if reads is not None else {}))
+        if errors:
+            raise FigmentTrainError("stills parity changed: " + "; ".join(errors))
+    launcher = root / "train/runs/start-comfy-lorapath.sh.template"
+    if _sha256(launcher, reads=reads) != plan["assets"].get("stills_launcher_sha256") or _sha256(launcher, reads=reads) != _sha256(TESTER_START_PATH, reads=reads):
+        raise FigmentTrainError("stills launcher changed")
+    if launch:
+        raise FigmentTrainError("fixture stills plan is dry-run only; live extractor/runtime/licences remain unverified")
+    return current
+
+
+def _tensor_video_module():
+    return _load_module("_figment_tensor_video", HERE / "tensor_video.py")
+
+
+def _tensor_video_review_context(plan, root):
+    review = _load_module("_figment_tensor_video_review", HERE / "video/video_review.py")
+    run = plan["stages"]["video"]["runs"][0]
+    manifest = _read_json(root / run["manifest"])
+    native = Path("video/evidence/native/native-evidence.json")
+    arguments = {"root": root, "candidate_manifest": Path(run["manifest"]),
+        "run_receipt": Path(run["out"]) / "run.json", "assembly_receipt": native,
+        "extraction_receipt": native}
+    destination = review._review_directory(root / run["manifest"], manifest["candidate_id"])
+    return review, arguments, destination
+
+
+def _resolve_tensor_video_request(creator, request):
+    try:
+        return _tensor_video_module().read_request(request, creator,
+                                                   approved_edit=validate_approved_edit_still)
+    except (OSError, ValueError, KeyError) as exc:
+        raise FigmentTrainError(f"tensor video request refused: {exc}") from exc
+
+
+def _build_tensor_video_plan(creator, out, request, *, personas_root, skip_pin_verify,
+                             ledger_dir, accept_budget):
+    persona, training, pins = _load_inputs(creator, Path(personas_root))
+    persona = {**persona, "_persona_path": str(Path(personas_root) / creator / "persona.yaml")}
+    if training["recipe_profile"] != "tensor":
+        raise FigmentTrainError("--video-request requires tensor profile")
+    frozen = _resolve_tensor_video_request(creator, request)
+    if not skip_pin_verify:
+        _verify_pins_preflight(pins, ["video"], training)
+    out = Path(out).resolve()
+    if out.exists() and any(out.iterdir()):
+        raise FigmentTrainError("video plan output directory must be empty")
+    parity = _tensor_parity_module()
+    workflow = parity.video_workflow()
+    clip_name = f"{creator}/{Path(frozen['clip']['path']).name}"
+    start_name = f"{creator}/{Path(frozen['start_image']['path']).name}"
+    workflow["113"]["inputs"]["video"] = clip_name
+    workflow["58"]["inputs"]["image"] = start_name
+    workflow["6"]["inputs"]["text"] = frozen["prompt"]["text"]
+    output_name = f"{_creator_output_code(creator)}-tensor-video"
+    workflow["49"]["inputs"]["filename_prefix"] = output_name
+    group = pins["pins"]["video_tensor"]
+    dimensions = _tensor_video_module().output_dimensions(
+        frozen["start_image"]["width"], frozen["start_image"]["height"])
+    manifest = {**_pod_base(pins, training["pod_class"], "video_tensor"),
+        "schema": "figment/tensor-video-manifest@1", "candidate_id": output_name,
+        "fixture": frozen["fixture"], "workflow": workflow,
+        "models": deepcopy(group["models"]), "custom_nodes": deepcopy(group["custom_nodes"]),
+        "seed_fields": ["seed"], "tensor_inputs": frozen, "native_budget": dimensions,
+        "source_plan": str(out / "plan.json"),
+        "uploads": [{"files": [f"_uploads/{name}" for name in (clip_name, start_name)],
+                     "subfolder": creator, "type": "input", "overwrite": True}],
+        "jobs": [{"seed": 123, "output_name": output_name, "substitutions": [],
+                  "output_contract": parity.video_output_contract(workflow_png=False)}]}
+    problems = parity.check_video(workflow, manifest, prompt=frozen["prompt"]["text"],
+                                   driving_video=clip_name, start_image=start_name)
+    if problems:
+        raise FigmentTrainError("tensor video parity failed: " + "; ".join(problems))
+    out.mkdir(parents=True, exist_ok=True)
+    assets = {"anchors": _copy_anchors(out, persona), "persona_dir": _persona_dir_asset(persona)}
+    assets["tensor_passport"] = _tensor_passport_binding(out, persona, assets["anchors"])
+    assets["video_inputs"] = {}
+    for role in ("clip", "start_image"):
+        source = Path(frozen[role]["path"])
+        target = out / "video/runs/_uploads" / creator / source.name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        if _sha256(target) != frozen[role]["sha256"]:
+            raise FigmentTrainError("video input changed while staging")
+        assets["video_inputs"][role] = _relative(target, out)
+    path = out / "video/runs" / f"{creator}-tensor-video.yaml"
+    _write_json(path, manifest)
+    ledger = _resolved_ledger_dir(ledger_dir)
+    run = _planned_run(out, path, _stage_run_root(out, "video") / path.stem, ledger_dir=ledger)
+    stages = {"video": {"runs": [run]}}
+    plan = {"schema": "figment/train-plan@1", "creator": creator, "fixture": frozen["fixture"],
+        "generated_utc": datetime.now(timezone.utc).isoformat(), "generator": _sha256(Path(__file__)),
+        "persona_sha256": _sha256(Path(persona["_persona_path"])), "training": training,
+        "assets": assets, "configs": {}, "ledger_dir": str(ledger), "arc_cap_usd": _arc_cap_usd(),
+        "arc_ledger_glob": ARC_LEDGER_GLOB, "stages": stages, "video_inputs": frozen,
+        "budget_preflight": _budget_preflight(stages, ledger_dir=ledger,
+            arc_cap_usd=_arc_cap_usd(), accept_budget=accept_budget)}
+    _write_json(out / "plan.json", plan)
+    _validate_tensor_video_inputs(plan, out)
+    return plan
+
+
+def _validate_tensor_video_inputs(plan, root, *, launch=False):
+    persona, training = _current_persona_training(plan)
+    if any(training.get(key) != plan["training"].get(key) for key in EDIT_TRAINING_KEYS):
+        raise FigmentTrainError("tensor video profile or pod settings changed")
+    _validate_tensor_passport_inputs(plan, root, persona=persona)
+    frozen = plan["video_inputs"]
+    if _resolve_tensor_video_request(plan["creator"], frozen["request"]["path"]) != frozen:
+        raise FigmentTrainError("tensor video input authority changed")
+    for role in ("clip", "start_image"):
+        operand = root / plan["assets"]["video_inputs"][role]
+        operand.resolve().relative_to(root.resolve())
+        actual = _tensor_edit_module().file_binding({"path": str(operand),
+            "sha256": frozen[role]["sha256"]}, root, image=role == "start_image",
+            limit=2 * 1024 * 1024 * 1024 if role == "clip" else 32 * 1024 * 1024)
+        if actual["bytes"] != frozen[role]["bytes"]:
+            raise FigmentTrainError("staged tensor video input changed")
+    for run in plan["stages"]["video"]["runs"]:
+        path = root / run["manifest"]
+        if _sha256(path) != run["sha256"]:
+            raise FigmentTrainError("tensor video manifest changed")
+        manifest = _read_json(path)
+        problems = _tensor_parity_module().check_video(manifest["workflow"], manifest,
+            prompt=frozen["prompt"]["text"],
+            driving_video=f"{plan['creator']}/{Path(frozen['clip']['path']).name}",
+            start_image=f"{plan['creator']}/{Path(frozen['start_image']['path']).name}")
+        if problems:
+            raise FigmentTrainError("tensor video parity failed: " + "; ".join(problems))
+        if launch:
+            if frozen["fixture"] or plan.get("fixture") is not False:
+                raise FigmentTrainError("fixture tensor video cannot launch")
+            problems = _tensor_parity_module().video_readiness_problems(manifest)
+            if problems:
+                raise FigmentTrainError("video readiness blocked: " + "; ".join(problems))
+            _verify_pins_preflight(_read_json(PINS_PATH), ["video"], training)
+            raise FigmentTrainError("tensor video installed runtime/schema and metadata survival require separately approved smoke")
+    return frozen
+
+
+def _historical_anchor_approval(plan, root, *, reads=None):
+    """Verify the original settled passport approval without reinterpreting training.
+
+    Registration remains valid when later training settings change. Every original
+    plan, manifest, output, numeric gate, ruling and transition remains hash-bound.
+    The edit adapter separately checks the currently registered passport bytes.
+    """
+    lineage = _lineage_module()
+    grade = root / "grade/anchor"
+    approval = _read_json(grade / "approval-lineage.json", reads=reads)
+    evaluation = _read_json(grade / "evaluation-inputs.json", reads=reads)
+    grading = _read_json(grade / "grading-manifest.json", reads=reads)
+    if (approval.get("schema") != lineage.APPROVAL_SCHEMA
+            or approval.get("creator") != plan["creator"] or approval.get("stage") != "anchor"
+            or approval.get("decision") != "verified"):
+        raise FigmentTrainError("original passport approval is invalid")
+    settled = approval.get("subject", {})
+    reviewed = approval.get("reviewed_subject", {})
+    transition = approval.get("transition", {})
+    if (not isinstance(settled, dict) or not isinstance(reviewed, dict)
+            or evaluation.get("schema") != lineage.EVALUATION_SCHEMA
+            or evaluation.get("subject") != reviewed
+            or lineage.canonical_sha256(reviewed) != approval.get("reviewed_subject_sha256")
+            or evaluation.get("subject_sha256") != approval.get("reviewed_subject_sha256")
+            or transition != {"kind": "anchor-promotion", "requires_replan": True,
+                "from_subject_sha256": approval.get("reviewed_subject_sha256"),
+                "to_subject_sha256": approval.get("subject_sha256")}):
+        raise FigmentTrainError("original passport promotion transition is invalid")
+    before, after = deepcopy(reviewed), deepcopy(settled)
+    before_identity = before.get("persona", {}).get("identity", {})
+    after_identity = after.get("persona", {}).get("identity", {})
+    if (after_identity.get("history", []) != before_identity.get("history", []) + before_identity.get("references", [])
+            or len(after_identity.get("references", [])) != 1):
+        raise FigmentTrainError("original passport identity transition is invalid")
+    for value in (before_identity, after_identity):
+        value.pop("references", None)
+        value.pop("history", None)
+    if before != after:
+        raise FigmentTrainError("passport promotion changed unrelated reviewed inputs")
+    try:
+        current = lineage.review_subject(creator=plan["creator"], stage="anchor",
+            plan_path=root / "plan.json",
+            manifest_paths=[root / run["manifest"] for run in plan["stages"]["anchor"]["runs"]],
+            images=grading["images"], anchors=[root / name for name in plan["assets"]["anchors"]],
+            persona=settled["persona"], training=settled["training"],
+            threshold_path=HERE / "gate.yaml", score_path=grade / "gate.json", reads=reads)
+        # Original numeric gate/evaluation bytes above retain their reviewed thresholds.
+        # Later calibration changes govern new edit grading, not historical registration.
+        current["thresholds"] = settled["thresholds"]
+        lineage.assert_current(approval, current, label="original passport registration")
+    except (KeyError, ValueError, OSError) as exc:
+        raise FigmentTrainError(f"original passport evidence changed: {exc}") from exc
+    if evaluation.get("gate_sha256") not in (None, _sha256(grade / "gate.json", reads=reads)):
+        raise FigmentTrainError("original passport numeric gate changed")
+    return approval
+
+
+def _validate_registered_passport(creator, persona, source_plan, image_id, *, reads=None):
+    edit = _tensor_edit_module()
+    try:
+        return edit.registered_passport_authority(creator, persona, source_plan, image_id,
+            validated_anchor=lambda c, p, i: _validate_approved_still(c, p, i, "anchor", historical_anchor=True, reads=reads),
+            reads=reads)
+    except (OSError, ValueError, KeyError) as exc:
+        raise FigmentTrainError(f"passport authority refused: {exc}") from exc
+
+
+def _resolve_edit_request(creator, persona, request):
+    def resolve(kind, source, image_id):
+        if kind == "passport":
+            return _validate_registered_passport(creator, persona, source, image_id)
+        approved = validate_approved_gen_still(creator, source, image_id)
+        def recheck():
+            for field in ("source_plan", "approval_lineage", "approved_list"):
+                evidence = approved[field]
+                if _sha256(Path(evidence["path"])) != evidence["sha256"]:
+                    raise FigmentTrainError("approved gen authority changed while resolving edit identity")
+        recheck()
+        source_plan = _read_json(source)
+        recheck()
+        if validate_approved_gen_still(creator, source, image_id) != approved:
+            raise FigmentTrainError("approved gen authority changed while resolving edit identity")
+        return {"kind": "approved-gen", "image": approved,
+                "fixture": source_plan.get("fixture") is True,
+                "source_plan": approved["source_plan"], "approval_lineage": approved["approval_lineage"]}
+    try:
+        return _tensor_edit_module().read_request(request, creator, resolve_identity=resolve)
+    except (OSError, ValueError, KeyError) as exc:
+        raise FigmentTrainError(f"edit request refused: {exc}") from exc
+
+
+def _build_edit_plan(creator, out, request, *, personas_root, skip_pin_verify, ledger_dir, accept_budget):
+    if request is None:
+        raise FigmentTrainError("edit requires --edit-request with an approved image pair and exact prompt")
+    persona, training, pins = _load_inputs(creator, Path(personas_root))
+    persona = {**persona, "_persona_path": str(Path(personas_root) / creator / "persona.yaml")}
+    if training["recipe_profile"] != "tensor":
+        raise FigmentTrainError("edit is available only in the tensor profile")
+    _identity_gate_module().load_thresholds(persona)
+    frozen = _resolve_edit_request(creator, persona, request)
+    # Grade against the registered passport even when image2 is an accepted gen still.
+    if not persona["identity"]["references"]:
+        raise FigmentTrainError("edit requires a registered passport")
+    _stage_pin_groups(pins, training, "edit")
+    if not skip_pin_verify:
+        _verify_pins_preflight(pins, ["edit"], training)
+    out = Path(out).resolve()
+    if out.exists() and any(out.iterdir()):
+        raise FigmentTrainError(f"plan output directory must be empty: {out}")
+    workflow = _read_json(HERE / "train/workflows/tensor_edit_m07_api.json")
+    base_name = f"{creator}/{Path(frozen['base']['path']).name}"
+    identity_name = f"{creator}/{Path(frozen['identity']['path']).name}"
+    workflow["76"]["inputs"]["image"] = base_name
+    workflow["169"]["inputs"]["image"] = identity_name
+    workflow["113"]["inputs"]["text"] = frozen["prompt"]["text"]
+    output_name = f"{_creator_output_code(creator)}-edit-{frozen['job_type']}"
+    workflow["163"]["inputs"]["filename_prefix"] = output_name
+    group = pins["pins"]["edit_tensor"]
+    manifest = {**_pod_base(pins, training["pod_class"], "edit_tensor"),
+        "models": deepcopy(group["models"]), "custom_nodes": deepcopy(group["custom_nodes"]),
+        "workflow": "../workflows/tensor_edit_m07_api.json", "seed_fields": ["noise_seed"],
+        "uploads": [{"files": [f"_uploads/{name}" for name in (base_name, identity_name)],
+                     "subfolder": creator, "type": "input", "overwrite": True}],
+        "jobs": [{"seed": 1058272840145291, "output_name": output_name, "expected_images": 1,
+                  "substitutions": []}]}
+    errors = _tensor_parity_module().check_edit(workflow, manifest, prompt=frozen["prompt"]["text"],
+                                               base_image=base_name, identity_image=identity_name)
+    if errors:
+        raise FigmentTrainError("tensor edit parity failed: " + "; ".join(errors))
+    # Validation above deliberately precedes the first plan artifact write.
+    out.mkdir(parents=True, exist_ok=True)
+    assets = {"anchors": _copy_anchors(out, persona), "persona_dir": _persona_dir_asset(persona)}
+    assets["tensor_passport"] = _tensor_passport_binding(out, persona, assets["anchors"])
+    copies = {}
+    for role in ("base", "identity"):
+        source = Path(frozen[role]["path"])
+        destination = out / "train/runs/_uploads" / creator / source.name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+        if _sha256(destination) != frozen[role]["sha256"]:
+            raise FigmentTrainError("edit input changed while staging")
+        copies[role] = _relative(destination, out)
+    assets["edit_images"] = copies
+    workflow_path = out / "train/workflows/tensor_edit_m07_api.json"
+    _write_json(workflow_path, workflow)
+    manifest_path = out / "train/runs" / f"{creator}-tensor-edit.yaml"
+    _write_json(manifest_path, manifest)
+    resolved_ledger = _resolved_ledger_dir(ledger_dir)
+    run = _planned_run(out, manifest_path, _stage_run_root(out, "edit") / manifest_path.stem,
+                       ledger_dir=resolved_ledger)
+    run["workflow_sha256"] = _sha256(workflow_path)
+    stages = {"edit": {"runs": [run]}}
+    budget = _budget_preflight(stages, ledger_dir=resolved_ledger, arc_cap_usd=_arc_cap_usd(), accept_budget=accept_budget)
+    plan = {"schema": "figment/train-plan@1", "creator": creator, "fixture": frozen["fixture"],
+        "generated_utc": datetime.now(timezone.utc).isoformat(), "generator": _sha256(Path(__file__)),
+        "persona_sha256": _sha256(Path(persona["_persona_path"])), "training": training,
+        "assets": assets, "configs": {}, "ledger_dir": str(resolved_ledger), "arc_cap_usd": _arc_cap_usd(),
+        "arc_ledger_glob": ARC_LEDGER_GLOB, "budget_preflight": budget, "stages": stages,
+        "edit_inputs": frozen}
+    _write_json(out / "plan.json", plan)
+    _edit_preview(plan, out, out / "edit-inputs.html")
+    return plan
+
+
+EDIT_TRAINING_KEYS = ("recipe_profile", "pod_class", "price_ceiling_usd_per_hour")
+
+
+def _validate_edit_inputs(plan, root, *, launch=False):
+    persona, training = _current_persona_training(plan)
+    if training.get("recipe_profile") != "tensor" or any(
+            training.get(key) != plan["training"].get(key) for key in EDIT_TRAINING_KEYS):
+        raise FigmentTrainError("edit profile or pod settings changed after planning")
+    frozen = plan.get("edit_inputs", {})
+    current = _resolve_edit_request(plan["creator"], persona, frozen.get("request", {}).get("path"))
+    if current != frozen or plan.get("fixture") is not frozen.get("fixture"):
+        raise FigmentTrainError("edit source inputs or authority changed after planning")
+    for role in ("base", "identity"):
+        path = root / plan["assets"]["edit_images"][role]
+        try:
+            path.resolve().relative_to(root.resolve())
+            actual = _tensor_edit_module().file_binding({"path": str(path), "sha256": frozen[role]["sha256"]}, root, image=True)
+        except (ValueError, OSError) as exc:
+            raise FigmentTrainError(f"edit staged {role} changed: {exc}") from exc
+        if actual["bytes"] != frozen[role]["bytes"]:
+            raise FigmentTrainError("edit staged input size changed")
+    for run in plan["stages"]["edit"]["runs"]:
+        manifest_path = root / run["manifest"]
+        manifest = _read_json(manifest_path)
+        workflow_path = manifest_path.parent / manifest["workflow"]
+        if _sha256(manifest_path) != run["sha256"] or _sha256(workflow_path) != run["workflow_sha256"]:
+            raise FigmentTrainError("edit manifest or workflow changed after planning")
+        errors = _tensor_parity_module().check_edit(_read_json(workflow_path), manifest,
+            prompt=frozen["prompt"]["text"], base_image=f"{plan['creator']}/{Path(frozen['base']['path']).name}",
+            identity_image=f"{plan['creator']}/{Path(frozen['identity']['path']).name}")
+        if errors:
+            raise FigmentTrainError("edit parity refused: " + "; ".join(errors))
+        if launch:
+            if frozen["fixture"]:
+                raise FigmentTrainError("synthetic fixture edit is dry-run only; cannot launch")
+            problems = _tensor_parity_module().edit_readiness_problems(manifest)
+            if problems:
+                raise FigmentTrainError("edit readiness blocked: " + "; ".join(problems))
+            # Offline plan verification never grants live model access, including gated Klein.
+            _verify_pins_preflight(_read_json(PINS_PATH), ["edit"], plan["training"])
+    return current
+
+
+def _edit_preview(plan, root, path):
+    inputs = plan["edit_inputs"]
+    rows = []
+    for role, label in (("base", "BASE / image1 / node76"), ("identity", "IDENTITY / image2 / node169")):
+        image = (root / plan["assets"]["edit_images"][role]).resolve().as_uri()
+        rows.append(f'<figure><figcaption>{label}</figcaption><img width="320" src="{html.escape(image)}"></figure>')
+    path.write_text('<!doctype html><meta charset="utf-8"><title>Edit input review</title>'
+        + '<h1>Edit input review</h1>' + ''.join(rows) + '<pre>'
+        + html.escape(inputs["prompt"]["text"]) + '</pre><p>Fixture: '
+        + str(inputs["fixture"]).lower() + '</p>', encoding="utf-8")
+
+
 def build_plan(
     creator_id: str,
     stage: str,
@@ -2435,8 +3965,14 @@ def build_plan(
     accept_budget: bool = False,
     style_lora: str | None = None,
     style_lora_strength: float | None = None,
+    gen_prompt_style: str | None = None,
+    gen_refine_denoise: float | None = None,
+    gen_detailer_denoise: float | None = None,
     import_checkpoints: Path | None = None,
     import_training_config: Path | None = None,
+    edit_request: Path | None = None,
+    video_request: Path | None = None,
+    stills_request: Path | None = None,
 ) -> dict[str, Any]:
     """Generate a complete, immutable plan without touching the hand-written runs.
 
@@ -2471,6 +4007,11 @@ def build_plan(
     `training.style_lora` in the persona's own `training.yaml` stays the default when
     neither flag is given.
 
+    `gen_refine_denoise`/`gen_detailer_denoise` (2026-09-23) are the same shape of
+    `"gen"`-only override for `_gen_workflow`'s refine (node 15) and detailer (node 33)
+    passes -- see `_resolve_gen_refine_denoise`/`_resolve_gen_detailer_denoise`. A 0.0
+    removes the corresponding pass from the emitted workflow entirely.
+
     `approved_gen_plan` is also required for `"video"` (F6a), where it names the ruled
     `gen` plan whose kept still becomes the I2V first frame: `approved_gen_image_id`
     selects one (default: the first kept id in sorted order) and `video_action` overrides
@@ -2481,6 +4022,31 @@ def build_plan(
     candidate rebuild and `content/content_asset_binding.py`'s slot join already share.
     Its output root must therefore be inside this repository (`_video_authority_root`).
     """
+    if stills_request is not None:
+        if stage != "gen" or any(value is not None for value in
+                (edit_request, video_request, approved_gen_plan, approved_gen_image_id, video_action,
+                 import_checkpoints, import_training_config, detail_images, style_lora, style_lora_strength,
+                 gen_prompt_style, gen_refine_denoise, gen_detailer_denoise)):
+            raise FigmentTrainError("--stills-request is exclusively a tensor gen request")
+        return _build_tensor_stills_plan(creator_id, out, stills_request, personas_root=personas_root,
+            skip_pin_verify=skip_pin_verify, ledger_dir=ledger_dir, accept_budget=accept_budget)
+    if video_request is not None:
+        if stage != "video" or any(value is not None for value in
+                (edit_request, approved_gen_plan, approved_gen_image_id, video_action, import_checkpoints,
+                 detail_images, style_lora, style_lora_strength, gen_prompt_style, gen_refine_denoise,
+                 gen_detailer_denoise, import_training_config)):
+            raise FigmentTrainError("--video-request is exclusively a tensor video request")
+        return _build_tensor_video_plan(creator_id, out, video_request, personas_root=personas_root,
+            skip_pin_verify=skip_pin_verify, ledger_dir=ledger_dir, accept_budget=accept_budget)
+    if edit_request is not None and stage != "edit":
+        raise FigmentTrainError("--edit-request is only meaningful for --stage edit")
+    if stage == "edit":
+        if any(value is not None for value in (detail_images, approved_gen_plan, approved_gen_image_id,
+                video_action, style_lora, style_lora_strength, gen_prompt_style, gen_refine_denoise,
+                gen_detailer_denoise, import_checkpoints, import_training_config)):
+            raise FigmentTrainError("edit accepts only its explicit request, not other stage overrides")
+        return _build_edit_plan(creator_id, out, edit_request, personas_root=personas_root,
+            skip_pin_verify=skip_pin_verify, ledger_dir=ledger_dir, accept_budget=accept_budget)
     if stage not in (*STAGES, "all"):
         raise FigmentTrainError(f"unknown stage {stage!r}")
     if detail_images is not None and stage not in ("gen", "all"):
@@ -2499,11 +4065,20 @@ def build_plan(
         raise FigmentTrainError(
             "--style-lora/--style-lora-strength is only meaningful for --stage gen"
         )
+    if gen_prompt_style is not None and stage != "gen":
+        raise FigmentTrainError("--gen-prompt-style is only meaningful for --stage gen")
+    if gen_refine_denoise is not None and stage != "gen":
+        raise FigmentTrainError("--gen-refine-denoise is only meaningful for --stage gen")
+    if gen_detailer_denoise is not None and stage != "gen":
+        raise FigmentTrainError("--gen-detailer-denoise is only meaningful for --stage gen")
     if approved_gen_image_id is not None and stage != "video":
         raise FigmentTrainError("--approved-gen-image-id is only meaningful for --stage video")
     if video_action is not None and stage != "video":
         raise FigmentTrainError("--video-action is only meaningful for --stage video")
     if stage == "video":
+        _, selected_training, _ = _load_inputs(creator_id, Path(personas_root))
+        if selected_training.get("recipe_profile") == "tensor":
+            raise FigmentTrainError("tensor video requires --video-request; an approved gen still is not driving-clip authority")
         _video_authority_root(out, "a video plan's --out")
     out = Path(out).resolve()
     if (out / "plan.json").exists():
@@ -2516,6 +4091,28 @@ def build_plan(
     persona, training, pins = _load_inputs(creator_id, Path(personas_root))
     persona = dict(persona)
     persona["_persona_path"] = str(Path(personas_root) / creator_id / "persona.yaml")
+
+    # MEDIUM-1 (opus review, 2026-09-15): validate the persona's own identity-gate
+    # thresholds at PLAN time, not at grade time -- a malformed
+    # `identity.floor.min_face_px.by_framing` (e.g. an override above the persona's own
+    # default floor, an unknown framing key, or a non-numeric value) must fail before a
+    # single manifest is written, never silently ride along until the dataset gate runs
+    # days later. The return value is discarded here; this call exists for its
+    # fail-closed validation side effect only.
+    _identity_gate_module().load_thresholds(persona)
+    pre_passport = not persona["identity"]["references"]
+    tensor = training["recipe_profile"] == "tensor"
+    if tensor and stage == "gen":
+        raise FigmentTrainError("tensor gen requires --stills-request with canonical approved fixture scenes")
+    if pre_passport and (not tensor or stage not in ("anchor", "all")):
+        raise FigmentTrainError(
+            f"{creator_id} has no identity reference yet; only the tensor-profile anchor "
+            "(passport) stage can be planned until the operator picks a passport"
+        )
+    if tensor and not pre_passport and stage == "anchor":
+        raise FigmentTrainError(
+            f"{creator_id} already has its passport; the tensor anchor stage cannot be replanned"
+        )
 
     imported_training_config: dict[str, str] | None = None
     if import_checkpoints is not None:
@@ -2540,6 +4137,14 @@ def build_plan(
     training = _resolve_gen_style_lora(
         training, pins, style_lora=style_lora, style_lora_strength=style_lora_strength,
     )
+    # 2026-09-22: same shape, one plan-time override, for the gen prompt-composition
+    # style (a no-op when the flag is omitted).
+    training = _resolve_gen_prompt_style(training, gen_prompt_style=gen_prompt_style)
+    # 2026-09-23: same shape again, for the gen-only refine/detailer denoise overrides.
+    training = _resolve_gen_refine_denoise(training, gen_refine_denoise=gen_refine_denoise)
+    training = _resolve_gen_detailer_denoise(
+        training, gen_detailer_denoise=gen_detailer_denoise,
+    )
     # m8: `detail` doesn't consume a style LoRA itself (it re-details gen's already-
     # rendered pixels -- the style LoRA's effect is already baked into them), but its
     # own pin preflight still verifies the upstream gen plan's choice, and its
@@ -2555,7 +4160,7 @@ def build_plan(
                     "strength": upstream_training.get("style_lora_strength"),
                 }
 
-    selected = list(STAGES if stage == "all" else (stage,))
+    selected = list((TENSOR_STAGES if tensor else CLEAN_STAGES) if stage == "all" else (stage,))
     if persona["identity"].get("history") and "anchor" in selected:
         if stage != "all":
             raise FigmentTrainError(
@@ -2568,10 +4173,16 @@ def build_plan(
     # "detail" and "video" (F2/F6) are likewise always planned explicitly, by name,
     # each pointed at an already-approved upstream stage's output -- neither can be
     # known at `--stage all` planning time.
-    for _later_stage in ("gen", "detail", "video"):
+    for _later_stage in ("gen", "detail", "edit", "video"):
         if stage == "all" and _later_stage in selected:
             selected.remove(_later_stage)
+    if pre_passport:
+        selected = ["anchor"]
+    elif tensor and "anchor" in selected:
+        selected.remove("anchor")
 
+    for current in selected:
+        _stage_pin_groups(pins, training, current)
     if not skip_pin_verify:
         preflight_training = training
         if detail_upstream_style_lora is not None:
@@ -2579,7 +4190,7 @@ def build_plan(
         _verify_pins_preflight(pins, selected, preflight_training)
         if detail_images and "gen" in selected:
             # `detail` is not a top-level STAGES entry (it rides along with a "gen"
-            # plan when --detail-images is given), so STAGE_PIN_PROFILES's per-stage
+            # plan when --detail-images is given), so `_stage_pin_groups`'s per-stage
             # lookup never reaches it -- verify it directly, same fail-closed contract.
             module = _verify_pins_module()
             try:
@@ -2593,9 +4204,20 @@ def build_plan(
                 ]
                 raise FigmentTrainError("pin verification failed:\n" + "\n".join(lines))
 
-    prompts = _generalized_prompts(persona)
-    workflow = _generalized_dataset_workflow(persona, prompts)
-    assets = _copy_support_files(out, persona, prompts, workflow)
+    if tensor:
+        if "dataset" in selected:
+            _prompts, _workflow = _tensor_dataset_assets(persona, training, pins)
+            _tensor_dataset_manifest(persona, training, pins, _prompts, _workflow)
+        if "tester" in selected:
+            _tensor_approved_prompt(training)
+    if pre_passport:
+        assets = _copy_passport_support_files(out)
+    elif tensor:
+        assets, prompts, workflow = _copy_tensor_support(out, persona, training, selected, pins)
+    else:
+        prompts = _generalized_prompts(persona)
+        workflow = _generalized_dataset_workflow(persona, prompts)
+        assets = _copy_support_files(out, persona, prompts, workflow)
     # Review MED-8: store repo-relative (against ROOT), never an absolute machine path --
     # every other asset is `out`-relative, but the persona directory usually lives OUTSIDE
     # `out` entirely (a scratch/tmp plan dir vs. `orgs/figment/personas/<id>`), so it is
@@ -2607,10 +4229,10 @@ def build_plan(
     configs_dir = out / "train" / "configs"
     smoke_config = configs_dir / "training-smoke.json"
     full_config = configs_dir / "training.json"
-    _write_json(smoke_config, _render_training_config(training["trigger"], 100, 50))
+    _write_json(smoke_config, _render_profile_training_config(training, smoke=True))
     _write_json(
         full_config,
-        _render_training_config(training["trigger"], training["steps"], training["save_every"]),
+        _render_profile_training_config(training),
     )
 
     plan_stages: dict[str, Any] = {}
@@ -2619,7 +4241,11 @@ def build_plan(
     video_source: dict[str, Any] | None = None
     imported_checkpoints: list[dict[str, Any]] | None = None
     for current in selected:
-        if current == "anchor":
+        if current == "anchor" and tensor:
+            manifests = [_passport_tensor_manifest(persona, training, pins)]
+            _check_passport_parity(manifests[0], persona)
+            paths = [out / "expand" / "runs" / f"{creator_id}-tensor-passport.yaml"]
+        elif current == "anchor":
             manifests = _anchor_manifests(
                 persona, training, pins, _generalized_anchor_prompts(persona),
             )
@@ -2628,11 +4254,46 @@ def build_plan(
                 for arm in ("passport", "edit")
             ]
         elif current == "dataset":
-            manifests = _dataset_manifests(persona, training, pins, prompts)
-            paths = [
-                out / "expand" / "runs" / f"{creator_id}-tensor-dataset-shard-{n:02d}.yaml"
-                for n in range(1, 4)
-            ] + [out / "expand" / "runs" / f"{creator_id}-tensor-dataset-fullbody.yaml"]
+            if tensor:
+                complete = _tensor_dataset_manifest(persona, training, pins, prompts, workflow)
+                manifests = []
+                for jobs in _chunks(complete["jobs"], 3):
+                    shard = deepcopy(complete)
+                    shard["jobs"] = jobs
+                    manifests.append(shard)
+                paths = [out / "expand/runs" / f"{creator_id}-tensor-dataset-m10-{index:02d}.yaml"
+                         for index in range(1, len(manifests) + 1)]
+            elif training.get("dataset_source") == "klein-multiref":
+                # P2: a second dataset-stage source (MANDATE.md stage 2) -- 2 shards
+                # (face, body), never the qwen-edit 3-shard-plus-fullbody shape below.
+                manifests = _dataset_manifests_klein_multiref(persona, training, pins)
+                paths = [
+                    out / "expand" / "runs" / f"{creator_id}-tensor-dataset-multiref-{label}.yaml"
+                    for label in ("face", "body")
+                ]
+            else:
+                manifests = _dataset_manifests(persona, training, pins, prompts)
+                # P2 task 2 (2026-09-16): `_dataset_manifests` scales BOTH the half/close
+                # and fullbody shard counts with `training.dataset_replicates` -- derive
+                # the path list's shape from the manifest list it actually returned
+                # (half/close shards first, fullbody shards last, per its own docstring)
+                # rather than a hardcoded 3+1, or a `replicates > 1` plan would zip()
+                # away every manifest past the 4th and silently never write it to disk.
+                fullbody_shard_count = FULLBODY_SHARD_COUNT_BASE * training.get(
+                    "dataset_replicates", 1,
+                )
+                half_close_shard_count = len(manifests) - fullbody_shard_count
+                paths = [
+                    out / "expand" / "runs" / f"{creator_id}-tensor-dataset-shard-{n:02d}.yaml"
+                    for n in range(1, half_close_shard_count + 1)
+                ]
+                if fullbody_shard_count == 1:
+                    paths.append(out / "expand" / "runs" / f"{creator_id}-tensor-dataset-fullbody.yaml")
+                else:
+                    paths += [
+                        out / "expand" / "runs" / f"{creator_id}-tensor-dataset-fullbody-{n:02d}.yaml"
+                        for n in range(1, fullbody_shard_count + 1)
+                    ]
         elif current == "smoke":
             manifests = [_train_manifest(persona, training, pins, smoke=True)]
             paths = [out / "train" / "runs" / f"{creator_id}-tensor-train-smoke.yaml"]
@@ -2642,7 +4303,7 @@ def build_plan(
         elif current == "tester":
             if import_checkpoints is not None:
                 ladder = _discover_imported_checkpoints(
-                    Path(import_checkpoints), training["trigger"], training["steps"],
+                    Path(import_checkpoints), _artifact_name(training), training["steps"],
                 )
                 staged = _stage_imported_checkpoints(out, persona, ladder)
                 intermediate_steps = [
@@ -2657,6 +4318,11 @@ def build_plan(
                 imported_checkpoints = staged
             else:
                 manifests = [_tester_manifest(persona, training, pins)]
+            if tensor:
+                errors = _tensor_parity_module().check_tester(manifests[0]["workflow"], manifests[0],
+                    prompt=_tensor_approved_prompt(training))
+                if errors:
+                    raise FigmentTrainError("tensor tester parity failed: " + "; ".join(errors))
             paths = [out / "train" / "runs" / f"{creator_id}-tensor-tester.yaml"]
         elif current == "gen":
             accepted_checkpoint = _validated_accepted_checkpoint(persona, training)
@@ -2775,9 +4441,21 @@ def build_plan(
                 "key": training["style_lora"], "strength": training["style_lora_strength"],
                 "source": "flag",
             }
+        if current == "gen" and gen_prompt_style is not None:
+            plan_stages[current]["gen_prompt_style"] = {
+                "value": training["gen_prompt_style"], "source": "flag",
+            }
+        if current == "gen" and gen_refine_denoise is not None:
+            plan_stages[current]["gen_refine_denoise"] = {
+                "value": training["gen_refine_denoise"], "source": "flag",
+            }
+        if current == "gen" and gen_detailer_denoise is not None:
+            plan_stages[current]["gen_detailer_denoise"] = {
+                "value": training["gen_detailer_denoise"], "source": "flag",
+            }
 
     budget_preflight = _budget_preflight(
-        plan_stages, ledger_dir=resolved_ledger_dir, arc_cap_usd=ARC_CAP_USD,
+        plan_stages, ledger_dir=resolved_ledger_dir, arc_cap_usd=_arc_cap_usd(),
         accept_budget=accept_budget,
     )
     print(budget_preflight["table"])
@@ -2795,7 +4473,7 @@ def build_plan(
             "train": _relative(full_config, out),
         },
         "ledger_dir": str(resolved_ledger_dir),
-        "arc_cap_usd": ARC_CAP_USD,
+        "arc_cap_usd": _arc_cap_usd(),
         "arc_ledger_glob": ARC_LEDGER_GLOB,
         "budget_preflight": budget_preflight,
         "stages": plan_stages,
@@ -2987,13 +4665,17 @@ def build_train_first_plan(
     # this extra key rides along harmlessly wherever `training` is passed on below.
     training = {**training, "dataset_dir": str(dataset_dir)}
 
+    for current in ("train", "tester"):
+        _stage_pin_groups(pins, training, current)
     if not skip_pin_verify:
-        _verify_pins_preflight(pins, ["train", "tester"])
+        _verify_pins_preflight(pins, ["train", "tester"], training)
 
     # Same anchor files `build_plan` stages via `_copy_support_files` -- `grade --stage
     # tester` (`build_grade`) needs `plan["assets"]["anchors"]` to resolve to real,
     # `out`-relative files exactly the same way for either plan.json flavor.
     assets = {"anchors": _copy_anchors(out, persona), "persona_dir": _persona_dir_asset(persona)}
+    if training.get("recipe_profile") == "tensor":
+        assets["tensor_passport"] = _tensor_passport_binding(out, persona, assets["anchors"])
 
     train_runs_dir = out / "train" / "runs"
     train_runs_dir.mkdir(parents=True, exist_ok=True)
@@ -3004,7 +4686,7 @@ def build_train_first_plan(
     for source in (TRAIN_START_PATH, TESTER_START_PATH):
         text = source.read_text(encoding="utf-8")
         text = text.replace("creator-001", creator_id)
-        text = text.replace("creator001krea2", training["trigger"])
+        text = text.replace("creator001krea2", _artifact_name(training))
         (train_runs_dir / source.name).write_text(text, encoding="utf-8")
 
     plan_dataset_dirname = f"{creator_id}-tensor-dataset-train-first"
@@ -3021,7 +4703,7 @@ def build_train_first_plan(
         shutil.copy2(item, plan_dataset_dir / name)
 
     config = _render_training_config(
-        training["trigger"], training["steps"], training["save_every"],
+        _artifact_name(training), training["steps"], training["save_every"],
         dop_enabled=training["dop_enabled"], dop_multiplier=training["dop_multiplier"],
         dop_class=training["dop_class"],
     )
@@ -3049,7 +4731,7 @@ def build_train_first_plan(
     # M2: a real-spend planning path exactly like `build_plan`'s -- same preflight,
     # same --accept-budget contract.
     budget_preflight = _budget_preflight(
-        stages, ledger_dir=resolved_ledger_dir, arc_cap_usd=ARC_CAP_USD,
+        stages, ledger_dir=resolved_ledger_dir, arc_cap_usd=_arc_cap_usd(),
         accept_budget=accept_budget,
     )
     print(budget_preflight["table"])
@@ -3064,7 +4746,7 @@ def build_train_first_plan(
         "assets": assets,
         "configs": {"train": _relative(plan_dataset_dir / "training.json", out)},
         "ledger_dir": str(resolved_ledger_dir),
-        "arc_cap_usd": ARC_CAP_USD,
+        "arc_cap_usd": _arc_cap_usd(),
         "arc_ledger_glob": ARC_LEDGER_GLOB,
         "budget_preflight": budget_preflight,
         "stages": stages,
@@ -3176,7 +4858,39 @@ def verify_run_record(
             if actual.get("output_name") != expected.get("output_name"):
                 raise FigmentTrainError("run.json job order/output_name disagrees with manifest")
             files = actual.get("files") or []
-            if len(files) != expected.get("expected_images", 1):
+            if "output_contract" in expected:
+                runner = _pod_runner_module()
+                contract = runner.job_output_contract(expected)
+                roles = {row["role"]:row for row in contract["outputs"]}
+                wanted = set(roles)
+                wanted.update(row["role"] + "-workflow" for row in contract["outputs"] if row["workflow_png"])
+                if len(files) != len(wanted) or {row.get("role") for row in files} != wanted:
+                    raise FigmentTrainError("contract output roles/count disagree with manifest")
+                if not isinstance(manifest.get("workflow"), dict):
+                    raise FigmentTrainError("contract receipt validation requires frozen inline workflow")
+                graph = runner.apply_job(manifest["workflow"], expected, runner.manifest_seed_fields(manifest))
+                if actual.get("effective_workflow_sha256") != _lineage_module().canonical_sha256(graph):
+                    raise FigmentTrainError("contract receipt submitted graph differs from manifest")
+                for row in files:
+                    companion = row.get("companion_of")
+                    authority = roles.get(companion or row.get("role"))
+                    if authority is None or companion and (
+                            row.get("role") != companion + "-workflow" or not authority["workflow_png"]):
+                        raise FigmentTrainError("contract workflow companion binding mismatch")
+                    media_type = "image/png" if companion else authority["media_type"]
+                    if (row.get("node_id") != authority["node_id"] or row.get("media_type") != media_type
+                            or not actual.get("prompt_id") or row.get("prompt_id") != actual["prompt_id"]):
+                        raise FigmentTrainError("contract output node/media/prompt binding mismatch")
+                    runner.contract_view_params(row.get("remote"), media_type)
+                    relative = Path(row.get("path", ""))
+                    if relative.is_absolute() or ".." in relative.parts:
+                        raise FigmentTrainError("contract output path escapes run")
+                    bound = _tensor_edit_module().file_binding({"path":str(out_dir / relative),
+                        "sha256":row.get("sha256")},out_dir,
+                        limit=32*1024*1024 if companion else authority["max_bytes"])
+                    if bound["bytes"] != row.get("bytes"):
+                        raise FigmentTrainError("contract output bytes changed")
+            elif len(files) != expected.get("expected_images", 1):
                 raise FigmentTrainError(
                     f"job {actual.get('output_name')!r} output count disagrees with manifest"
                 )
@@ -3282,6 +4996,10 @@ def _validate_gen_source_inputs(plan: dict[str, Any], root: Path, *, reads=None)
     if not isinstance(expected, str):
         raise FigmentTrainError("gen plan has no accepted checkpoint digest")
     _validate_staged_checkpoint_upload(plan, root, "gen", expected, reads=reads)
+    if "gen_inputs" in plan:
+        if reads is not None:
+            raise FigmentTrainError("tensor stills authority does not yet support observed reads")
+        _validate_tensor_stills_inputs(plan, root)
 
 
 def _validate_detail_source_inputs(plan: dict[str, Any], root: Path, *, reads=None) -> None:
@@ -3347,6 +5065,11 @@ def _validate_video_source_inputs(plan: dict[str, Any], root: Path, *, reads=Non
     gen source: never trust the plan's own frozen copy alone -- re-run
     `validate_approved_gen_still` against the SAME approved-gen authority the frame
     was drawn from, and refuse if its bytes moved since this video plan was built."""
+    if "video_inputs" in plan:
+        if reads is not None:
+            raise FigmentTrainError("tensor video authority does not yet support observed reads")
+        _validate_tensor_video_inputs(plan, root)
+        return
     source = plan.get("video_source")
     if (not isinstance(source, dict) or not isinstance(source.get("approved_gen_plan"), str)
             or not isinstance(source.get("image_id"), str)):
@@ -3363,6 +5086,35 @@ def _validate_video_source_inputs(plan: dict[str, Any], root: Path, *, reads=Non
 
 
 def _install_stage_config(stage: str, plan: dict[str, Any], root: Path) -> None:
+    if stage == "gen" and "gen_inputs" in plan:
+        _validate_gen_source_inputs(plan, root)
+        _validate_tensor_stills_inputs(plan, root, launch=True)
+        return
+    if stage == "video" and "video_inputs" in plan:
+        _validate_tensor_video_inputs(plan, root, launch=True)
+        return
+    if stage == "edit":
+        _validate_tensor_passport_inputs(plan, root)
+        _validate_edit_inputs(plan, root, launch=True)
+        return
+    if plan.get("training", {}).get("recipe_profile") == "tensor":
+        training = plan["training"]
+        if stage != "anchor":
+            _validate_tensor_passport_inputs(plan, root)
+        if stage == "dataset":
+            persona, current_training = _current_persona_training(plan)
+            _validate_tensor_training_inputs(plan, current_training, stage)
+            body, _ = _tensor_body_input(persona, training)
+            copied = root / plan["assets"]["tensor_body"]
+            if _sha256(copied) != _sha256(body):
+                raise FigmentTrainError("tensor body copy changed after planning")
+        if stage == "tester":
+            _, current_training = _current_persona_training(plan)
+            _validate_tensor_training_inputs(plan, current_training, stage)
+            _tensor_approved_prompt(training)
+        if stage != "anchor" and any((training.get(key) or {}).get("fixture") is True
+                                      for key in ("tensor_body", "tensor_tester_prompt")):
+            raise FigmentTrainError("synthetic fixture plan is dry-run only; cannot launch")
     if stage == "gen":
         _validate_gen_source_inputs(plan, root)
         return
@@ -3395,7 +5147,7 @@ def _install_stage_config(stage: str, plan: dict[str, Any], root: Path) -> None:
                 )
             training = plan["training"]
             expected_config = _render_training_config(
-                training["trigger"], training["steps"], training["save_every"],
+                _artifact_name(training), training["steps"], training["save_every"],
                 dop_enabled=training["dop_enabled"],
                 dop_multiplier=training["dop_multiplier"], dop_class=training["dop_class"],
             )
@@ -3418,9 +5170,9 @@ def _install_stage_config(stage: str, plan: dict[str, Any], root: Path) -> None:
         raise FigmentTrainError(f"planned {stage} config is missing: {config_source}")
     training = plan["training"]
     expected_config = (
-        _render_training_config(training["trigger"], 100, 50)
+        _render_profile_training_config(training, smoke=True)
         if stage == "smoke" else
-        _render_training_config(training["trigger"], training["steps"], training["save_every"])
+        _render_profile_training_config(training)
     )
     if _read_json(config_source) != expected_config:
         raise FigmentTrainError(
@@ -3445,6 +5197,17 @@ def _build_video_evidence(plan: dict[str, Any], root: Path) -> dict[str, Any]:
     refuses a non-fresh output directory, so this is idempotent by re-reading an existing
     receipt rather than rebuilding it; a re-invocation after a crash between two of them
     resumes at the missing one. Spends nothing and starts no pod."""
+    if "video_inputs" in plan:
+        _validate_tensor_video_inputs(plan, root)
+        run = plan["stages"]["video"]["runs"][0]
+        try:
+            evidence = _tensor_video_module().build_native_evidence(root, root / run["manifest"],
+                root / run["out"] / "run.json", validate_inputs=lambda: _validate_tensor_video_inputs(plan, root))
+            review, arguments, _ = _tensor_video_review_context(plan, root)
+            prepared = review.prepare_review(**arguments)
+        except (ValueError, OSError) as exc:
+            raise FigmentTrainError(f"tensor native evidence refused: {exc}") from exc
+        return {"assembly": evidence, "extraction": evidence, "review": prepared}
     authority = ROOT.resolve()
     _video_authority_root(root, "the video plan root")
     assembly_module = _frame_assemble_module()
@@ -3561,8 +5324,431 @@ def _verify_tester_receipt_evidence(manifest: dict[str, Any], out_dir: Path, *, 
             )
 
 
-def run_planned_stage(creator_id: str, stage: str, plan_path: Path) -> dict[str, Any]:
-    """Run one stage (or the bounded chain), recording progress and never retrying."""
+# `--retry-failed` (P4 retry): a failed planned run is only ever eligible for a live
+# retry when its own harness receipt (`run.json`, not `stage.json`) proves the failure
+# was transport/placement-class -- a blip talking to the pod provider itself, never a
+# job or validation failure a fresh, reviewed plan should judge instead. This allow-list
+# is deliberately small and literal (substring match against the recorded `error`); widen
+# it only against a real observed receipt, never speculatively.
+RETRY_ELIGIBLE_ERROR_SUBSTRINGS = (
+    "NameResolutionError", "ConnectionError", "MaxRetryError", "ReadTimeout", "placement",
+    # LIVE 2026-09-23 (detail pod w20n3wtn30cceg): a host that never starts the container
+    # (2400 s in desiredStatus=RUNNING, proxy 404, no runtime status) is a placement-class
+    # failure too -- nothing ran; the harness records the host as bad on this path.
+    "ReadinessTimeout",
+)
+# P5 (LIVE 2026-09-16, creator-001/live-20260916b): a RunPod capacity 500 at `POST
+# /pods` create time ("There are no instances currently available") is exactly as
+# routine as the transport blips above, but its `error` never gets to prove a verified
+# teardown -- there was never a pod to tear down. This substring is layered onto
+# `RETRY_ELIGIBLE_ERROR_SUBSTRINGS` ONLY inside `_out_dir_retry_eligibility_reason`'s
+# `never_created` branch (`_prior_attempt_never_created` already proved no pod_id, no
+# placements/jobs/artifacts, and a live scan finding nothing) -- never added to the
+# base tuple every retry check consults regardless of pod placement, so a
+# `CreateCallError` against a run that DID get a real pod_id is still refused.
+NEVER_CREATED_RETRY_ELIGIBLE_ERROR_SUBSTRING = "CreateCallError"
+# At most this many `--retry-failed` retries per manifest key, counted from
+# `state["runs"][key]["attempts"]`; the (N+1)th failure always requires a fresh plan.
+# P6 (2026-09-16): this bound exists to cap SPEND on repeated real failures -- it never
+# applied to never-created attempts (`_prior_attempt_never_created`), which spend
+# nothing (no pod was ever created), so those are counted separately against
+# `MAX_NEVER_CREATED_RETRIES` below instead of sharing this cap.
+MAX_RUN_RETRIES = 2
+# P6 (2026-09-16, qwen3vl caption capacity 500s): a RunPod capacity 500 at pod-create
+# time is routine and free -- two of them used to permanently lock a manifest even
+# though nothing was spent, because `plan_qwen3vl_caption` and `run_planned_stage`/
+# `_dry_run_retry_preview` both counted every prior attempt (never-created or not)
+# against `MAX_RUN_RETRIES`. Never-created attempts get this much larger, separate
+# ceiling instead; a real (spend-eligible) failure still requires a fresh plan after
+# `MAX_RUN_RETRIES`.
+MAX_NEVER_CREATED_RETRIES = 8
+# P6.1 (2026-09-16, `--retry-caption-after-fix`): the flag is an operator statement
+# with a recorded reason (not an automatic `--retry-failed`), so it gets its own,
+# wider real-retry cap instead of sharing the tight `MAX_RUN_RETRIES` -- counts only
+# REAL prior attempts (a pod was created), same `_count_prior_retry_attempts` count
+# `MAX_RUN_RETRIES` uses, just compared against a larger limit when the flag is
+# present. Automatic `--retry-failed`/`plan_qwen3vl_caption` without the flag keeps
+# `MAX_RUN_RETRIES` unchanged.
+MAX_RETRY_AFTER_FIX = 4
+
+
+def _is_retry_bookkeeping_file(path: Path) -> bool:
+    """LOW-2 allow-list: files a clean zero-output transport failure legitimately
+    leaves in its out dir -- its own receipt/manifest copy, `pod/recovery.py`'s
+    journals, and the two lock files that module uses (`RUN_DIRECTORY_LOCK_NAME` and
+    a journal's `.create-lock`, duplicated here as literals rather than importing the
+    module just for two constants)."""
+    name = path.name
+    if name in ("run.json", "manifest.json"):
+        return True
+    if name == ".figment-recovery-run.lock" or name.endswith(".create-lock"):
+        return True
+    if name.startswith("recovery-") and name.endswith(".json"):
+        return True
+    # LIVE 2026-09-16 (caption pod attempt 3): the harness's own diagnostics capture
+    # (`training_diagnostics_dir` = `<out>/_harness/`, `TRAINING_DIAGNOSTIC_FILENAMES`)
+    # is bookkeeping too -- a failed pod's captured log/heartbeat is evidence, not
+    # a rendered output, and must not disqualify a retry.
+    if path.parent.name == "_harness" and name in ("_training.log", "_training.heartbeat"):
+        return True
+    return False
+
+
+def _has_stray_retry_output(out_dir: Path) -> bool:
+    """LOW-2: recursive over the WHOLE out dir and over any file, not merely a
+    top-level image -- a nested or non-image leftover is exactly as disqualifying
+    for a clean zero-output transport failure."""
+    for path in out_dir.rglob("*"):
+        if path.is_dir():
+            continue
+        if not _is_retry_bookkeeping_file(path):
+            return True
+    return False
+
+
+def _default_pod_name_scan(pod_name: str) -> list[dict[str, Any]]:
+    """Real live-absence scan for `_prior_attempt_never_created`: reuses the exact
+    scan behind `pod/runpod_run.py`'s own CRITICAL "no pod with this name is visible"
+    banner (`PodLease._named_matches`, consulted by `PodLease._create_failure_banner`)
+    when that module's live-session helpers are importable, else shells out to
+    `runpod_run.py status` (this same file's own subcommand, always available) and
+    filters its printed JSON pod list by name. Tests never hit either branch of this
+    function: `_prior_attempt_never_created` resolves this name from module globals at
+    call time, so a test monkeypatches `_default_pod_name_scan` on the loaded module
+    instead of exercising a real RunPod call."""
+    pod_module = _pod_runner_module()
+    build_session = getattr(pod_module, "build_authenticated_session", None)
+    api_cls = getattr(pod_module, "RunPodAPI", None)
+    lease_cls = getattr(pod_module, "PodLease", None)
+    build_logger_fn = getattr(pod_module, "build_logger", None)
+    if build_session and api_cls and lease_cls and build_logger_fn:
+        session, redactor = build_session()
+        try:
+            set_redactor = getattr(pod_module, "set_active_redactor", None)
+            if set_redactor:
+                set_redactor(redactor)
+            api = api_cls(session)
+            logger = build_logger_fn(redactor)
+            lease = lease_cls(api, {"name": pod_name}, logger)
+            return lease._named_matches()
+        finally:
+            session.close()
+    # Fallback: the harness's own `status` subcommand prints "arc total: ..." then its
+    # live pod list as JSON -- ask it and filter by name ourselves rather than
+    # requiring the live-session helpers above to be importable from this process.
+    result = subprocess.run(
+        [sys.executable, str(POD_RUNNER), "status"], cwd=ROOT,
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        raise FigmentTrainError(
+            f"runpod_run.py status exited {result.returncode} while checking for pod "
+            f"{pod_name!r}: {result.stderr.strip()}"
+        )
+    try:
+        pods = json.loads(result.stdout[result.stdout.index("["):])
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise FigmentTrainError(
+            f"could not parse runpod_run.py status output while checking for pod "
+            f"{pod_name!r}: {exc}"
+        ) from exc
+    return [pod for pod in pods if isinstance(pod, dict) and pod.get("name") == pod_name]
+
+
+def _prior_attempt_never_created(run_out: Path) -> str | None:
+    """`None` exactly when a prior planned attempt at `run_out` provably never created
+    a pod at all -- safe to reuse (a caption-manifest regenerate, or a
+    `--retry-failed` relaunch) even though its harness receipt fails the ordinary
+    `termination_verified is True` bar those paths otherwise require. Else the
+    human-readable refusal reason.
+
+    LIVE FAILURE 2026-09-16 (creator-001/live-20260916b qwen3vl caption job): RunPod's
+    `POST /pods` returned HTTP 500 "no instances currently available" and the harness
+    recorded fail-closed -- `pod_id: null`, `placement_attempts: []`, `jobs: []`,
+    `artifacts: []`, an `error` naming `CreateCallError`, and a `recovery-*.json`
+    journal stuck at `state: "uncertain"` (`absence_verified: false`) -- exactly what a
+    failed create call leaves behind, never `state: "terminated"`. Capacity 500s at
+    create time are routine on RunPod, so this needs to be an honest, ongoing case,
+    not a one-off hand fix.
+
+    A journal `state` of `"uncertain"` is accepted HERE ONLY -- this function never
+    relaxes the ordinary verified-teardown journal rule (`state: "terminated"` +
+    `absence_verified: true`) that `_out_dir_retry_eligibility_reason` still enforces
+    on its other path. In place of that journal verification, this performs a fresh
+    LIVE scan (`_default_pod_name_scan`, monkeypatched by tests) for every pod name a
+    recovery journal in `run_out` ever recorded, and refuses unless every scan comes
+    back empty.
+    """
+    run_out = Path(run_out)
+    run_json_path = run_out / "run.json"
+    if not run_json_path.is_file():
+        return f"no run.json found at {run_json_path}"
+    try:
+        data = _read_json(run_json_path)
+    except Exception as exc:  # noqa: BLE001 - surfaced as a refusal reason, not raised
+        return f"prior run.json could not be read: {exc}"
+    if not isinstance(data, dict):
+        return "prior run.json is not an object"
+    if data.get("pod_id"):
+        return "prior run.json records a pod_id; this is not a never-created failure"
+    if data.get("placement_attempts"):
+        return "prior run.json records placement attempts; this is not a never-created failure"
+    if data.get("jobs"):
+        return "prior run.json records jobs; this is not a never-created failure"
+    if data.get("artifacts"):
+        return "prior run.json records artifacts; this is not a never-created failure"
+    error = data.get("error")
+    if not isinstance(error, str) or "CreateCallError" not in error:
+        return (
+            "prior run.json error does not name a CreateCallError; this is not a "
+            "never-created failure"
+        )
+    if _has_stray_retry_output(run_out):
+        return "prior attempt's out dir already contains unexpected output files"
+    journals = sorted(run_out.glob("recovery-*.json"))
+    if not journals:
+        return (
+            "no recovery journal found in the out dir to identify a pod name for a "
+            "live absence check"
+        )
+    pod_names: set[str] = set()
+    for journal_path in journals:
+        try:
+            journal = _read_json(journal_path)
+        except Exception as exc:  # noqa: BLE001 - surfaced as a refusal reason, not raised
+            return f"prior recovery journal {journal_path.name} could not be read: {exc}"
+        if not isinstance(journal, dict):
+            return f"prior recovery journal {journal_path.name} is not an object"
+        name = journal.get("pod_name")
+        if not isinstance(name, str) or not name:
+            return f"prior recovery journal {journal_path.name} has no pod_name"
+        pod_names.add(name)
+    for pod_name in sorted(pod_names):
+        try:
+            matches = _default_pod_name_scan(pod_name)
+        except Exception as exc:  # noqa: BLE001 - surfaced as a refusal reason, not raised
+            return f"live pod-name scan for {pod_name!r} could not be completed: {exc}"
+        if matches:
+            return (
+                f"live scan finds a pod named {pod_name!r}; the prior attempt may have "
+                "created one after all"
+            )
+    return None
+
+
+def _count_prior_retry_attempts(
+    attempt_dirs: list[Path | str | None],
+) -> tuple[int, int]:
+    """P6 (2026-09-16): the one shared classifier `plan_qwen3vl_caption` and
+    `run_planned_stage`/`_dry_run_retry_preview` all consult to split prior retry
+    attempts into `(never_created_count, real_count)` -- never-created RunPod capacity
+    failures (`_prior_attempt_never_created`) are bounded by `MAX_NEVER_CREATED_RETRIES`
+    instead of sharing `MAX_RUN_RETRIES` with real, spend-eligible attempts.
+
+    Each entry in `attempt_dirs` is a prior attempt's own out dir (already renamed to
+    `.failed-N`) -- `None` when the caller has no directory to check for that attempt.
+    Fail-closed: `None`, a directory `_prior_attempt_never_created` can't read, or one
+    whose `run.json` doesn't prove a never-created failure all count as REAL, so an
+    attempt this classifier can't positively clear still bounds the tighter
+    `MAX_RUN_RETRIES`, never the looser `MAX_NEVER_CREATED_RETRIES`."""
+    never_created = 0
+    real = 0
+    for attempt_dir in attempt_dirs:
+        if attempt_dir is not None and _prior_attempt_never_created(Path(attempt_dir)) is None:
+            never_created += 1
+        else:
+            real += 1
+    return never_created, real
+
+
+def _first_free_retry_rename_path(out_dir: Path, start: int, *, limit: int = 1000) -> Path:
+    """LOW-3: the `.failed-N` rename target for a retried run's prior out dir -- the
+    first suffix from `start` that is not already taken, rather than a bare
+    `out_dir.rename(...)` that raises a raw `FileExistsError` on a collision (e.g. a
+    leftover `.failed-N` dir from an earlier, unrelated interruption)."""
+    for offset in range(limit):
+        candidate = out_dir.with_name(f"{out_dir.name}.failed-{start + offset}")
+        if not candidate.exists():
+            return candidate
+    raise FigmentTrainError(
+        f"cannot find a free .failed-N retry rename target near {out_dir} "
+        f"(checked {limit} candidates starting at {start})"
+    )
+
+
+def _out_dir_retry_eligibility_reason(
+    out_dir: Path, *, skip_error_class_check: bool = False,
+) -> str | None:
+    """Shared eligibility gate for reusing a failed attempt's own `out_dir`: `None`
+    when its `run.json` proves EITHER (a) verified pod teardown with zero job/artifact
+    output, every `recovery-*.json` journal verified terminated, and a recognized
+    transport/placement error, OR (b) the pod was never created at all
+    (`_prior_attempt_never_created`, P5/LIVE 2026-09-16) -- else the human-readable
+    refusal reason. `_retry_ineligibility_reason` (`--retry-failed`) and
+    `plan_qwen3vl_caption` (which has no plan/`attempts` bookkeeping of its own to fall
+    back through) both consult this one function rather than keeping two copies of the
+    same rule.
+
+    `skip_error_class_check` (`--retry-caption-after-fix`, 2026-09-16): when set, every
+    check above still applies EXCEPT the final `error` substring match against
+    `RETRY_ELIGIBLE_ERROR_SUBSTRINGS` -- an `error` must still be recorded (a run.json
+    with no error at all still refuses; this never means "guess the failure class"),
+    it just isn't required to name a transport/placement failure. Only
+    `plan_qwen3vl_caption`'s explicit `--retry-caption-after-fix` path passes this;
+    every other caller (including the ordinary, unflagged `plan_qwen3vl_caption` check
+    and `_retry_ineligibility_reason`) leaves it at the default and gets today's
+    behavior byte-for-byte."""
+    run_json_path = out_dir / "run.json"
+    if not run_json_path.is_file():
+        return f"no run.json found at {run_json_path} to verify the failure was transport-class"
+    try:
+        data = _read_json(run_json_path)
+    except Exception as exc:  # noqa: BLE001 - surfaced as a refusal reason, not raised
+        return f"prior run.json could not be read: {exc}"
+    if not isinstance(data, dict):
+        return "prior run.json is not an object"
+    # P5: a never-created create-call failure never reaches verified pod termination --
+    # there was never a pod to terminate. `_prior_attempt_never_created` is the one
+    # place that proves this (including a live re-scan); admit it here and skip
+    # straight to the shared zero-output/error checks below, rather than duplicating
+    # its checks or relaxing the ordinary verified-teardown branch for everyone.
+    never_created = (
+        data.get("termination_verified") is not True
+        and _prior_attempt_never_created(out_dir) is None
+    )
+    if not never_created:
+        if data.get("termination_verified") is not True:
+            return "prior run.json does not show verified pod termination"
+        if any(
+            placement.get("termination_verified") is not True
+            for placement in data.get("placement_attempts") or []
+        ):
+            return "prior run.json has a placement without verified termination"
+    if any((job.get("files") or []) for job in data.get("jobs") or []):
+        return "prior run.json recorded job outputs; this is not a clean zero-output failure"
+    if any((artifact.get("bytes") or 0) > 0 for artifact in data.get("artifacts") or []):
+        return "prior run.json recorded artifact outputs; this is not a clean zero-output failure"
+    if _has_stray_retry_output(out_dir):
+        return "prior attempt's out dir already contains unexpected output files"
+    if not never_created:
+        # The never-created path's own journal(s) are exactly the `state: "uncertain"`
+        # evidence a failed create call leaves behind (see `_prior_attempt_never_created`)
+        # -- NOT relaxed here, for this (the ordinary verified-teardown) path.
+        for journal_path in sorted(out_dir.glob("recovery-*.json")):
+            try:
+                journal = _read_json(journal_path)
+            except Exception as exc:  # noqa: BLE001 - surfaced as a refusal reason, not raised
+                return f"prior recovery journal {journal_path.name} could not be read: {exc}"
+            if (
+                not isinstance(journal, dict)
+                or journal.get("state") != "terminated"
+                or journal.get("absence_verified") is not True
+            ):
+                return (
+                    f"prior recovery journal {journal_path.name} does not show a verified "
+                    "terminated pod"
+                )
+    error = data.get("error")
+    if not isinstance(error, str) or not error:
+        return "prior run.json has no error recorded; refusing to guess the failure class"
+    if skip_error_class_check:
+        return None
+    allowed = RETRY_ELIGIBLE_ERROR_SUBSTRINGS
+    if never_created:
+        allowed = allowed + (NEVER_CREATED_RETRY_ELIGIBLE_ERROR_SUBSTRING,)
+    if not any(marker in error for marker in allowed):
+        return f"prior error is not a recognized transport/placement failure: {error!r}"
+    return None
+
+
+def _retry_ineligibility_reason(
+    root: Path, run: dict[str, Any], *, attempts: list[dict[str, Any]] | None = None,
+    skip_error_class_check: bool = False,
+) -> str | None:
+    """`None` when a failed planned `run` is safe for `--retry-failed` to re-launch, else
+    the human-readable reason it refuses. Reads only the prior attempt's own harness
+    receipt (`<out>/run.json`) -- `state["runs"][key]`'s "failed"/"returncode" bookkeeping
+    in `stage.json` never carries enough to tell a transport blip from a job failure.
+    The actual eligibility rule lives in `_out_dir_retry_eligibility_reason`, shared with
+    `plan_qwen3vl_caption`; this wrapper only resolves which `out_dir` to check.
+
+    `attempts` (MEDIUM-1/MEDIUM-2): when the prior attempt's out dir has ALREADY been
+    renamed to `.failed-N` -- because this is re-checking a `status: "retrying"` record
+    left by an interrupted earlier `--retry-failed` call -- `out_dir` itself no longer
+    has a `run.json`. Fall back to the rename target recorded on the last completed
+    attempt (`out_renamed`, LOW-1) rather than reporting a false "no run.json".
+
+    `skip_error_class_check` (`--retry-after-fix`, 2026-09-21): forwarded verbatim to
+    `_out_dir_retry_eligibility_reason` -- see that function's own docstring. Every
+    caller except the explicit `--retry-after-fix` admission check in
+    `run_planned_stage`/`_dry_run_retry_preview` leaves this at the default."""
+    out_dir = root / run["out"]
+    run_json_path = out_dir / "run.json"
+    if not run_json_path.is_file() and attempts:
+        renamed = attempts[-1].get("out_renamed")
+        if isinstance(renamed, str) and renamed:
+            candidate_dir = Path(renamed)
+            if (candidate_dir / "run.json").is_file():
+                out_dir = candidate_dir
+    return _out_dir_retry_eligibility_reason(out_dir, skip_error_class_check=skip_error_class_check)
+
+
+def _run_never_launched(out_dir: Path) -> bool:
+    """True when `out_dir` carries no evidence a harness attempt was ever placed: no
+    `run.json` receipt and no `recovery-*.json` journal. A preflight refusal (daily
+    budget, arc cap, or any other harness check that exits before the pod-create call)
+    never gets this far, so this is the same "nothing ran, nothing was spent" fact
+    `_prior_attempt_never_created` proves for a create-call failure -- but simpler,
+    since a refusal has no journal shape to verify either, only absence.
+
+    Shared by (a) `run_planned_stage`'s own returncode!=0 handling, which uses this to
+    write `refused` instead of `failed`, and (b) reclassifying a legacy `{"status":
+    "failed", "returncode": N}` record on read (P5/LIVE 2026-09-16b creator-001 train
+    budget refusal, recorded before this classification existed) -- if it provably
+    never launched, it always was a refusal, whatever the old code called it."""
+    if (out_dir / "run.json").is_file():
+        return False
+    if out_dir.is_dir() and any(out_dir.glob("recovery-*.json")):
+        return False
+    return True
+
+
+def _stderr_tail(text: str, *, lines: int = 5) -> str:
+    """The actionable slice of captured harness stderr for a `refused` record: the
+    last line mentioning a refusal (case-insensitive `refused`), when the harness
+    printed one -- that is almost always the one line an operator needs -- else the
+    last `lines` non-blank lines, for context when no such line exists."""
+    if not text:
+        return ""
+    non_blank = [line for line in text.splitlines() if line.strip()]
+    if not non_blank:
+        return ""
+    refusal_lines = [line for line in non_blank if "refused" in line.lower()]
+    if refusal_lines:
+        return refusal_lines[-1].strip()
+    return "\n".join(line.strip() for line in non_blank[-lines:])
+
+
+def run_planned_stage(
+    creator_id: str, stage: str, plan_path: Path, *, retry_failed: bool = False,
+    retry_after_fix_reason: str | None = None,
+) -> dict[str, Any]:
+    """Run one stage (or the bounded chain), recording progress and never retrying --
+    unless `retry_failed` (`--retry-failed`) is set, in which case a `failed` prior run
+    is retried exactly when `_retry_ineligibility_reason` clears it and the recorded
+    prior attempts (`_count_prior_retry_attempts`) are still under both caps: fewer than
+    `MAX_RUN_RETRIES` REAL retries, and fewer than `MAX_NEVER_CREATED_RETRIES`
+    never-created (RunPod capacity, spent nothing) retries, for that manifest key.
+
+    `retry_after_fix_reason` (`--retry-after-fix`, 2026-09-21): the same operator-
+    statement admission `plan_qwen3vl_caption`'s `--retry-caption-after-fix` already
+    gives the caption sub-job, extended to a planned stage run. Works even without
+    `retry_failed` set -- a JOB-class failure (verified teardown, zero output, but an
+    `error` that doesn't match `RETRY_ELIGIBLE_ERROR_SUBSTRINGS`) is admitted for retry
+    when `_retry_ineligibility_reason(..., skip_error_class_check=True)` clears it,
+    counted as a REAL prior attempt against the wider `MAX_RETRY_AFTER_FIX` (never-
+    created attempts still bound by `MAX_NEVER_CREATED_RETRIES` unchanged). Without
+    this reason, behavior is byte-for-byte identical to today's `--retry-failed`."""
     if stage not in (*STAGES, "all"):
         raise FigmentTrainError(f"unknown stage {stage!r}")
     plan, root = _load_plan(creator_id, plan_path)
@@ -3606,11 +5792,140 @@ def run_planned_stage(creator_id: str, stage: str, plan_path: Path) -> dict[str,
             prior = state["runs"].get(key)
             if prior and prior.get("status") == "complete":
                 continue
-            if prior and prior.get("status") == "failed":
-                raise FigmentTrainError(
-                    f"planned run {key} already failed; create a reviewed new plan to retry"
+            attempts = list((prior or {}).get("attempts") or [])
+            refusals = list((prior or {}).get("refusals") or [])
+            prior_status = prior.get("status") if prior else None
+            out_dir_for_status = root / run["out"]
+            if prior_status == "failed" and _run_never_launched(out_dir_for_status):
+                # Reclassify on read: whatever the record called itself (this branch
+                # also catches every LEGACY `{"status": "failed", "returncode": N}`
+                # written before `refused` existed, P5/LIVE 2026-09-16b), an out dir
+                # with no run.json and no recovery journal provably never launched --
+                # it always was a refusal.
+                prior_status = "refused"
+            if prior_status == "refused":
+                refusals = refusals + [{k: v for k, v in prior.items() if k != "refusals"}]
+                if len(refusals) >= MAX_NEVER_CREATED_RETRIES:
+                    raise FigmentTrainError(
+                        f"planned run {key} has already been refused {len(refusals)} "
+                        f"time(s) (limit {MAX_NEVER_CREATED_RETRIES}); investigate the "
+                        "harness preflight (budget/arc-cap/other) before continuing"
+                    )
+                prior = None
+            elif prior_status in ("failed", "retrying"):
+                if not retry_failed and not retry_after_fix_reason:
+                    verb = (
+                        "already failed" if prior_status == "failed"
+                        else 'is mid-retry (status "retrying")'
+                    )
+                    raise FigmentTrainError(
+                        f"planned run {key} {verb}; create a reviewed new plan to retry"
+                    )
+                # `--retry-after-fix` (2026-09-21): an operator-flagged retry is bounded
+                # by the wider MAX_RETRY_AFTER_FIX instead of the tight MAX_RUN_RETRIES
+                # every other, unflagged retry shares -- same rule `plan_qwen3vl_caption`
+                # already applies for `--retry-caption-after-fix`.
+                real_retry_limit = MAX_RETRY_AFTER_FIX if retry_after_fix_reason else MAX_RUN_RETRIES
+                never_created_count, real_count = _count_prior_retry_attempts(
+                    [a.get("out_renamed") for a in attempts]
                 )
-            if prior and prior.get("status") == "running":
+                if real_count >= real_retry_limit:
+                    raise FigmentTrainError(
+                        f"planned run {key} has already been retried {real_count} time(s) "
+                        f"(limit {real_retry_limit}); create a reviewed new plan to retry further"
+                    )
+                if never_created_count >= MAX_NEVER_CREATED_RETRIES:
+                    raise FigmentTrainError(
+                        f"planned run {key} has already been retried {never_created_count} "
+                        f"never-created time(s) (limit {MAX_NEVER_CREATED_RETRIES}); create a "
+                        "reviewed new plan to retry further"
+                    )
+                out_dir = root / run["out"]
+                if prior_status == "failed":
+                    reason = _retry_ineligibility_reason(root, run)
+                    used_retry_after_fix = False
+                    # `--retry-after-fix <reason>` (2026-09-21): a prior attempt that
+                    # fails ONLY the error-class-substring check -- verified pod
+                    # teardown, every placement/journal verified, zero job/artifact
+                    # output, but its recorded `error` doesn't match
+                    # `RETRY_ELIGIBLE_ERROR_SUBSTRINGS` (a JOB-class failure) -- is
+                    # admitted here ONLY when the operator explicitly names a reason
+                    # the underlying cause is fixed. An attempt with real output, an
+                    # unverified teardown, or already over `real_retry_limit` still
+                    # refuses the same way whether or not the flag is set.
+                    if reason is not None and retry_after_fix_reason:
+                        if _retry_ineligibility_reason(
+                            root, run, skip_error_class_check=True,
+                        ) is None:
+                            reason = None
+                            used_retry_after_fix = True
+                    if reason:
+                        raise FigmentTrainError(
+                            f"planned run {key} already failed and --retry-failed refuses to "
+                            f"re-launch it: {reason}"
+                        )
+                    renamed = (
+                        _first_free_retry_rename_path(out_dir, len(attempts) + 1)
+                        if out_dir.is_dir() else None
+                    )
+                    completed_attempt = {k: v for k, v in prior.items() if k != "attempts"}
+                    if renamed is not None:
+                        completed_attempt["out_renamed"] = str(renamed)
+                    if used_retry_after_fix:
+                        completed_attempt["retry_after_fix"] = {
+                            "reason": retry_after_fix_reason, "git_head": _git_head_sha(),
+                        }
+                    attempts.append(completed_attempt)
+                    # MEDIUM-1: record "retrying" (never a bare `{"attempts": [...]}`
+                    # with no status) BEFORE the rename below, and durably (state write
+                    # first) -- MEDIUM-2. If anything between here and the actual
+                    # relaunch raises (`_install_stage_config`, the manifest-sha check,
+                    # `_planned_run`'s comparison, `_tester_checkpoint_inputs`, all
+                    # below), every later call still finds a recognized, guarded status
+                    # rather than falling through every check that gates a launch.
+                    state["runs"][key] = {"status": "retrying", "attempts": attempts}
+                    _write_stage_state(state_path, state)
+                    if renamed is not None and out_dir.is_dir():
+                        # This necessarily orphans any recovery-*.json journal bound to
+                        # the renamed dir (pod/recovery.py binds a journal to its own
+                        # directory, LOW-1) -- but `_retry_ineligibility_reason` above
+                        # only clears a retry whose journals already show verified
+                        # termination, so only DEAD journals are ever moved this way.
+                        out_dir.rename(renamed)
+                else:
+                    # A previous --retry-failed/--retry-after-fix call's bookkeeping
+                    # committed (above) but crashed before relaunch could happen.
+                    # Re-verify eligibility against the renamed prior attempt rather
+                    # than assuming the earlier check still holds.
+                    reason = _retry_ineligibility_reason(root, run, attempts=attempts)
+                    if reason is not None and retry_after_fix_reason:
+                        if _retry_ineligibility_reason(
+                            root, run, attempts=attempts, skip_error_class_check=True,
+                        ) is None:
+                            reason = None
+                    if reason:
+                        raise FigmentTrainError(
+                            f"planned run {key} is mid-retry and --retry-failed refuses "
+                            f"to re-launch it: {reason}"
+                        )
+                    renamed_target = attempts[-1].get("out_renamed") if attempts else None
+                    if (
+                        isinstance(renamed_target, str) and renamed_target
+                        and out_dir.is_dir() and (out_dir / "run.json").is_file()
+                    ):
+                        # MEDIUM-2: the crash landed between the state write and the
+                        # rename -- finish that half-completed bookkeeping now, before
+                        # considering a fresh relaunch into `out_dir`.
+                        target = Path(renamed_target)
+                        if target.exists():
+                            raise FigmentTrainError(
+                                f"planned run {key} retry bookkeeping is inconsistent: both "
+                                f"{out_dir} and its recorded rename target {target} contain "
+                                "evidence; resolve by hand before retrying"
+                            )
+                        out_dir.rename(target)
+                prior = None
+            elif prior_status == "running":
                 # n12: this is the recovery message a SECOND concurrent `pipeline`/`run`
                 # invocation on the SAME plan actually hits (stage.json's own "running"
                 # mark is the lock) -- most of the time that other process is simply
@@ -3627,6 +5942,15 @@ def run_planned_stage(creator_id: str, stage: str, plan_path: Path) -> dict[str,
                     "pod state with `runpod_run.py status`/`probe` (and terminate it if "
                     "still live) before retrying. Never launch a second pod for the same "
                     "manifest, and never start a fresh plan over this one for that alone."
+                )
+            elif prior_status is not None:
+                # MEDIUM-1 catch-all: any status outside {complete, failed, refused,
+                # running, retrying} is unexplained `stage.json` state, never a launch
+                # authorization.
+                raise FigmentTrainError(
+                    f"planned run {key} has an unrecognized status {prior_status!r}; this "
+                    "indicates stage.json state corruption -- investigate by hand before "
+                    "continuing"
                 )
             # A gen plan may carry a base run and optional legacy --detail-images run;
             # a detail STAGES plan (F2) has its own external checkpoint + gen-source
@@ -3646,8 +5970,8 @@ def run_planned_stage(creator_id: str, stage: str, plan_path: Path) -> dict[str,
                 root, manifest_path, root / run["out"], ledger_dir=plan_ledger_dir,
                 external_manifest=current == "video",
             )
-            for field in ("ceiling_usd", "out", "argv", "cli"):
-                if run.get(field) != expected_run[field]:
+            for field in ("ceiling_usd", "out", "argv", "cli", "workflow_sha256"):
+                if run.get(field) != expected_run.get(field):
                     raise FigmentTrainError(
                         f"planned run field {field!r} no longer matches the bounded harness command"
                     )
@@ -3659,19 +5983,67 @@ def run_planned_stage(creator_id: str, stage: str, plan_path: Path) -> dict[str,
             }
             if tester_inputs is not None:
                 attempt["checkpoint_inputs"] = tester_inputs
+            if attempts:
+                attempt["attempts"] = attempts
+            if refusals:
+                attempt["refusals"] = refusals
             state["runs"][key] = attempt
             _write_stage_state(state_path, state)
             try:
-                result = subprocess.run(run["argv"], cwd=ROOT)
+                # stderr is captured (not inherited) so a refusal's tail can be
+                # recorded on the state record; it is never silenced from the
+                # console for that -- it is echoed to sys.stderr and written to a
+                # log file next to stage.json the moment the harness exits, below.
+                # stdout is left inherited/streaming exactly as before.
+                result = subprocess.run(run["argv"], cwd=ROOT, stderr=subprocess.PIPE, text=True)
             except OSError as exc:
-                state["runs"][key] = {"status": "failed", "error": type(exc).__name__}
+                failed = {"status": "failed", "error": type(exc).__name__}
+                if attempts:
+                    failed["attempts"] = attempts
+                if refusals:
+                    failed["refusals"] = refusals
+                state["runs"][key] = failed
                 state["status"] = f"stopped:{current}"
                 _write_stage_state(state_path, state)
                 raise FigmentTrainError(f"could not launch the planned harness command: {exc}") from exc
             if result.returncode != 0:
-                state["runs"][key] = {"status": "failed", "returncode": result.returncode}
+                stderr_text = getattr(result, "stderr", None) or ""
+                if stderr_text:
+                    # Not silenced: the harness's own stderr streamed to console DURING
+                    # the run under the old uncaptured subprocess.run; now that it is
+                    # captured (so the refusal tail below can be recorded durably), it is
+                    # echoed back to the console the moment the process exits, and kept
+                    # next to stage.json for later reading.
+                    sys.stderr.write(stderr_text)
+                    try:
+                        (state_path.parent / f"{current}-harness-stderr.log").write_text(
+                            stderr_text, encoding="utf-8",
+                        )
+                    except OSError:
+                        pass
+                run_out_dir = root / run["out"]
+                never_launched = _run_never_launched(run_out_dir)
+                if never_launched:
+                    record: dict[str, Any] = {
+                        "status": "refused", "returncode": result.returncode,
+                        "stderr_tail": _stderr_tail(stderr_text),
+                    }
+                else:
+                    record = {"status": "failed", "returncode": result.returncode}
+                if attempts:
+                    record["attempts"] = attempts
+                if refusals:
+                    record["refusals"] = refusals
+                state["runs"][key] = record
                 state["status"] = f"stopped:{current}"
                 _write_stage_state(state_path, state)
+                if never_launched:
+                    raise FigmentTrainError(
+                        f"harness refused {key} before launch with exit code "
+                        f"{result.returncode} (no out dir, no run.json: nothing ran, "
+                        "nothing was spent); no fresh plan is required -- the next "
+                        "invocation retries automatically"
+                    )
                 raise FigmentTrainError(
                     f"harness stopped for {key} with exit code {result.returncode}; no retry attempted"
                 )
@@ -3764,6 +6136,13 @@ def _video_grading_images(plan: dict[str, Any], root: Path) -> list[dict[str, An
     `background_stability`, ... -- and `PLAYBACK_AXES`) for its own attributed
     accepted-video authority, and duplicating a second, weaker copy of it inside the
     still-grading axes is exactly the divergence APPROVED_GEN_ADAPTER.md warns about."""
+    if "video_inputs" in plan:
+        evidence = _build_video_evidence(plan, root)["assembly"]
+        output_name = _read_json(root / plan["stages"]["video"]["runs"][0]["manifest"])["jobs"][0]["output_name"]
+        return [{"image_id": f"{output_name}-decoded-{row['index']:03d}",
+                 "path": str(root / row["path"]), "review_status": "unreviewed",
+                 "parked_reasons": [], "safety_failed": False, "safety_reasons": [],
+                 "framing": None} for row in evidence["frames"][::VIDEO_FRAME_SAMPLE_EVERY]]
     images: list[dict[str, Any]] = []
     for run in plan["stages"]["video"]["runs"]:
         manifest_path = root / run["manifest"]
@@ -3793,9 +6172,57 @@ def _video_grading_images(plan: dict[str, Any], root: Path) -> list[dict[str, An
                     "parked_reasons": [],
                     "safety_failed": False,
                     "safety_reasons": [],
+                    # See `_grading_images`'s own comment: no video job declares a
+                    # framing today, so this is always None (default-floor) -- carried
+                    # the same generic way rather than special-casing this stage.
+                    "framing": job.get("framing"),
                 })
     if not images:
         raise FigmentTrainError("stage 'video' has no grading frames")
+    return images
+
+
+def _tensor_stills_grading_images(plan, root):
+    import io
+    import warnings
+    from PIL import Image
+    _validate_gen_source_inputs(plan, root)
+    name = _checkpoint_name(_artifact_name(plan["training"]), plan["training"]["chosen_checkpoint_step"])
+    groups = _tensor_stills_module().compile_scene_groups(plan["gen_inputs"]["scenes"], identity_lora=name,
+        output_prefix=_creator_output_code(plan["creator"]) + "-stills")
+    images = []
+    for run, group in zip(plan["stages"]["gen"]["runs"], groups):
+        manifest_path = root / run["manifest"]
+        manifest = _read_json(manifest_path)
+        manifest["workflow"] = _read_json(manifest_path.parent / manifest["workflow"])
+        run_out = root / run["out"]
+        receipt = verify_run_record("gen", manifest, run_out, Path(plan["ledger_dir"]))
+        if receipt.get("dry_run") is True:
+            raise FigmentTrainError("dry-run simulated stills are not grading media")
+        for job in receipt["jobs"]:
+            for row in _tensor_stills_module().normalize_stills_outputs(group, job):
+                path = run_out / row["path"]
+                with path.open("rb") as handle:
+                    raw = handle.read(32 * 1024 * 1024 + 1)
+                if len(raw) != row["bytes"] or len(raw) > 32 * 1024 * 1024 or hashlib.sha256(raw).hexdigest() != row["sha256"]:
+                    raise FigmentTrainError("stills image changed during decode")
+                try:
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("error", Image.DecompressionBombWarning)
+                        with Image.open(io.BytesIO(raw)) as image:
+                            if image.format != "PNG" or getattr(image, "n_frames", 1) != 1 or image.width * image.height > 32_000_000:
+                                raise ValueError("single bounded PNG required")
+                            image.verify()
+                        with Image.open(io.BytesIO(raw)) as image:
+                            image.load()
+                except (OSError, ValueError, Image.DecompressionBombWarning, Image.DecompressionBombError) as exc:
+                    raise FigmentTrainError(f"stills output is not a valid single-frame PNG: {path.name}") from exc
+                images.append({"image_id": row["image_id"], "path": str(path.resolve()),
+                    "review_status": "unreviewed", "parked_reasons": [], "safety_failed": False,
+                    "safety_reasons": [], "framing": row["framing"], "role": row["role"],
+                    "node_id": row["node_id"], "scene_index": row["scene_index"],
+                    "approved_prompt": group["approved_prompts"][str(row["scene_index"])],
+                    "intake_preview": str((root / "intake" / f"scene-{row['scene_index']}.html").resolve())})
     return images
 
 
@@ -3804,6 +6231,8 @@ def _grading_images(plan: dict[str, Any], root: Path, stage: str) -> list[dict[s
         raise FigmentTrainError(f"plan does not contain stage {stage!r}")
     if stage == "video":
         return _video_grading_images(plan, root)
+    if stage == "gen" and "gen_inputs" in plan:
+        return _tensor_stills_grading_images(plan, root)
     images: list[dict[str, Any]] = []
     for run in plan["stages"][stage]["runs"]:
         manifest_path = root / run["manifest"]
@@ -3820,6 +6249,12 @@ def _grading_images(plan: dict[str, Any], root: Path, stage: str) -> list[dict[s
                 "parked_reasons": [],
                 "safety_failed": False,
                 "safety_reasons": [],
+                # 2026-09-15 per-framing face floor ruling: carried straight from the
+                # plan's own job record, never inferred from the image or output_name --
+                # `None` for any stage/job whose manifest never declared one (tester,
+                # gen, detail, and any dataset job predating this ruling), which is the
+                # existing default-floor behaviour, unchanged.
+                "framing": job.get("framing"),
             })
     if not images:
         raise FigmentTrainError(f"stage {stage!r} has no grading images")
@@ -3866,23 +6301,63 @@ def _judge_annotation(judge_row: dict[str, Any] | None) -> str:
     gloss = _fmt(judge_row.get("gloss"))
     artifacts = _fmt(judge_row.get("artifacts"))
     notes = judge_row.get("notes") or ""
+    # A reference-free (passport) judgement has no identity slots -- omit them.
+    identity = (
+        "" if judge_row.get("same_person") is None and judge_row.get("apparent_age_reference") is None
+        else f"same {same} · age {age_ref}→"
+    )
+    age = f"{age_cand} (Δ{delta})" if identity else f"age {age_cand}"
     return (
-        f"judge: same {same} · age {age_ref}→{age_cand} (Δ{delta}) · "
+        f"judge: {identity}{age} · "
         f"skin {skin} · gloss {gloss} · artifacts {artifacts}"
         + (f' · "{notes}"' if notes else "")
     )
 
 
+def _passport_age_annotation(gate_row: dict[str, Any] | None, age_floor: Any) -> str:
+    """Spec 2026-09-29 §7: every reference-free board cell shows both ages and the floor,
+    `vit age X · judge age Y · floor F` (`n/a` for any value that is missing or not finite)."""
+    def _fmt(value: Any, template: str) -> str:
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
+            return template.format(value)
+        return "n/a"
+
+    gate_row = gate_row or {}
+    vit = _fmt(gate_row.get("age_value"), "{:.1f}")
+    judge = _fmt((gate_row.get("judge") or {}).get("apparent_age_candidate"), "{:g}")
+    return f"vit age {vit} · judge age {judge} · floor {_fmt(age_floor, '{:g}')}"
+
+
 def _figure_html(
     row: dict[str, Any], advisory_by_id: dict[str, Any], *,
     gate_by_id: dict[str, Any] | None = None, number: int | None = None,
-    reasons: list[str] | None = None,
+    reasons: list[str] | None = None, passport_floor: tuple[Any] | None = None,
 ) -> str:
     annotation = _advisory_annotation(advisory_by_id.get(row["image_id"]))
     gate_row = (gate_by_id or {}).get(row["image_id"])
     judge_annotation = _judge_annotation((gate_row or {}).get("judge"))
     caption = f"{number}. {html.escape(row['image_id'])}" if number is not None else html.escape(row["image_id"])
     extra = ""
+    if row.get("role"):
+        extra += f'<br><span>{html.escape(str(row["framing"]))} / {html.escape(str(row["role"]))}</span>'
+        extra += f'<br><span>{html.escape(str(row.get("approved_prompt", "")))}</span>'
+        if row.get("intake_preview"):
+            extra += f'<br><a href="{html.escape(Path(row["intake_preview"]).as_uri())}">Canonical fixture intake</a>'
+    if passport_floor is not None:
+        age_line = _passport_age_annotation(gate_row, passport_floor[0])
+        extra += f'<br><span class="judge">{html.escape(age_line)}</span>'
+    judge = (gate_row or {}).get("judge") or {}
+    if "traits" in judge or "age_hold" in (gate_row or {}):
+        values = judge.get("traits") or {}
+        def trait_value(key):
+            value = values.get(key)
+            return str(value) if type(value) in (int, float) and math.isfinite(value) else "n/a"
+        text = "traits: " + ", ".join(f"{key} {trait_value(key)}" for key in
+                                      ("lips", "brows", "skin_pattern", "hair", "jaw"))
+        extra += f'<br><span class="judge">{html.escape(text)}</span>'
+    if (gate_row or {}).get("age_hold"):
+        text = "Age ruling required: " + "; ".join((gate_row or {}).get("age_reasons") or [])
+        extra += f'<br><span class="gate-reasons">{html.escape(text)}</span>'
     if annotation:
         extra += f'<br><span class="advisory">{html.escape(annotation)}</span>'
     if judge_annotation:
@@ -3916,23 +6391,42 @@ def _grading_html(
         for path in anchors
     )
 
-    passed_rows: list[dict[str, Any]] = []
-    failed_rows: list[tuple[dict[str, Any], list[str]]] = []
+    groups: dict[str, list[tuple[dict[str, Any], list[str]]]] = {
+        "passed": [], "age": [], "unscorable": [], "failed": [],
+    }
     for row in images:
         gate_row = gate_by_id.get(row["image_id"])
-        if gate_row is not None and gate_row.get("pass"):
-            passed_rows.append(row)
-        else:
-            reasons = list((gate_row or {}).get("reasons") or ["gate did not run for this cell"])
-            failed_rows.append((row, reasons))
-
+        if gate_row is None:
+            groups["failed"].append((row, ["gate did not run for this cell"]))
+            continue
+        group = gate_row.get("group") or ("passed" if gate_row.get("pass") else "failed")
+        groups.get(group, groups["failed"]).append((row, list(gate_row.get("reasons") or [])))
+    passed_rows = [row for row, _reasons in groups["passed"]]
+    # Reference-free (passport) gate rows carry `group`; each cell then shows both ages
+    # and the floor. The 1-tuple keeps a missing floor distinct from "not a passport board".
+    passport_floor = (
+        ((gate_document or {}).get("thresholds", {}).get("age_floor_years"),)
+        if any("group" in row for row in gate_by_id.values()) else None
+    )
     passed_cells = "\n".join(
-        _figure_html(row, advisory_by_id, gate_by_id=gate_by_id, number=index)
+        _figure_html(row, advisory_by_id, gate_by_id=gate_by_id, number=index,
+                     passport_floor=passport_floor)
         for index, row in enumerate(passed_rows, start=1)
     )
-    failed_cells = "\n".join(
-        _figure_html(row, advisory_by_id, gate_by_id=gate_by_id, reasons=reasons)
-        for row, reasons in failed_rows
+    held_sections = "".join(
+        f'<section class="gate-{key}"><h2>{html.escape(title)} ({len(groups[key])})</h2>'
+        '<div class="grid">'
+        + "\n".join(
+            _figure_html(row, advisory_by_id, gate_by_id=gate_by_id, reasons=reasons,
+                         passport_floor=passport_floor)
+            for row, reasons in groups[key]
+        )
+        + "</div></section>"
+        for key, title in (
+            ("age", "held for age — set age_ruling: release or cull; keep is the pick"),
+            ("unscorable", "held unscorable — a required metric could not be computed"),
+            ("failed", "failed gate — shown in full; every cell still needs a ruling"),
+        )
     )
     research_note = ""
     local_research = (gate_document or {}).get("review_mode") == "local-research"
@@ -3959,11 +6453,13 @@ def _grading_html(
         )
     else:
         cells_section = (
-            f'<main><h2>Cells passing the gate ({len(passed_rows)})</h2><div class="grid">{passed_cells}</div></main>'
-            f'<details class="failed-gate"><summary>failed gate ({len(failed_rows)})</summary>'
-            f'<div class="grid">{failed_cells}</div></details>'
+            f'<main><h2>Cells passing the gate ({len(passed_rows)})</h2>'
+            f'<div class="grid">{passed_cells}</div></main>{held_sections}'
         )
-        gate_summary = "The gate below IS fail-closed: only PASS cells are numbered for the ruling sheet."
+        gate_summary = (
+            "The gate scores and sorts; it never culls (operator ruling 2026-09-29). Every "
+            "cell below needs a ruling; only PASS cells are numbered."
+        )
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -4015,13 +6511,18 @@ def _current_persona_training(
         )
     except (OSError, ValueError) as exc:
         raise FigmentTrainError(f"current persona/training configuration is invalid: {exc}") from exc
+    merged["_persona_path"] = str(persona_path)
     return merged, merged["training"]
 
 
 def _current_review_subject(
     plan: dict[str, Any], root: Path, stage: str, grading: dict[str, Any], *, reads=None,
 ) -> dict[str, Any]:
+    if (stage == "edit" or stage == "video" and "video_inputs" in plan or stage == "gen" and "gen_inputs" in plan) and reads is not None:
+        raise FigmentTrainError("edit authority does not yet support an observed reads context")
     persona, training = _current_persona_training(plan, reads=reads)
+    if stage != "anchor" and plan.get("training", {}).get("recipe_profile") == "tensor":
+        _validate_tensor_passport_inputs(plan, root, persona=persona, reads=reads)
     manifest_paths = [root / run["manifest"] for run in plan["stages"][stage]["runs"]]
     anchors = [
         reads.resolve(root / value) if reads is not None else (root / value).resolve()
@@ -4046,8 +6547,22 @@ def _current_review_subject(
                 }
                 for run in plan["stages"][stage]["runs"]
             ]
+    edit_inputs = _validate_edit_inputs(plan, root) if stage == "edit" else None
+    video_inputs = _validate_tensor_video_inputs(plan, root) if stage == "video" and "video_inputs" in plan else None
+    gen_inputs = None
+    if stage == "gen" and "gen_inputs" in plan:
+        _validate_gen_source_inputs(plan, root)
+        gen_inputs = plan["gen_inputs"]
+        # Re-read every receipt and decoded image at ruling/approval boundaries too.
+        current_images = _tensor_stills_grading_images(plan, root)
+        recorded = [(row["image_id"], row["path"]) for row in grading["images"]]
+        if recorded != [(row["image_id"], row["path"]) for row in current_images]:
+            raise FigmentTrainError("stills grading role/image mapping changed")
+    if stage == "edit" or video_inputs is not None:
+        training = {key: training.get(key) for key in EDIT_TRAINING_KEYS}
+        persona = {**persona, "training": training}
     try:
-        return _lineage_module().review_subject(
+        subject = _lineage_module().review_subject(
             creator=plan["creator"], stage=stage, plan_path=root / "plan.json",
             manifest_paths=manifest_paths, images=grading["images"], anchors=anchors,
             persona=persona, training=training, threshold_path=HERE / "gate.yaml",
@@ -4055,6 +6570,13 @@ def _current_review_subject(
             checkpoint_inputs=checkpoint_inputs,
             reads=reads,
         )
+        if edit_inputs is not None:
+            subject["edit_inputs"] = edit_inputs
+        if video_inputs is not None:
+            subject["video_inputs"] = video_inputs
+        if gen_inputs is not None:
+            subject["gen_inputs"] = gen_inputs
+        return subject
     except (OSError, ValueError) as exc:
         raise FigmentTrainError(f"cannot establish {stage} review lineage: {exc}") from exc
 
@@ -4117,6 +6639,7 @@ def _load_current_approval(
 
 def _validate_approved_still(
     creator_id: str, plan_path: Path, image_id: str, stage: str, *, reads=None,
+    historical_anchor: bool = False,
 ) -> dict[str, Any]:
     """Return one current, kept `stage` still without changing any Figment record.
 
@@ -4152,7 +6675,12 @@ def _validate_approved_still(
     plan, loaded_root = (_load_plan(creator_id, resolved_plan) if reads is None else _load_plan(creator_id, resolved_plan, reads=reads))
     if loaded_root != root:
         raise FigmentTrainError(f"approved {stage} plan root changed while loading")
-    approval = (_load_current_approval(plan, root, stage) if reads is None else _load_current_approval(plan, root, stage, reads=reads))
+    if historical_anchor:
+        if stage != "anchor":
+            raise FigmentTrainError("historical identity authority is anchor-only")
+        approval = _historical_anchor_approval(plan, root, reads=reads)
+    else:
+        approval = (_load_current_approval(plan, root, stage) if reads is None else _load_current_approval(plan, root, stage, reads=reads))
     if (approval.get("creator") != creator_id or approval.get("stage") != stage
             or approval.get("decision") != "verified"):
         raise FigmentTrainError(f"{stage} approval lineage does not authorize this creator/stage")
@@ -4250,6 +6778,8 @@ def _validate_approved_still(
         raise FigmentTrainError(f"{stage} approval evidence changed while validating") from exc
     return {
         "image_id": image_id, "path": str(resolved), "bytes": bytes_seen, "sha256": digest,
+        **({"rulings": {"path": str(rulings_path), "sha256": initial_digests["rulings"]},
+            "fixture": plan.get("fixture") is True} if historical_anchor else {}),
         "source_plan": {"path": str(resolved_plan), "sha256": initial_digests["source_plan"]},
         "approval_lineage": {
             "path": str(reads.resolve(approval_path)) if reads is not None else str(approval_path.resolve()),
@@ -4278,9 +6808,31 @@ def validate_approved_detail_still(
     return _validate_approved_still(creator_id, plan_path, image_id, "detail", reads=reads)
 
 
+def validate_approved_edit_still(creator_id, plan_path, image_id, *, driving_clip_sha256=None):
+    approved = _validate_approved_still(creator_id, plan_path, image_id, "edit")
+    def recheck():
+        for field in ("source_plan", "approval_lineage", "approved_list"):
+            evidence = approved[field]
+            if _sha256(Path(evidence["path"])) != evidence["sha256"]:
+                raise FigmentTrainError("accepted edit authority changed while validating")
+        if _sha256(Path(approved["path"])) != approved["sha256"]:
+            raise FigmentTrainError("accepted edit bytes changed while validating")
+    recheck()
+    plan, root = _load_plan(creator_id, plan_path)
+    inputs = _validate_edit_inputs(plan, root)
+    if driving_clip_sha256 is not None:
+        if (inputs["job_type"] != "start-frame-head-swap"
+                or inputs.get("frame_source", {}).get("frame_index") != 0
+                or inputs.get("frame_source", {}).get("clip", {}).get("sha256") != driving_clip_sha256):
+            raise FigmentTrainError("accepted edit is not the exact driving-clip frame0 head swap")
+    recheck()
+    return {**approved, "edit_inputs": inputs, "fixture": inputs["fixture"]}
+
+
 def _run_identity_gate(
     plan: dict[str, Any], anchors: list[Path], images: list[dict[str, Any]],
     grade_dir: Path, *, skip_judge: bool = False, judge_backend: str = "claude",
+    reference_free: bool = False,
 ) -> dict[str, Any]:
     """Fail-closed per-cell TWO-STAGE gate (operator ruling 2026-09-03: no board reaches
     the operator until every shown cell holds identity, age and realism; ruling
@@ -4312,6 +6864,8 @@ def _run_identity_gate(
     return gate_module.run_two_stage_gate(
         lambda: _load_persona_document_for_gate(plan),
         anchors, images, grade_dir, skip_judge=skip_judge, judge_backend=judge_backend,
+        reference_free=reference_free,
+        **({"tensor_review": True} if not reference_free and plan.get("training", {}).get("recipe_profile") == "tensor" else {}),
     )
 
 
@@ -4332,6 +6886,10 @@ def build_grade(
     if stage not in GRADEABLE_STAGES:
         raise FigmentTrainError(f"grade stage must be one of {GRADEABLE_STAGES}")
     plan, root = _load_plan(creator_id, plan_path)
+    if stage == "edit":
+        _validate_edit_inputs(plan, root)
+    if stage != "anchor" and plan.get("training", {}).get("recipe_profile") == "tensor":
+        _validate_tensor_passport_inputs(plan, root)
     anchors = [(root / value).resolve() for value in plan["assets"]["anchors"]]
     for anchor in anchors:
         if not anchor.is_file() or anchor.stat().st_size <= 0:
@@ -4354,9 +6912,12 @@ def build_grade(
     # Operator ruling 2026-09-03: no board reaches the operator until this fail-closed
     # gate has scored every cell -- see _run_identity_gate's own docstring for how a
     # total scoring outage still fails every cell closed rather than skipping the gate.
+    reference_free = (
+        stage == "anchor" and plan.get("training", {}).get("recipe_profile") == "tensor"
+    )
     gate_document = _run_identity_gate(
         plan, anchors, images, grade_dir,
-        skip_judge=skip_judge, judge_backend=judge_backend,
+        skip_judge=skip_judge, judge_backend=judge_backend, reference_free=reference_free,
     )
     local_research = judge_backend == "local-research"
     if local_research:
@@ -4395,6 +6956,7 @@ def build_grade(
             } if local_research else {}),
         ),
     )
+    held_for_age = {row["image_id"] for row in gate_document.get("rows", []) if row.get("group") == "age" or row.get("age_hold")}
     _write_json(template_path, {
         "schema": "figment/rulings-template@1",
         "creator": creator_id,
@@ -4418,11 +6980,34 @@ def build_grade(
             # the gate, and a template that sometimes omits the field invites a
             # rulings document that never carries it at all.
             "gate_override": "",
+            # Final review F2: a held-for-age cell needs the operator's own adult call
+            # (release|cull), independent of the keep/cull pick.
+            **({"age_ruling": None} if row["image_id"] in held_for_age else {}),
         } for row in images],
     })
     page_path.write_text(
         _grading_html(creator_id, stage, anchors, images, advisory, gate_document), encoding="utf-8",
     )
+    if stage == "gen" and "gen_inputs" in plan and plan.get("fixture") is True:
+        page_path.write_text(page_path.read_text("utf-8").replace("<body>",
+            '<body><aside style="padding:16px;background:#fff1b8;color:#362900;font-weight:bold">'
+            'FIXTURE ONLY — testing evidence; not production approval or model-quality proof.</aside>', 1),
+            encoding="utf-8")
+    if stage == "edit":
+        _edit_preview(plan, root, grade_dir / "edit-inputs.html")
+        page_path.write_text(page_path.read_text("utf-8").replace("<body>",
+            '<body><p><a href="edit-inputs.html">Review BASE/image1, IDENTITY/image2 and exact prompt</a></p>', 1),
+            encoding="utf-8")
+    if stage == "video" and "video_inputs" in plan:
+        native = _read_json(root / "video/evidence/native/native-evidence.json")
+        movie = html.escape((root / native["movie"]["path"]).resolve().as_uri())
+        prefix = ('<section><h2>Native movie playback</h2><video controls preload="metadata" '
+                  f'style="max-width:100%;max-height:75vh" src="{movie}"></video>'
+                  '<p>Review the complete sequence and playback before video acceptance. '
+                  f'Fixture: {str(plan.get("fixture") is True).lower()}.</p><pre>'
+                  + html.escape(plan["video_inputs"]["prompt"]["text"]) + '</pre></section>')
+        page_path.write_text(page_path.read_text("utf-8").replace("<body>", "<body>" + prefix, 1),
+                             encoding="utf-8")
     return {
         "page": str(page_path),
         "rulings_template": str(template_path),
@@ -4500,7 +7085,7 @@ def _checkpoint_candidate(
         raise FigmentTrainError(
             f"checkpoint step {step} was not produced by this plan; choose one of {allowed}"
         )
-    filename = _checkpoint_name(training["trigger"], None if step == training["steps"] else step)
+    filename = _checkpoint_name(_artifact_name(training), None if step == training["steps"] else step)
     tester_matches: list[tuple[dict[str, Any], dict[str, Any], str]] = []
     for run in plan["stages"]["tester"]["runs"]:
         manifest_path = root / run["manifest"]
@@ -4796,9 +7381,65 @@ def _write_accepted_checkpoint(
     )
 
 
+def _age_hold_rows(
+    plan: dict[str, Any], stage: str, normalized: dict[str, Any],
+    gate_document: dict[str, Any], images: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Spec 2026-09-29 §7: every ruling on a held-for-age cell is also a labelled example
+    for tuning the age judge. The label is the ruling's explicit `age_ruling`
+    (release|cull) -- the operator's adult call, independent of keep/cull, which stays the
+    pick -- and a held cell without one is refused (a stage cannot close while a held image
+    has no ruling). Built (image hashes included) before apply_rulings writes anything,
+    so an unreadable held image refuses the whole apply rather than orphaning an identity."""
+    gate_by_id = {row["image_id"]: row for row in gate_document.get("rows", [])}
+    rulings = {row["image_id"]: row for row in normalized["rulings"]}
+    rows = []
+    for row in images:
+        gate_row = gate_by_id.get(row["image_id"]) or {}
+        if gate_row.get("group") != "age" and not gate_row.get("age_hold"):
+            continue
+        ruling = rulings[row["image_id"]]
+        age_ruling = ruling.get("age_ruling")
+        age_ruling = age_ruling.strip().lower() if isinstance(age_ruling, str) else None
+        if age_ruling not in ("release", "cull"):
+            raise FigmentTrainError(
+                f"held-for-age cell {row['image_id']} has no age_ruling (release|cull)")
+        if ruling["decision"] == "keep" and age_ruling == "cull":
+            raise FigmentTrainError(f"picked cell {row['image_id']} is age-ruled cull")
+        rows.append({
+            "creator": plan["creator"], "stage": stage, "image_id": row["image_id"],
+            "image_sha256": _sha256(Path(row["path"])),
+            "vit_age": gate_row.get("age_value"),
+            "judge_age": (gate_row.get("judge") or {}).get("apparent_age_candidate"),
+            "age_floor_years": (gate_document.get("thresholds") or {}).get("age_floor_years"),
+            "ruling": age_ruling,
+            "why": ruling.get("why", ""),
+            "decided_by": normalized["decided_by"], "decided_at": normalized["decided_at"],
+        })
+    return rows
+
+
+def _append_age_holds(plan: dict[str, Any], rows: list[dict[str, Any]]) -> None:
+    """Append age-hold rows to personas/<id>/calibration/age-holds.jsonl, skipping any
+    row already logged (same image_id + image_sha256 + decided_at), so a retry after a
+    failed later write never duplicates the operator's rulings."""
+    if not rows:
+        return
+    path = (ROOT / plan["assets"]["persona_dir"]).resolve() / "calibration" / "age-holds.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    key = lambda row: (row.get("image_id"), row.get("image_sha256"), row.get("decided_at"))
+    logged = ({key(json.loads(line)) for line in path.read_text("utf-8").splitlines() if line.strip()}
+              if path.is_file() else set())
+    with path.open("a", encoding="utf-8") as handle:
+        for row in rows:
+            if key(row) not in logged:
+                handle.write(json.dumps(row, sort_keys=True) + "\n")
+
+
 def apply_rulings(
     creator_id: str, stage: str, plan_path: Path, rulings_path: Path,
     checkpoint_step: int | None = None, *, reads=None,
+    retry_caption_after_fix: str | None = None,
 ) -> dict[str, str]:
     """Validate operator rulings, stamp QA, and materialize dataset keeps."""
     if stage not in GRADEABLE_STAGES:
@@ -4872,6 +7513,7 @@ def apply_rulings(
     ungated = [image_id for image_id in image_ids if image_id not in gate_by_id]
     if ungated:
         raise FigmentTrainError(f"gate.json does not cover every graded cell: {ungated}")
+    age_holds = _age_hold_rows(plan, stage, normalized, gate_document, grading["images"])
 
     review = deepcopy(grading)
     try:
@@ -4907,11 +7549,33 @@ def apply_rulings(
     approval_out = grade_dir / "approval-lineage.json"
     rejection_out = grade_dir / "rejection-lineage.json"
     accepted_checkpoint_out = grade_dir / "accepted-checkpoint.json"
+    replayable = stage == "edit" or stage == "gen" and "gen_inputs" in plan
+    if (replayable and approved_rows and rulings_out.is_file()
+            and _read_json(rulings_out) == normalized and approval_out.is_file()):
+        _load_current_approval(plan, root, stage)
+        for row in approved_rows:
+            validator = validate_approved_edit_still if stage == "edit" else validate_approved_gen_still
+            validator(creator_id, root / "plan.json", row["image_id"])
+        return {"rulings": str(rulings_out), "review_manifest": str(review_out),
+                "approved_list": str(approved_out), "approval_lineage": str(approval_out)}
     if not approved_rows:
         if checkpoint_step is not None:
             raise FigmentTrainError("rulings approved no images")
         if any(r["decision"] != "cull" for r in normalized["rulings"]):
             raise FigmentTrainError("rulings approved no images")
+        if (replayable and rulings_out.is_file() and rejection_out.is_file()
+                and _read_json(rulings_out) == normalized and not approval_out.exists()):
+            rejection = _read_json(rejection_out)
+            if (rejection.get("decision") != "rejected" or rejection.get("creator") != creator_id
+                    or rejection.get("stage") != stage or rejection.get("rulings_sha256") != _sha256(rulings_out)):
+                raise FigmentTrainError("edit rejection evidence changed")
+            try:
+                _lineage_module().assert_current(rejection, _current_review_subject(plan, root, stage, grading),
+                                                  label="edit rejection")
+            except ValueError as exc:
+                raise FigmentTrainError(str(exc)) from exc
+            return {"rulings": str(rulings_out), "review_manifest": str(review_out),
+                    "rejection_lineage": str(rejection_out)}
         if (any(
             (
                 reads.file(path, required=False) is not None
@@ -4924,6 +7588,7 @@ def apply_rulings(
             )
         )):
             raise FigmentTrainError("refusing to overwrite previously applied rulings")
+        _append_age_holds(plan, age_holds)
         _write_json(rulings_out, normalized)
         _write_json(review_out, review)
         _write_json(
@@ -5030,12 +7695,19 @@ def apply_rulings(
                 exclude=None,
             )
             if qwen3vl:
-                trigger = plan["training"]["trigger"]
+                trigger = _artifact_name(plan["training"])
                 build_kwargs.update(
                     caption_mode="qwen3vl",
                     trigger=trigger,
-                    job_runner=_live_qwen3vl_job_runner(
-                        creator_id, trigger, root, ledger_dir=Path(plan["ledger_dir"]),
+                    recipe_profile=plan["training"].get("recipe_profile", "clean"),
+                    job_runner=(
+                        _tensor_caption_job_runner(creator_id, plan["training"], root, Path(plan["ledger_dir"]),
+                            retry_after_fix_reason=retry_caption_after_fix)
+                        if plan["training"].get("recipe_profile") == "tensor" else
+                        _live_qwen3vl_job_runner(
+                            creator_id, trigger, root, ledger_dir=Path(plan["ledger_dir"]),
+                            retry_after_fix_reason=retry_caption_after_fix,
+                        )
                     ),
                 )
             else:
@@ -5076,7 +7748,9 @@ def apply_rulings(
         # Review LOW-13: take the extension from the actual source file rather than
         # hardcoding .png -- safe today only because SaveImage always emits PNG.
         extension = source.suffix.lower() or ".png"
-        destination = anchors_dir / f"{image_id}{extension}"
+        # Spec 2026-09-29 §4.1: on the tensor profile the pick IS the identity passport.
+        tensor = plan.get("training", {}).get("recipe_profile") == "tensor"
+        destination = anchors_dir / (f"passport{extension}" if tensor else f"{image_id}{extension}")
         if destination.exists():
             raise FigmentTrainError(f"anchor destination already exists: {destination}")
         shutil.copy2(source, destination)
@@ -5093,7 +7767,7 @@ def apply_rulings(
         persona_document = _read_json(persona_path)
         identity = persona_document.setdefault("identity", {})
         identity["history"] = identity.get("history", []) + identity.get("references", [])
-        identity["references"] = [f"anchors/{image_id}{extension}"]
+        identity["references"] = [f"anchors/{destination.name}"]
         _write_json(persona_path, persona_document)
 
     approved_document = {
@@ -5102,6 +7776,7 @@ def apply_rulings(
         "stage": stage,
         "images": approved_rows,
     }
+    _append_age_holds(plan, age_holds)
     _write_json(rulings_out, normalized)
     _write_json(review_out, review)
     _write_json(approved_out, approved_document)
@@ -5194,7 +7869,8 @@ def _validated_accepted_checkpoint(
     source_projection = lineage.training_input_projection(source_plan["training"])
     if accepted.get("training_inputs") != source_projection:
         raise FigmentTrainError("training inputs changed after checkpoint promotion")
-    current_projection = lineage.training_input_projection(training)
+    current_projection = lineage.pre_profile_compatible(
+        source_projection, lineage.training_input_projection(training))
     if accepted.get("origin") == "imported":
         # P4i: an imported checkpoint's provenance is the training config the tester
         # plan recorded at import time (`source_plan["imported_training_config"]`), not
@@ -5215,7 +7891,7 @@ def _validated_accepted_checkpoint(
         reloaded_projection = _reload_imported_training_projection(
             persona["id"], imported_config_path, reads=reads,
         )
-        if reloaded_projection != source_projection:
+        if lineage.pre_profile_compatible(source_projection, reloaded_projection) != source_projection:
             raise FigmentTrainError(
                 "imported training config changed since the checkpoint ladder was "
                 "screened; re-run --import-checkpoints with the current file"
@@ -5289,7 +7965,26 @@ def _revalidate_planned_gen_authority(plan: dict[str, Any], *, reads=None) -> No
     if (persona.get("id") != plan.get("creator")
             or _sha256(persona_path, reads=reads) != planned_persona_sha256):
         raise FigmentTrainError("current persona changed after gen planning; create a fresh gen plan")
-    if training != planned_training:
+    # 2026-09-23 fix: `training` here is re-loaded fresh from the persona's own
+    # training.yaml/persona.yaml (`_current_persona_training`) and so never carries a
+    # plan-time-only flag override (`--style-lora`/`--style-lora-strength`, now also
+    # `--gen-prompt-style`) -- those are recorded on `plan["training"]`
+    # (`planned_training`) by `_resolve_gen_style_lora`/`_resolve_gen_prompt_style`
+    # but deliberately never written back to the persona (M3's own precedent: a style
+    # LoRA, and now a gen prompt style, is a gen-PLAN argument, never a persona fork).
+    # A raw `training != planned_training` compare therefore raised "current training
+    # ... changed" for EVERY flagged gen plan, even an untouched persona -- live bug,
+    # reproduced for `--style-lora` too, not only the new `--gen-prompt-style`.
+    # `lineage.training_input_projection` already excludes exactly these gen-time-only
+    # keys (`GEN_TIME_ONLY_KEYS`) for this same reason elsewhere (accepted-checkpoint
+    # freshness); comparing projections here is the same fix, reused rather than
+    # reimplemented. `SELECTION_KEYS`/`dataset_dir` are also excluded by that
+    # projection, but a genuinely different checkpoint selection is still caught below
+    # by the checkpoint-provenance-snapshot comparison, so nothing is silently missed.
+    lineage = _lineage_module()
+    if lineage.training_input_projection(training) != lineage.training_input_projection(
+        planned_training
+    ):
         raise FigmentTrainError(
             "current training or checkpoint selection changed after gen planning; create a fresh gen plan"
         )
@@ -5316,7 +8011,7 @@ def _stage_accepted_checkpoint(
     digest = accepted_checkpoint["digest"]
     step = accepted_checkpoint["step"]
 
-    upload_name = _checkpoint_name(training["trigger"], step)
+    upload_name = _checkpoint_name(_artifact_name(training), step)
     staged_dir = out / "train" / "runs" / "accepted-checkpoint"
     staged_dir.mkdir(parents=True, exist_ok=True)
     staged = staged_dir / upload_name
@@ -5591,6 +8286,61 @@ def _build_deliverable(
     `pipeline` call -- gen's own approval-lineage sha is folded in alongside detail's
     so a gen re-ruling (a new kept set, even one that leaves detail's own digest
     unchanged) is never missed."""
+    primary_path = primary_root / "plan.json"
+    if primary_path.is_file():
+        primary = _read_json(primary_path)
+        if primary.get("training", {}).get("recipe_profile") == "tensor":
+            native_root = primary_root if "video_inputs" in primary else video_root
+            native_plan_path = native_root / "plan.json"
+            if native_plan_path.is_file() and "video_inputs" in _read_json(native_plan_path):
+                native_plan = _read_json(native_plan_path)
+                _load_current_approval(native_plan, native_root, "video")
+                review, _, review_root = _tensor_video_review_context(native_plan, native_root)
+                accepted_path = review_root / review.ACCEPTED_NAME
+                if not accepted_path.is_file():
+                    return None
+                accepted = review.validate_accepted_video(native_root, accepted_path.relative_to(native_root),
+                    allow_fixture=native_plan.get("fixture") is True)
+                source = native_root / accepted["movie"]["path"]
+                destination = primary_root / "deliverable"
+                destination.mkdir(parents=True, exist_ok=True)
+                target = destination / source.name
+                shutil.copy2(source, target)
+                if _sha256(target) != accepted["movie"]["sha256"]:
+                    raise FigmentTrainError("accepted native movie changed during delivery")
+                result = {"schema": "figment/tensor-video-deliverable@1", "creator": creator_id,
+                    "fixture": native_plan.get("fixture") is True,
+                    "not_promotable": native_plan.get("fixture") is True,
+                    "movie": {**accepted["movie"], "path": str(target)},
+                    "accepted_video": accepted["accepted_lineage"],
+                    "accepted_edit": native_plan["video_inputs"]["accepted_edit"]["approval_lineage"]}
+                _write_json(destination / "manifest.json", result)
+                return result
+            edit_root = primary_root if "edit" in primary.get("stages", {}) else _pipeline_downstream_root(primary_root, "edit")
+            approved_path = edit_root / "grade/edit/approved-list.json"
+            if not approved_path.is_file():
+                return None
+            approved = _read_json(approved_path)
+            rows = [validate_approved_edit_still(creator_id, edit_root / "plan.json", row["image_id"])
+                    for row in approved.get("images", [])]
+            if not rows:
+                return None
+            destination = primary_root / "deliverable"
+            destination.mkdir(parents=True, exist_ok=True)
+            result = {"schema": "figment/tensor-edit-deliverable@1", "creator": creator_id,
+                      "fixture": any(row["fixture"] for row in rows), "images": []}
+            for row in rows:
+                source = Path(row["path"])
+                copied = destination / source.name
+                shutil.copy2(source, copied)
+                if _sha256(copied) != row["sha256"]:
+                    raise FigmentTrainError("accepted edit changed while exporting deliverable")
+                result["images"].append({"image_id": row["image_id"], "path": str(copied),
+                    "sha256": row["sha256"], "approval_lineage": row["approval_lineage"],
+                    "edit_input_sha256": row["edit_inputs"]["input_sha256"],
+                    "job_type": row["edit_inputs"]["job_type"]})
+            _write_json(destination / "manifest.json", result)
+            return result
     detail_approval_path = detail_root / "grade" / "detail" / "approval-lineage.json"
     if not detail_approval_path.is_file():
         return None
@@ -5685,6 +8435,204 @@ def _build_deliverable(
     return manifest
 
 
+def _dry_run_retry_preview(
+    root: Path, plan: dict[str, Any], stage: str, state: dict[str, Any],
+    *, retry_after_fix_reason: str | None = None,
+) -> dict[str, Any] | None:
+    """`pipeline --dry-run --retry-failed`'s preview of the one retry `run_planned_stage`
+    would actually attempt for this stage: the same manifest a live invocation would hit
+    first (in plan order), only when it is `failed` or `retrying` (MEDIUM-1: a `retrying`
+    record left by an interrupted earlier retry is guarded exactly like `failed`) and
+    `_retry_ineligibility_reason` clears it, and both retry caps (`MAX_RUN_RETRIES` (or
+    the wider `MAX_RETRY_AFTER_FIX` when `retry_after_fix_reason` is given) for real
+    attempts, `MAX_NEVER_CREATED_RETRIES` for never-created ones,
+    `_count_prior_retry_attempts`) still have room. Read-only -- never renames a dir or
+    invokes the harness. The preview message reports both counts, and its `status` is
+    `dry-run:retry-after-fix <key>` (instead of `dry-run:retry <key>`) exactly when the
+    reason is what actually admitted the prior attempt -- the same
+    `skip_error_class_check` overlay `run_planned_stage` applies. Returns `None` when
+    there is nothing eligible to retry here, so the caller falls back to the ordinary
+    `dry-run:<stage>` preview."""
+    real_retry_limit = MAX_RETRY_AFTER_FIX if retry_after_fix_reason else MAX_RUN_RETRIES
+    for run in plan["stages"][stage]["runs"]:
+        key = run["manifest"]
+        prior = state["runs"].get(key)
+        if prior and prior.get("status") == "complete":
+            continue
+        status = prior.get("status") if prior else None
+        if status not in ("failed", "retrying"):
+            return None
+        attempts = list(prior.get("attempts") or [])
+        never_created_count, real_count = _count_prior_retry_attempts(
+            [a.get("out_renamed") for a in attempts]
+        )
+        if real_count >= real_retry_limit or never_created_count >= MAX_NEVER_CREATED_RETRIES:
+            return None
+        retry_attempts = attempts if status == "retrying" else None
+        reason = _retry_ineligibility_reason(root, run, attempts=retry_attempts)
+        used_retry_after_fix = False
+        if reason is not None and retry_after_fix_reason:
+            if _retry_ineligibility_reason(
+                root, run, attempts=retry_attempts, skip_error_class_check=True,
+            ) is None:
+                reason = None
+                used_retry_after_fix = True
+        if reason:
+            return None
+        status_key = "retry-after-fix" if used_retry_after_fix else "retry"
+        return {
+            "status": f"dry-run:{status_key} {key}",
+            "message": (
+                f"would retry {key} (real retries {real_count}/{real_retry_limit}, "
+                f"never-created retries {never_created_count}/{MAX_NEVER_CREATED_RETRIES}): "
+                + (
+                    f"--retry-after-fix admitted a JOB-class failure ({retry_after_fix_reason!r})"
+                    if used_retry_after_fix else
+                    "prior attempt's run.json showed a retry-eligible transport/placement or "
+                    "never-created capacity failure"
+                )
+            ),
+        }
+    return None
+
+
+DOWNSTREAM_REPLAN_STAGES = ("gen", "detail", "edit", "video")
+MAX_DOWNSTREAM_SUPERSESSIONS = 4
+
+
+def _first_free_downstream_supersession_path(
+    downstream_root: Path, *, limit: int = MAX_DOWNSTREAM_SUPERSESSIONS,
+) -> Path:
+    """`--replan-downstream`'s rename target for the plan being superseded -- refuses
+    past `limit` (4) rather than accumulating an unbounded run of dead downstream
+    plans beside the live one `pipeline` is about to plan fresh."""
+    for n in range(1, limit + 1):
+        candidate = downstream_root.with_name(f"{downstream_root.name}.superseded-{n}")
+        if not candidate.exists():
+            return candidate
+    raise FigmentTrainError(
+        f"downstream root {downstream_root} has already been superseded {limit} "
+        "time(s); create a reviewed fresh primary plan instead of superseding further"
+    )
+
+
+def _downstream_replan_refusal_reason(
+    creator_id: str, downstream_root: Path, stage: str,
+) -> str | None:
+    """Eligibility gate for `pipeline --replan-downstream <stage>`: `None` only when
+    the existing `downstream/<stage>` plan is not graded, has recorded NO run with any
+    output, and every run/attempt out dir it ever named is either a verified-teardown,
+    zero-output failure (`_out_dir_retry_eligibility_reason(..., skip_error_class_
+    check=True)` -- the JOB-class error string itself never matters here) or was never
+    launched at all (`_run_never_launched`). Else the human-readable refusal reason --
+    RUNBOOK forbids hand-editing a plan, so this is the one function standing between a
+    stuck template defect and superseding a plan that still has something at stake."""
+    plan_path = downstream_root / "plan.json"
+    if not plan_path.is_file():
+        return f"no existing plan at {plan_path} to supersede"
+    if (downstream_root / "grade" / stage / "gate.json").is_file():
+        return f"downstream/{stage} has already been graded; a graded stage is never superseded"
+    plan, root = _load_plan(creator_id, plan_path)
+    if root != downstream_root.resolve():
+        return "downstream plan root changed while loading"
+    runs = ((plan.get("stages") or {}).get(stage) or {}).get("runs") or []
+    state_path = downstream_root / "stage.json"
+    state = _stage_state(state_path, creator_id, plan_path) if state_path.is_file() else {"runs": {}}
+
+    def _dir_reason(out_dir: Path) -> str | None:
+        if _run_never_launched(out_dir):
+            return None
+        return _out_dir_retry_eligibility_reason(out_dir, skip_error_class_check=True)
+
+    for run in runs:
+        key = run.get("manifest")
+        record = (state.get("runs") or {}).get(key) or {}
+        current_out = downstream_root / run["out"]
+        if record.get("status") == "complete":
+            return f"downstream/{stage} run {key!r} already completed with recorded output"
+        reason = _dir_reason(current_out)
+        if reason is not None:
+            return (
+                f"downstream/{stage} run {key!r} at {current_out} is not safely "
+                f"supersedable: {reason}"
+            )
+        for attempt in record.get("attempts") or []:
+            renamed = attempt.get("out_renamed")
+            if not renamed:
+                continue
+            attempt_dir = Path(renamed)
+            reason = _dir_reason(attempt_dir)
+            if reason is not None:
+                return (
+                    f"downstream/{stage} run {key!r} prior attempt at {attempt_dir} is "
+                    f"not safely supersedable: {reason}"
+                )
+    return None
+
+
+def _replan_downstream_stage(
+    creator_id: str, primary_root: Path, primary_plan_path: Path,
+    downstream_root: Path, stage: str, reason: str,
+) -> None:
+    """`pipeline --replan-downstream <stage> --reason <...>` (2026-09-21): the one
+    sanctioned alternative to hand-editing a plan (RUNBOOK) when a downstream gen/
+    detail/video plan copied a since-fixed template defect and every run it ever
+    attempted is dead (verified teardown, zero output) or never launched --
+    `_pipeline_downstream_root`'s "reuse whatever plan is already there" rule would
+    otherwise pin that defect in place forever. Refuses (naming the reason) on any run
+    with recorded output, a graded stage, or an unverified teardown --
+    `_downstream_replan_refusal_reason` is the one function that decides.
+
+    Crash-safe like `run_planned_stage`'s own retry bookkeeping (MEDIUM-2/LOW-1): the
+    supersession record lands in the PRIMARY root's stage.json `downstream_
+    supersessions` list BEFORE the rename that makes it real. A crash between those
+    two writes leaves a record naming a `superseded_dir` that does not yet exist while
+    `downstream_root` still holds the exact plan bytes its own `prior_plan_sha256`
+    names -- the next call recognizes that shape and finishes the rename instead of
+    re-checking eligibility or writing a second record."""
+    state_path = primary_root / "stage.json"
+    primary_state = _stage_state(state_path, creator_id, primary_plan_path)
+    supersessions = list(primary_state.get("downstream_supersessions") or [])
+    plan_path = downstream_root / "plan.json"
+
+    for entry in reversed(supersessions):
+        if entry.get("stage") != stage:
+            continue
+        target = Path(entry["superseded_dir"])
+        if plan_path.is_file() and not target.exists():
+            try:
+                current_sha = _sha256(plan_path)
+            except FigmentTrainError:
+                current_sha = None
+            if current_sha == entry.get("prior_plan_sha256"):
+                downstream_root.rename(target)
+        break
+
+    if not plan_path.is_file():
+        # Either nothing to supersede, or the block above just finished a
+        # crash-interrupted rename -- either way there is no live plan left here to
+        # supersede again in this call; the normal walk below plans it fresh.
+        return
+
+    refusal = _downstream_replan_refusal_reason(creator_id, downstream_root, stage)
+    if refusal is not None:
+        raise FigmentTrainError(f"--replan-downstream {stage} refuses: {refusal}")
+
+    target = _first_free_downstream_supersession_path(downstream_root)
+    record = {
+        "stage": stage,
+        "superseded_dir": str(target),
+        "reason": reason,
+        "git_head": _git_head_sha(),
+        "prior_plan_sha256": _sha256(plan_path),
+        "at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    supersessions.append(record)
+    primary_state["downstream_supersessions"] = supersessions
+    _write_stage_state(state_path, primary_state)
+    downstream_root.rename(target)
+
+
 def command_pipeline(
     creator_id: str,
     *,
@@ -5699,8 +8647,15 @@ def command_pipeline(
     accept_budget: bool = False,
     style_lora: str | None = None,
     style_lora_strength: float | None = None,
+    gen_prompt_style: str | None = None,
+    gen_refine_denoise: float | None = None,
+    gen_detailer_denoise: float | None = None,
     import_checkpoints: Path | None = None,
     import_training_config: Path | None = None,
+    retry_failed: bool = False,
+    retry_after_fix_reason: str | None = None,
+    replan_downstream: str | None = None,
+    replan_downstream_reason: str | None = None,
 ) -> dict[str, Any]:
     """One resumable driver across anchor -> dataset -> smoke -> train -> tester
     -> gen -> detail. Dispatches to the EXISTING `run_planned_stage`, `build_grade`,
@@ -5743,6 +8698,16 @@ def command_pipeline(
     primary plan's only stage instead of the usual `--stage all` -- anchor/dataset/
     smoke/train are skipped outright, never planned or run, because the loop below
     already only walks stages present in `primary_plan["stages"]`.
+
+    `replan_downstream`/`replan_downstream_reason` (`--replan-downstream <stage>
+    --reason <...>`, 2026-09-21): the one sanctioned alternative to hand-editing a
+    plan (RUNBOOK) when an existing `downstream/<stage>` plan copied a since-fixed
+    template defect and every run it ever attempted is dead or never launched --
+    `_replan_downstream_stage` decides eligibility and, when clear, supersedes the
+    existing directory (recorded on the PRIMARY root's stage.json first, crash-safe)
+    before the walk below plans that stage fresh from current templates. `dry_run`
+    with this set previews the action (`dry-run:replan-downstream <stage>`) and
+    touches nothing, exactly like every other dry-run branch below.
     """
     if (plan_path is None) == (out is None):
         raise FigmentTrainError("pipeline requires exactly one of --plan or --out")
@@ -5750,6 +8715,14 @@ def command_pipeline(
         raise FigmentTrainError(f"pipeline --from-stage must be one of {PIPELINE_FROM_STAGES}")
     if import_checkpoints is not None and plan_path is not None:
         raise FigmentTrainError("--import-checkpoints is only meaningful with --out (a fresh plan)")
+    if replan_downstream is not None and replan_downstream not in DOWNSTREAM_REPLAN_STAGES:
+        raise FigmentTrainError(
+            f"--replan-downstream must be one of {DOWNSTREAM_REPLAN_STAGES}"
+        )
+    if replan_downstream is not None and not (
+        isinstance(replan_downstream_reason, str) and replan_downstream_reason.strip()
+    ):
+        raise FigmentTrainError("--replan-downstream requires a non-empty --reason")
 
     if plan_path is not None:
         primary_plan, primary_root = _load_plan(creator_id, plan_path)
@@ -5770,13 +8743,43 @@ def command_pipeline(
         primary_root = Path(out).resolve()
         primary_plan_path = primary_root / "plan.json"
 
-    order = list(STAGES)
+    tensor = primary_plan.get("training", {}).get("recipe_profile") == "tensor"
+    order = list(TENSOR_STAGES if tensor else CLEAN_STAGES)
+    if set(primary_plan.get("stages", {})) == {"edit"}:
+        order = ["edit"]
+    if "video_inputs" in primary_plan:
+        order = ["video"]
+    if "gen_inputs" in primary_plan:
+        order = ["gen"]
+        _validate_gen_source_inputs(primary_plan, primary_root)
     if from_stage is not None:
+        if from_stage not in order:
+            raise FigmentTrainError("requested stage is not in this profile's pipeline sequence")
         order = order[order.index(from_stage):]
 
-    gen_root = _pipeline_downstream_root(primary_root, "gen")
+    gen_root = primary_root if "gen_inputs" in primary_plan else _pipeline_downstream_root(primary_root, "gen")
     detail_root = _pipeline_downstream_root(primary_root, "detail")
     video_root = _pipeline_downstream_root(primary_root, "video")
+    edit_root = primary_root if "edit" in primary_plan.get("stages", {}) else _pipeline_downstream_root(primary_root, "edit")
+    if replan_downstream == "edit" and edit_root == primary_root:
+        raise FigmentTrainError("standalone edit is the primary plan; create a fresh edit plan to revise it")
+    if replan_downstream is not None and "gen_inputs" in primary_plan:
+        raise FigmentTrainError("standalone stills is the primary plan; create an explicit new stage request")
+
+    if replan_downstream is not None:
+        if dry_run:
+            return {
+                "status": f"dry-run:replan-downstream {replan_downstream}",
+                "message": (
+                    f"would supersede downstream/{replan_downstream} and replan it "
+                    f"fresh from current templates ({replan_downstream_reason})"
+                ),
+            }
+        _replan_downstream_stage(
+            creator_id, primary_root, primary_plan_path,
+            {"gen": gen_root, "detail": detail_root, "edit": edit_root, "video": video_root}[replan_downstream],
+            replan_downstream, replan_downstream_reason,
+        )
 
     def deliverable_path() -> str | None:
         """Everything ruled so far, written once and re-read afterwards (idempotent on
@@ -5793,12 +8796,23 @@ def command_pipeline(
         return str(manifest_path) if built is not None else None
 
     for stage in order:
-        if stage in ("anchor", "dataset", "smoke", "train", "tester"):
+        if stage == "gen" and "gen_inputs" in primary_plan:
+            active_plan, active_root, active_plan_path = primary_plan, primary_root, primary_plan_path
+        elif stage == "video" and "video_inputs" in primary_plan:
+            active_plan, active_root, active_plan_path = primary_plan, primary_root, primary_plan_path
+            deliverable = None
+        elif stage in ("anchor", "dataset", "smoke", "train", "tester"):
             if stage not in primary_plan.get("stages", {}):
                 continue
             active_plan, active_root, active_plan_path = (
                 primary_plan, primary_root, primary_plan_path,
             )
+        elif stage == "edit":
+            if not (edit_root / "plan.json").is_file():
+                return {"status": "stopped:edit-not-planned",
+                        "message": "plan --stage edit --edit-request requires explicit current image authority"}
+            active_plan, active_root = _load_plan(creator_id, edit_root / "plan.json")
+            active_plan_path = edit_root / "plan.json"
         elif stage == "gen":
             if (gen_root / "plan.json").is_file():
                 active_plan, active_root = _load_plan(creator_id, gen_root / "plan.json")
@@ -5821,6 +8835,9 @@ def command_pipeline(
                     skip_pin_verify=skip_pin_verify, ledger_dir=ledger_dir,
                     accept_budget=accept_budget, style_lora=style_lora,
                     style_lora_strength=style_lora_strength,
+                    gen_prompt_style=gen_prompt_style,
+                    gen_refine_denoise=gen_refine_denoise,
+                    gen_detailer_denoise=gen_detailer_denoise,
                 )
                 active_root = gen_root
             active_plan_path = gen_root / "plan.json"
@@ -5849,6 +8866,9 @@ def command_pipeline(
                 active_root = detail_root
             active_plan_path = detail_root / "plan.json"
         elif stage == "video":
+            if tensor:
+                return {"status": "stopped:tensor-video-not-planned",
+                        "message": "module08 requires the separately versioned accepted-edit source adapter"}
             deliverable = deliverable_path()
             if (video_root / "plan.json").is_file():
                 active_plan, active_root = _load_plan(creator_id, video_root / "plan.json")
@@ -5888,11 +8908,21 @@ def command_pipeline(
         state = _stage_state(active_root / "stage.json", creator_id, active_plan_path)
         if stage not in state.get("completed_stages", []):
             if dry_run:
+                if retry_failed or retry_after_fix_reason:
+                    preview = _dry_run_retry_preview(
+                        active_root, active_plan, stage, state,
+                        retry_after_fix_reason=retry_after_fix_reason,
+                    )
+                    if preview is not None:
+                        return preview
                 return {
                     "status": f"dry-run:{stage}",
                     "message": f"would run stage {stage!r} for plan {active_plan_path}",
                 }
-            run_planned_stage(creator_id, stage, active_plan_path)
+            run_planned_stage(
+                creator_id, stage, active_plan_path, retry_failed=retry_failed,
+                retry_after_fix_reason=retry_after_fix_reason,
+            )
 
         if stage in GRADEABLE_STAGES:
             grade_dir = active_root / "grade" / stage
@@ -5941,6 +8971,16 @@ def command_pipeline(
                             "--out <new-dir>` for a fresh --stage all plan"
                         ),
                     }
+            if stage == "video" and "video_inputs" in active_plan:
+                review, _, review_root = _tensor_video_review_context(active_plan, active_root)
+                if not (review_root / review.ACCEPTED_NAME).is_file():
+                    return {"status": "GATE video-playback",
+                            "message": "native video requires explicit sample, complete sequence and playback rulings",
+                            "review": str(review_root)}
+                review.validate_accepted_video(active_root, (review_root / review.ACCEPTED_NAME).relative_to(active_root),
+                    allow_fixture=active_plan.get("fixture") is True)
+            if stage == "gen" and "gen_inputs" in active_plan:
+                _load_current_approval(active_plan, active_root, "gen")
 
     # n11 (superseded by F6a): the old claim that `order` always ends with a
     # self-returning branch was true only while "detail" was the last real stage --
@@ -5948,9 +8988,13 @@ def command_pipeline(
     # branch above falls through without returning, same as every other already-
     # ruled stage. This is that terminal return, now for "video" instead of the
     # removed dead `"complete:detail"` one.
+    standalone_edit = set(primary_plan.get("stages", {})) == {"edit"}
+    if "gen_inputs" in primary_plan:
+        return {"status": "complete:gen", "message": "standalone stills approved; edit requires an explicit request",
+                "deliverable": deliverable_path()}
     return {
-        "status": "complete:video",
-        "message": "pipeline complete through video",
+        "status": "complete:edit" if standalone_edit else "complete:video",
+        "message": "standalone edit approved" if standalone_edit else "pipeline complete through video",
         "deliverable": deliverable_path(),
     }
 
@@ -5958,10 +9002,17 @@ def command_pipeline(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    runtime = commands.add_parser("runtime-admission", help="offline evidence inspection; never grants admission")
+    runtime_commands = runtime.add_subparsers(dest="runtime_command", required=True)
+    inspect = runtime_commands.add_parser("inspect", help="bounded metadata-only inspection; exits unavailable")
+    inspect.add_argument("--request", required=True, type=Path)
+    inspect.add_argument("--evidence-root", required=True, type=Path)
     plan = commands.add_parser("plan", help="generate a creator-specific Track-1 plan")
     plan.add_argument("--creator", required=True)
     plan.add_argument("--stage", choices=(*STAGES, "all"), default="all")
     plan.add_argument("--out", required=True, type=Path)
+    plan.add_argument("--personas-root", type=Path, default=PERSONAS_ROOT,
+                      help="local persona registry (defaults to the project registry)")
     plan.add_argument(
         "--ledger-dir", type=Path,
         help="cost ledger root (frozen in plan: explicit, KB_LEDGER_DIR, managed OPS, then repo)",
@@ -5981,6 +9032,12 @@ def build_parser() -> argparse.ArgumentParser:
              "its grade/gen/approved-list.json is re-detailed; with --stage video one "
              "of them becomes the I2V first frame",
     )
+    plan.add_argument("--stills-request", type=Path, default=None,
+                      help="canonical approved fixture scene request for tensor gen")
+    plan.add_argument("--video-request", type=Path, default=None,
+                      help="Explicit tensor driving clip / accepted frame0 edit request")
+    plan.add_argument("--edit-request", type=Path, default=None,
+                      help="tensor edit only: exact image pair, original identity authority and approved prompt")
     plan.add_argument(
         "--approved-gen-image-id", default=None,
         help="--stage video only: which kept gen still becomes the first frame "
@@ -6009,6 +9066,29 @@ def build_parser() -> argparse.ArgumentParser:
              "defaults to persona.training.style_lora_strength (0.8) when omitted",
     )
     plan.add_argument(
+        "--gen-prompt-style", default=None, choices=sorted(
+            _training_config_module().ALLOWED_GEN_PROMPT_STYLES
+        ),
+        help="gen-only prompt-composition style -- overrides "
+             "persona.training.gen_prompt_style for this one plan -- never a persona "
+             "fork; default (persona value, itself defaulting to look-clause) "
+             "reproduces today's gen prompts byte-for-byte",
+    )
+    plan.add_argument(
+        "--gen-refine-denoise", default=None, type=float,
+        help="gen-only override of persona.training.gen_refine_denoise (0.0-1.0) for "
+             "this one plan -- never a persona fork; 0.0 removes _gen_workflow's refine "
+             "pass (node 15) entirely; default (persona value, itself defaulting to "
+             "0.35) reproduces today's gen workflow byte-for-byte",
+    )
+    plan.add_argument(
+        "--gen-detailer-denoise", default=None, type=float,
+        help="gen-only override of persona.training.gen_detailer_denoise (0.0-1.0) for "
+             "this one plan -- never a persona fork; 0.0 removes _gen_workflow's "
+             "detailer pass (node 33) entirely; default (persona value, itself "
+             "defaulting to 0.15) reproduces today's gen workflow byte-for-byte",
+    )
+    plan.add_argument(
         "--import-checkpoints", default=None, type=Path,
         help="only meaningful with --stage tester: a directory of loose, operator-"
              "trained *.safetensors checkpoint ladder files (MANDATE.md's tier "
@@ -6020,6 +9100,11 @@ def build_parser() -> argparse.ArgumentParser:
              "imported ladder was actually trained with (default: the persona's "
              "own current training.yaml)",
     )
+
+    def _non_empty_reason_arg(value: str) -> str:
+        if not value.strip():
+            raise argparse.ArgumentTypeError("reason must not be empty")
+        return value
 
     pipeline = commands.add_parser(
         "pipeline",
@@ -6064,6 +9149,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="see `plan --style-lora-strength`",
     )
     pipeline.add_argument(
+        "--gen-prompt-style", default=None, choices=sorted(
+            _training_config_module().ALLOWED_GEN_PROMPT_STYLES
+        ),
+        help="applied only when pipeline plans its own downstream gen stage -- "
+             "see `plan --gen-prompt-style`",
+    )
+    pipeline.add_argument(
+        "--gen-refine-denoise", default=None, type=float,
+        help="applied only when pipeline plans its own downstream gen stage -- "
+             "see `plan --gen-refine-denoise`",
+    )
+    pipeline.add_argument(
+        "--gen-detailer-denoise", default=None, type=float,
+        help="applied only when pipeline plans its own downstream gen stage -- "
+             "see `plan --gen-detailer-denoise`",
+    )
+    pipeline.add_argument(
         "--import-checkpoints", default=None, type=Path,
         help="only meaningful with --out (a fresh primary plan): plan tester as the "
              "primary plan's only stage against this operator-trained checkpoint "
@@ -6074,11 +9176,56 @@ def build_parser() -> argparse.ArgumentParser:
         "--import-training-config", default=None, type=Path,
         help="only meaningful with --import-checkpoints; see `plan --import-training-config`",
     )
+    pipeline.add_argument(
+        "--retry-failed", action="store_true",
+        help="retry a `failed` planned run ONLY when its own run.json shows verified "
+             "termination, zero job outputs, and a transport/placement-class error "
+             "(NameResolutionError/ConnectionError/MaxRetryError/ReadTimeout/placement), "
+             "or a never-created RunPod capacity failure at pod-create time; at most "
+             f"{MAX_RUN_RETRIES} real retries and {MAX_NEVER_CREATED_RETRIES} "
+             "never-created retries per manifest key. Off by default -- without it, a "
+             "failed run always requires a fresh, reviewed plan. See RUNBOOK.md "
+             "Resume/recovery.",
+    )
+    pipeline.add_argument(
+        "--retry-after-fix", type=_non_empty_reason_arg, default=None,
+        help=(
+            "admit a prior JOB-class (not transport/placement) planned-run failure for "
+            "retry -- same mechanism as `apply-rulings --retry-caption-after-fix`, "
+            "extended to a planned stage run: works even without --retry-failed. "
+            "Requires a non-empty reason naming what was fixed; recorded on the "
+            f"retried attempt's own `retry_after_fix` block. Bounded by the wider "
+            f"{MAX_RETRY_AFTER_FIX} real retries (never-created retries still bound by "
+            f"{MAX_NEVER_CREATED_RETRIES}) instead of the tight {MAX_RUN_RETRIES}. See "
+            "RUNBOOK.md Resume/recovery."
+        ),
+    )
+    pipeline.add_argument(
+        "--replan-downstream", choices=DOWNSTREAM_REPLAN_STAGES, default=None,
+        help="supersede the existing downstream/<stage> plan and replan it fresh from "
+             "current templates -- allowed ONLY when that plan recorded no run with "
+             "output, is not graded, and every run/attempt it named is a verified "
+             "teardown with zero output or never launched. Requires --reason. See "
+             "RUNBOOK.md Resume/recovery.",
+    )
+    pipeline.add_argument(
+        "--reason", type=_non_empty_reason_arg, default=None,
+        help="required with --replan-downstream: a non-empty operator statement of "
+             "why the superseded plan is being replaced (e.g. the template fix commit)",
+    )
 
     run = commands.add_parser("run", help="run one planned stage without retries")
     run.add_argument("--creator", required=True)
     run.add_argument("--stage", choices=(*STAGES, "all"), required=True)
     run.add_argument("--plan", required=True, type=Path)
+    run.add_argument(
+        "--retry-failed", action="store_true",
+        help="see `pipeline --retry-failed`",
+    )
+    run.add_argument(
+        "--retry-after-fix", type=_non_empty_reason_arg, default=None,
+        help="see `pipeline --retry-after-fix`",
+    )
 
     grade = commands.add_parser("grade", help="build a full-resolution grading board")
     grade.add_argument("--creator", required=True)
@@ -6102,6 +9249,15 @@ def build_parser() -> argparse.ArgumentParser:
     apply.add_argument(
         "--checkpoint-step", type=int, default=None,
         help="tester only: promote this explicitly kept checkpoint candidate",
+    )
+    apply.add_argument(
+        "--retry-caption-after-fix", type=_non_empty_reason_arg, default=None,
+        help=(
+            "dataset qwen3vl only: admit a prior JOB-class (not transport/placement) "
+            "caption pod failure for retry, when its run.json proves a verified "
+            "teardown and zero output. Requires a non-empty reason naming what was "
+            "fixed; recorded on the regenerated manifest's training.retry_after_fix."
+        ),
     )
 
     gate = commands.add_parser("gate", help="print the fail-closed gate's pass/fail table")
@@ -6180,14 +9336,32 @@ def _print_train_budget(result: dict[str, Any]) -> None:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command == "runtime-admission":
+            inspector = _load_module("_figment_tensor_runtime_inspection", HERE / "tensor_runtime_admission.py")
+            try:
+                report = inspector.inspect_request(args.request, args.evidence_root)
+            except (inspector.InspectionError, OSError, ValueError) as exc:
+                report = {"schema": inspector.REPORT_SCHEMA, "runtime_admitted": False,
+                          "production_ready": False, "authority_status": "authority-unavailable",
+                          "evidence_consistent": False, "blockers": ["invalid-local-evidence"],
+                          "error": str(exc)[:1024]}
+            print(json.dumps(report, ensure_ascii=True, allow_nan=False))
+            return 2  # Inspection never supplies production authority, including consistent fixtures.
         if args.command == "plan":
             result = build_plan(
                 args.creator, args.stage, args.out, skip_pin_verify=args.skip_pin_verify,
                 detail_images=args.detail_images, approved_gen_plan=args.approved_gen_plan,
+                edit_request=args.edit_request,
+                video_request=args.video_request,
+                stills_request=args.stills_request,
+                personas_root=args.personas_root,
                 approved_gen_image_id=args.approved_gen_image_id,
                 video_action=args.video_action, ledger_dir=args.ledger_dir,
                 accept_budget=args.accept_budget,
                 style_lora=args.style_lora, style_lora_strength=args.style_lora_strength,
+                gen_prompt_style=args.gen_prompt_style,
+                gen_refine_denoise=args.gen_refine_denoise,
+                gen_detailer_denoise=args.gen_detailer_denoise,
                 import_checkpoints=args.import_checkpoints,
                 import_training_config=args.import_training_config,
             )
@@ -6207,12 +9381,22 @@ def main(argv: list[str] | None = None) -> int:
                 dry_run=args.dry_run, from_stage=args.from_stage,
                 ledger_dir=args.ledger_dir, accept_budget=args.accept_budget,
                 style_lora=args.style_lora, style_lora_strength=args.style_lora_strength,
+                gen_prompt_style=args.gen_prompt_style,
+                gen_refine_denoise=args.gen_refine_denoise,
+                gen_detailer_denoise=args.gen_detailer_denoise,
                 import_checkpoints=args.import_checkpoints,
                 import_training_config=args.import_training_config,
+                retry_failed=args.retry_failed,
+                retry_after_fix_reason=args.retry_after_fix,
+                replan_downstream=args.replan_downstream,
+                replan_downstream_reason=args.reason,
             )
             print(f"pipeline: {result['status']}")
         elif args.command == "run":
-            result = run_planned_stage(args.creator, args.stage, args.plan)
+            result = run_planned_stage(
+                args.creator, args.stage, args.plan, retry_failed=args.retry_failed,
+                retry_after_fix_reason=args.retry_after_fix,
+            )
             print(f"stage state: {result['status']}")
         elif args.command == "grade":
             result = build_grade(
@@ -6255,6 +9439,7 @@ def main(argv: list[str] | None = None) -> int:
             result = apply_rulings(
                 args.creator, args.stage, args.plan, args.rulings,
                 checkpoint_step=args.checkpoint_step,
+                retry_caption_after_fix=args.retry_caption_after_fix,
             )
             print(f"applied rulings: {result['rulings']}")
             if "rejection_lineage" in result:

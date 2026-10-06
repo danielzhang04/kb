@@ -58,6 +58,10 @@ train_first_test = load_module(
 )
 
 
+# Fixture grading keeps the real gate and authority chain, with offline no-face models.
+offline_fixture_models = train_first_test.offline_fixture_models
+
+
 BANNED = (
     "UltralyticsDetectorProvider", "SAMLoader", '.pt"', ".pth",
     "creator-001", "creator001krea2", "pawg", "gravedigga", "Impact-Subpack",
@@ -195,9 +199,11 @@ def test_gen_consumer_revalidates_current_selected_checkpoint_authority_before_h
 
     class _RC1:
         returncode = 1
+        stderr = ""
 
     monkeypatch.setattr(
-        command.subprocess, "run", lambda argv, cwd=None: launched.append(argv) or _RC1(),
+        command.subprocess, "run",
+        lambda argv, cwd=None, **kwargs: launched.append(argv) or _RC1(),
     )
 
     def rejects_before_harness(path: Path, mutate, message: str):
@@ -236,7 +242,9 @@ def test_gen_consumer_revalidates_current_selected_checkpoint_authority_before_h
 
     rejects_before_harness(plan_path, drop_gen_authority, "no captured selected-checkpoint provenance")
 
-    with pytest.raises(command.FigmentTrainError, match="harness stopped"):
+    # The mock harness never creates an out dir/run.json, so a nonzero exit here
+    # is classified as a pre-launch refusal (fcc2ea3f), not a mid-run failure.
+    with pytest.raises(command.FigmentTrainError, match="harness refused"):
         command.run_planned_stage("creator-002", "gen", plan_path)
     assert len(launched) == 1
 
@@ -264,8 +272,9 @@ def test_gen_consumer_revalidates_authority_between_base_and_detail_launches(
 
     class _RC0:
         returncode = 0
+        stderr = ""
 
-    def fake_harness(argv, cwd=None):
+    def fake_harness(argv, cwd=None, **kwargs):
         launched.append(argv)
         if len(launched) == 1:
             if mutation == "selection":
@@ -310,12 +319,37 @@ def test_gen_pins_have_no_subpack_and_no_pickle():
 
 
 def test_pins_document_has_no_pickle_or_subpack_anywhere():
-    """Whole-document guard (the outer task's "no ultralytics/SAM/.pt anywhere in
-    pins" requirement) -- not just the gen profile."""
-    blob = PINS_PATH.read_text("utf-8")
+    """Keep pickle/Subpack dependencies confined to explicitly approved tensor groups."""
+    doc = json.loads(PINS_PATH.read_text("utf-8"))
+    for group in ("passport_tensor", "gen_tensor"):
+        doc["pins"].pop(group)  # source-required SAM/YOLO and Impact-Subpack, modules 03/09 only
+    blob = json.dumps(doc)
     assert "Impact-Subpack" not in blob
     assert "ultralytics" not in blob.lower()
     assert '.pt"' not in blob and ".pth" not in blob
+
+
+def test_all_mediapipe_facemask_workflows_encode_regions_as_option_key_string():
+    """`regions` is an io.DynamicCombo.Input (ComfyUI v0.34.0
+    nodes_mediapipe.py:442-495, _io.py:1254-1270 + 1879-1910): in API/prompt
+    format the live value must be the option-key STRING ("all"/"custom"),
+    never the nested {"regions": "all"} dict r23 originally (and wrongly)
+    documented -- that nesting is what made attempt 3 (pod y3mz2hqqbnf4ci,
+    2026-09-21) fail with `MediaPipeFaceMask.execute() missing 1 required
+    positional argument: 'regions'`, because `_expand_schema_for_dynamic`
+    never finds a matching option key and drops the input entirely."""
+    workflows_dir = PIPELINE / "train" / "workflows"
+    found_any = False
+    for wf_path in sorted(workflows_dir.glob("*.json")):
+        workflow = json.loads(wf_path.read_text(encoding="utf-8"))
+        for node_id, node in workflow.items():
+            if node.get("class_type") != "MediaPipeFaceMask":
+                continue
+            found_any = True
+            regions = node["inputs"]["regions"]
+            assert isinstance(regions, str), (wf_path.name, node_id, regions)
+            assert regions in ("all", "custom"), (wf_path.name, node_id, regions)
+    assert found_any, "expected at least one MediaPipeFaceMask node in the workflow templates"
 
 
 # ---------------------------------------------------------------------------
@@ -334,7 +368,7 @@ def test_gen_workflow_matches_module_09_and_has_a_pickle_free_detailer():
     assert g["30"]["class_type"] == "LoadMediaPipeFaceLandmarker"
     assert g["35"]["class_type"] == "MediaPipeFaceLandmarker"
     assert g["36"]["class_type"] == "MediaPipeFaceMask"
-    assert g["36"]["inputs"]["regions"] == {"regions": "all"}
+    assert g["36"]["inputs"]["regions"] == "all"
     assert g["32"]["class_type"] == "MaskToSEGS"
     assert set(g["32"]["inputs"]) == {
         "mask", "combined", "crop_factor", "bbox_fill", "drop_size", "contour_fill",
@@ -1021,10 +1055,384 @@ def test_build_plan_gen_with_style_lora_flag_records_and_wires_it(command, tmp_p
     assert persona_training.get("style_lora") is None
 
 
+# ---------------------------------------------------------------------------
+# gen_prompt_style: "look-clause" (default, byte-identical) vs "trigger-scene"
+# (2026-09-22 fix, live evidence orgs/figment/runs/creator-001/live-20260916b)
+# ---------------------------------------------------------------------------
+
+
+def _gen_row_texts(out: Path, plan: dict) -> list[str]:
+    run = plan["stages"]["gen"]["runs"][0]
+    manifest = load_json(out / run["manifest"])
+    texts = []
+    for job in manifest["jobs"]:
+        subs = [
+            sub for sub in job["substitutions"]
+            if sub["node_id"] == "5" and sub["field"] == "text"
+        ]
+        assert len(subs) == 1
+        texts.append(subs[0]["value"])
+    return texts
+
+
+def test_gen_prompt_style_default_matches_todays_look_clause_byte_for_byte(
+    command, tmp_path,
+):
+    """Default plans (no `training.gen_prompt_style`, no `--gen-prompt-style`) must
+    reproduce today's gen prompt composition byte-for-byte: fixture diff between a
+    plan built with the key entirely absent and one with it explicitly set to
+    "look-clause"."""
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    _prepare_accepted_checkpoint(command, personas, tmp_path, dop_class="woman")
+    default_out = tmp_path / "default-gen"
+    default_plan = command.build_plan(
+        "creator-002", "gen", default_out, personas_root=personas, skip_pin_verify=True,
+    )
+    assert default_plan["training"]["gen_prompt_style"] == "look-clause"
+    default_texts = _gen_row_texts(default_out, default_plan)
+    assert len(default_texts) == 12
+    assert default_texts[0].startswith("creator002krea2 woman, Photograph of ")
+
+    explicit_out = tmp_path / "explicit-look-clause-gen"
+    explicit_plan = command.build_plan(
+        "creator-002", "gen", explicit_out, personas_root=personas, skip_pin_verify=True,
+        gen_prompt_style="look-clause",
+    )
+    assert _gen_row_texts(explicit_out, explicit_plan) == default_texts
+
+
+def test_gen_prompt_style_trigger_scene_drops_look_words_and_closes_framing(
+    command, tmp_path,
+):
+    """2026-09-22 fix: gen on the accepted step-2000 checkpoint scored judge
+    same_person 45-68 / face_px 475-695 with the default look-clause prompt (which
+    prepends the entire identity.look clause), while the SAME checkpoint's tester
+    prompt -- no hair/eyes/brows/makeup/skin/build/clothing text, close framing --
+    scored judge 88. "trigger-scene" must emit that shape: 12 rows, each opening with
+    the trigger, each close-framed ("shoulders up"), and NONE carrying any
+    identity.look feature-word value."""
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    _prepare_accepted_checkpoint(
+        command, personas, tmp_path, gen_prompt_style="trigger-scene", dop_class="woman",
+    )
+    out = tmp_path / "trigger-scene-gen"
+    plan = command.build_plan(
+        "creator-002", "gen", out, personas_root=personas, skip_pin_verify=True,
+    )
+    assert plan["training"]["gen_prompt_style"] == "trigger-scene"
+    texts = _gen_row_texts(out, plan)
+    assert len(texts) == 12
+
+    look = load_json(personas / "creator-002" / "persona.yaml")["identity"]["look"]
+    banned_values = [
+        look[key] for key in ("hair", "eyes", "skin", "brows", "makeup", "build", "clothing")
+    ]
+    for text in texts:
+        assert text.startswith("creator002krea2 woman, ")
+        assert "shoulders up" in text
+        assert "Photograph of" not in text
+        for banned in banned_values:
+            assert banned not in text
+
+
+def test_gen_prompt_style_look_clause_close_uses_scenes_close_with_the_look_clause(
+    command, tmp_path,
+):
+    """2026-09-23: "look-clause-close" keeps today's look-clause composition (the
+    persona's full identity.look clause ahead of the scene) but against the
+    close-framed `scenes_close` rows instead of `scenes` -- every row must carry both
+    the look clause AND the close-framing phrase."""
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    persona, training, _ = command._load_inputs("creator-002", personas)
+    training = {**training, "gen_prompt_style": "look-clause-close"}
+    prompts = command._generalized_gen_prompts(persona, training)
+    assert len(prompts["rows"]) == 12
+
+    raw_prompts = command._read_json(command.GEN_PROMPTS_PATH)
+    clause = command._compose_look_clause(persona["identity"]["look"])
+    expected_rows = [
+        command._compose_triggered_prompt(
+            training, raw_prompts["base_clause"].format(look=clause, scene=scene),
+        )
+        for scene in raw_prompts["scenes_close"]
+    ]
+    assert prompts["rows"] == expected_rows
+    for text in prompts["rows"]:
+        assert "Photograph of" in text
+        assert "close-up portrait, shoulders up" in text
+        assert clause in text
+
+
+def test_build_plan_gen_prompt_style_flag_refused_off_stage_gen(command, tmp_path):
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    with pytest.raises(command.FigmentTrainError, match="only meaningful for --stage gen"):
+        command.build_plan(
+            "creator-002", "dataset", tmp_path / "d", personas_root=personas,
+            skip_pin_verify=True, gen_prompt_style="trigger-scene",
+        )
+
+
+def test_build_plan_gen_prompt_style_flag_overrides_persona_default(command, tmp_path):
+    """A plan-time flag override, mirroring `--style-lora`'s own precedent: never a
+    persona fork, recorded distinctly on the gen stage's own plan.json entry."""
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    _prepare_accepted_checkpoint(command, personas, tmp_path)
+    out = tmp_path / "flagged-gen-prompt-style"
+    plan = command.build_plan(
+        "creator-002", "gen", out, personas_root=personas, skip_pin_verify=True,
+        gen_prompt_style="trigger-scene",
+    )
+    assert plan["training"]["gen_prompt_style"] == "trigger-scene"
+    assert plan["stages"]["gen"]["gen_prompt_style"] == {
+        "value": "trigger-scene", "source": "flag",
+    }
+    texts = _gen_row_texts(out, plan)
+    assert all("shoulders up" in text for text in texts)
+
+    persona_training = load_json(personas / "creator-002" / "persona.yaml")["training"]
+    assert persona_training.get("gen_prompt_style") is None
+
+
+def test_resolve_gen_prompt_style_validates_the_value(command):
+    with pytest.raises(command.FigmentTrainError, match="--gen-prompt-style must be one of"):
+        command._resolve_gen_prompt_style({}, gen_prompt_style="not-a-real-style")
+    # Omitted flag is a no-op, returning the persona's training dict unchanged.
+    training = {"gen_prompt_style": "trigger-scene"}
+    assert command._resolve_gen_prompt_style(training, gen_prompt_style=None) is training
+
+
+# ---------------------------------------------------------------------------
+# gen_refine_denoise / gen_detailer_denoise (2026-09-23): gen-time-only knobs on
+# _gen_workflow's refine (node 15) and detailer (node 33) passes -- live evidence,
+# the tester's single 4-step pass scores judge same_person 88 on the same accepted
+# checkpoint that the full refine+detail chain scores 45-68 on.
+# ---------------------------------------------------------------------------
+
+
+def _assert_gen_workflow_links_resolve(workflow):
+    for node_id, node in workflow.items():
+        for field, value in node.get("inputs", {}).items():
+            if isinstance(value, list) and len(value) == 2 and isinstance(value[0], str):
+                assert value[0] in workflow, (node_id, field, value)
+
+
+def test_gen_workflow_default_denoise_matches_todays_shipped_values(command):
+    pins = json.loads(PINS_PATH.read_text("utf-8"))
+    workflow = command._gen_workflow({"style_lora": None}, pins)
+    raw = json.loads(GEN_WORKFLOW.read_text(encoding="utf-8"))
+    assert set(workflow) == set(raw) - {"40"}
+    assert workflow["15"]["inputs"]["denoise"] == 0.35
+    assert workflow["33"]["inputs"]["denoise"] == 0.15
+    assert workflow["14"]["inputs"] == raw["14"]["inputs"]
+    assert workflow["16"]["inputs"] == raw["16"]["inputs"]
+
+
+def test_gen_refine_denoise_zero_removes_refine_pass_and_rewires_to_upscaled_image(
+    command,
+):
+    pins = json.loads(PINS_PATH.read_text("utf-8"))
+    workflow = command._gen_workflow(
+        {"style_lora": None, "gen_refine_denoise": 0.0}, pins,
+    )
+    for node_id in ("14", "15", "16"):
+        assert node_id not in workflow
+    assert workflow["33"]["inputs"]["image"] == ["13", 0]
+    assert workflow["20"]["inputs"]["images"] == ["13", 0]
+    assert workflow["35"]["inputs"]["image"] == ["13", 0]
+    _assert_gen_workflow_links_resolve(workflow)
+
+
+def test_gen_refine_denoise_nonzero_sets_node_15_denoise(command):
+    pins = json.loads(PINS_PATH.read_text("utf-8"))
+    workflow = command._gen_workflow(
+        {"style_lora": None, "gen_refine_denoise": 0.1}, pins,
+    )
+    assert workflow["15"]["inputs"]["denoise"] == 0.1
+    assert "14" in workflow and "16" in workflow
+    _assert_gen_workflow_links_resolve(workflow)
+
+
+def test_gen_detailer_denoise_zero_removes_detailer_and_rewires_saveimage(command):
+    pins = json.loads(PINS_PATH.read_text("utf-8"))
+    workflow = command._gen_workflow(
+        {"style_lora": None, "gen_detailer_denoise": 0.0}, pins,
+    )
+    assert "33" not in workflow
+    assert workflow["34"]["inputs"]["images"] == ["16", 0]
+    _assert_gen_workflow_links_resolve(workflow)
+
+
+def test_gen_detailer_denoise_zero_after_refine_removed_rewires_to_upscaled_image(
+    command,
+):
+    pins = json.loads(PINS_PATH.read_text("utf-8"))
+    workflow = command._gen_workflow(
+        {
+            "style_lora": None, "gen_refine_denoise": 0.0, "gen_detailer_denoise": 0.0,
+        },
+        pins,
+    )
+    for node_id in ("14", "15", "16", "33"):
+        assert node_id not in workflow
+    assert workflow["34"]["inputs"]["images"] == ["13", 0]
+    _assert_gen_workflow_links_resolve(workflow)
+
+
+def test_gen_detailer_denoise_nonzero_sets_node_33_denoise(command):
+    pins = json.loads(PINS_PATH.read_text("utf-8"))
+    workflow = command._gen_workflow(
+        {"style_lora": None, "gen_detailer_denoise": 0.2}, pins,
+    )
+    assert workflow["33"]["inputs"]["denoise"] == 0.2
+    assert "33" in workflow
+    _assert_gen_workflow_links_resolve(workflow)
+
+
+def test_resolve_gen_refine_denoise_validates_the_value(command):
+    with pytest.raises(command.FigmentTrainError, match="--gen-refine-denoise must be"):
+        command._resolve_gen_refine_denoise({}, gen_refine_denoise=1.5)
+    with pytest.raises(command.FigmentTrainError, match="--gen-refine-denoise must be"):
+        command._resolve_gen_refine_denoise({}, gen_refine_denoise=-0.1)
+    with pytest.raises(command.FigmentTrainError, match="--gen-refine-denoise must be"):
+        command._resolve_gen_refine_denoise({}, gen_refine_denoise="0.1")
+    training = {"gen_refine_denoise": 0.35}
+    assert command._resolve_gen_refine_denoise(training, gen_refine_denoise=None) is training
+    resolved = command._resolve_gen_refine_denoise(training, gen_refine_denoise=0.0)
+    assert resolved["gen_refine_denoise"] == 0.0
+
+
+def test_resolve_gen_detailer_denoise_validates_the_value(command):
+    with pytest.raises(command.FigmentTrainError, match="--gen-detailer-denoise must be"):
+        command._resolve_gen_detailer_denoise({}, gen_detailer_denoise=1.5)
+    with pytest.raises(command.FigmentTrainError, match="--gen-detailer-denoise must be"):
+        command._resolve_gen_detailer_denoise({}, gen_detailer_denoise=-0.1)
+    training = {"gen_detailer_denoise": 0.15}
+    assert command._resolve_gen_detailer_denoise(training, gen_detailer_denoise=None) is training
+    resolved = command._resolve_gen_detailer_denoise(training, gen_detailer_denoise=0.2)
+    assert resolved["gen_detailer_denoise"] == 0.2
+
+
+def test_build_plan_gen_refine_and_detailer_denoise_flags_refused_off_stage_gen(
+    command, tmp_path,
+):
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    with pytest.raises(command.FigmentTrainError, match="only meaningful for --stage gen"):
+        command.build_plan(
+            "creator-002", "dataset", tmp_path / "d1", personas_root=personas,
+            skip_pin_verify=True, gen_refine_denoise=0.0,
+        )
+    with pytest.raises(command.FigmentTrainError, match="only meaningful for --stage gen"):
+        command.build_plan(
+            "creator-002", "dataset", tmp_path / "d2", personas_root=personas,
+            skip_pin_verify=True, gen_detailer_denoise=0.0,
+        )
+
+
+def test_build_plan_gen_refine_and_detailer_denoise_flags_record_and_wire(
+    command, tmp_path,
+):
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    _prepare_accepted_checkpoint(command, personas, tmp_path)
+    out = tmp_path / "flagged-denoise"
+    plan = command.build_plan(
+        "creator-002", "gen", out, personas_root=personas, skip_pin_verify=True,
+        gen_refine_denoise=0.0, gen_detailer_denoise=0.2,
+    )
+    assert plan["training"]["gen_refine_denoise"] == 0.0
+    assert plan["training"]["gen_detailer_denoise"] == 0.2
+    assert plan["stages"]["gen"]["gen_refine_denoise"] == {"value": 0.0, "source": "flag"}
+    assert plan["stages"]["gen"]["gen_detailer_denoise"] == {"value": 0.2, "source": "flag"}
+
+    manifest = load_json(out / plan["stages"]["gen"]["runs"][0]["manifest"])
+    workflow = load_json(out / "train" / "workflows" / "krea2_gen_api.json")
+    assert "15" not in workflow and "14" not in workflow
+    assert workflow["33"]["inputs"]["denoise"] == 0.2
+    node_ids = {sub["node_id"] for sub in manifest["jobs"][0]["substitutions"]}
+    assert "15" not in node_ids
+    assert "33" in node_ids
+
+    persona_training = load_json(personas / "creator-002" / "persona.yaml")["training"]
+    assert persona_training.get("gen_refine_denoise") is None
+    assert persona_training.get("gen_detailer_denoise") is None
+
+
+def test_gen_authority_revalidates_with_all_three_gen_time_only_flags(command, tmp_path):
+    """`_revalidate_planned_gen_authority` compares `training_input_projection`, which
+    excludes GEN_TIME_ONLY_KEYS -- a plan built with --gen-prompt-style/
+    --gen-refine-denoise/--gen-detailer-denoise flags must still revalidate cleanly
+    against an untouched persona (2026-09-23)."""
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    _prepare_accepted_checkpoint(command, personas, tmp_path, dop_class="woman")
+    out = tmp_path / "all-three-gen-time-flags"
+    plan = command.build_plan(
+        "creator-002", "gen", out, personas_root=personas, skip_pin_verify=True,
+        gen_prompt_style="trigger-scene", gen_refine_denoise=0.0,
+        gen_detailer_denoise=0.2,
+    )
+    command._revalidate_planned_gen_authority(plan)
+
+
+def test_revalidate_planned_gen_authority_survives_a_gen_prompt_style_flag(command, tmp_path):
+    """2026-09-23 fix: `_revalidate_planned_gen_authority` compared the freshly reloaded
+    persona training (which never carries a plan-time-only flag override) against
+    `plan["training"]` (which DOES carry it) with raw dict equality -- so ANY
+    `--gen-prompt-style`-flagged gen plan refused to launch at all, even against a
+    completely untouched persona, with "current training or checkpoint selection
+    changed after gen planning". Reproduced for `--style-lora` too (the same class of
+    bug, pre-existing, not introduced by `--gen-prompt-style`). Fixed by comparing
+    `lineage.training_input_projection(...)` (already excludes `GEN_TIME_ONLY_KEYS`)
+    instead of the raw dicts -- this must now pass for an untouched persona, and still
+    fail closed when the persona's training genuinely changes."""
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    _prepare_accepted_checkpoint(
+        command, personas, tmp_path, dop_class="woman", gen_prompt_style="trigger-scene",
+    )
+    out = tmp_path / "gen-prompt-style-authority"
+    plan = command.build_plan(
+        "creator-002", "gen", out, personas_root=personas, skip_pin_verify=True,
+        gen_prompt_style="trigger-scene",
+    )
+    # Must not raise: the persona is untouched since planning, only the plan-time flag
+    # differs from the persona's own (default) training.gen_prompt_style.
+    command._revalidate_planned_gen_authority(plan)
+
+    # A genuinely changed persona training must still fail closed. `_set_training`
+    # rewrites persona.yaml itself (training has no separate sidecar in this fixture),
+    # so this trips the earlier persona-sha256 check rather than the training-
+    # projection compare fixed above -- both are `_revalidate_planned_gen_authority`
+    # failing closed "after gen planning", which is what matters here.
+    _set_training(personas / "creator-002", dop_multiplier=2.0)
+    with pytest.raises(command.FigmentTrainError, match="after gen planning"):
+        command._revalidate_planned_gen_authority(plan)
+
+
+def test_revalidate_planned_gen_authority_survives_a_style_lora_flag(command, tmp_path):
+    """Same pre-existing bug/fix as above, proven directly for `--style-lora` (M3),
+    which this fix ALSO repairs (not just the new `--gen-prompt-style`)."""
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    _prepare_accepted_checkpoint(command, personas, tmp_path, dop_class="woman")
+    out = tmp_path / "style-lora-authority"
+    plan = command.build_plan(
+        "creator-002", "gen", out, personas_root=personas, skip_pin_verify=True,
+        style_lora="gokay-realism", style_lora_strength=0.5,
+    )
+    command._revalidate_planned_gen_authority(plan)
+
+
 def test_verify_pins_preflight_includes_style_loras_for_gen_and_detail_when_set(
     command, monkeypatch,
 ):
-    """m8: STAGE_PIN_PROFILES itself never lists "style_loras" (it is opt-in per
+    """m8: `_stage_pin_groups` itself never lists "style_loras" (it is opt-in per
     persona/plan, unlike every other fixed stage profile) -- `_verify_pins_preflight`
     adds it for `gen`/`detail` only when `training["style_lora"]` names one."""
     calls = []
@@ -1039,18 +1447,18 @@ def test_verify_pins_preflight_includes_style_loras_for_gen_and_detail_when_set(
             return {}
 
     monkeypatch.setattr(command, "_verify_pins_module", lambda: FakeVerifyPins)
-    pins = {}
+    pins = {"profiles": {"clean": {"gen": ["gen"], "detail": ["detail"], "dataset": ["dataset"]}}}
 
-    command._verify_pins_preflight(pins, ["gen"], {"style_lora": None})
+    command._verify_pins_preflight(pins, ["gen"], {"style_lora": None, "recipe_profile": "clean"})
     assert "style_loras" not in calls[-1]
 
-    command._verify_pins_preflight(pins, ["gen"], {"style_lora": "inline-skin"})
+    command._verify_pins_preflight(pins, ["gen"], {"style_lora": "inline-skin", "recipe_profile": "clean"})
     assert "style_loras" in calls[-1]
 
-    command._verify_pins_preflight(pins, ["detail"], {"style_lora": "gokay-realism"})
+    command._verify_pins_preflight(pins, ["detail"], {"style_lora": "gokay-realism", "recipe_profile": "clean"})
     assert "style_loras" in calls[-1]
 
-    command._verify_pins_preflight(pins, ["dataset"], {"style_lora": "inline-skin"})
+    command._verify_pins_preflight(pins, ["dataset"], {"style_lora": "inline-skin", "recipe_profile": "clean"})
     assert "style_loras" not in calls[-1], "style_loras is only meaningful for gen/detail"
 
 

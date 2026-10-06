@@ -648,3 +648,10 @@ def test_resolve_cell_id_strips_mechanism_suffix():
     assert _resolve_cell_id("c001-exp03-g01-t01-mechA", ids) == "exp03-g01-t01"
     assert _resolve_cell_id("c001-exp03-g01-t02", ids) == "exp03-g01-t02"
     assert _resolve_cell_id("c001-exp03-g01-t09-mechA", ids) is None
+
+
+def test_resolve_scoring_inputs_refuses_a_persona_with_no_references(monkeypatch):
+    monkeypatch.setattr(checker, "_load_persona_for_scoring", lambda path: {"identity": {"references": []}})
+    args = checker.build_parser().parse_args(["--persona", "p.yaml", "--batch", "b.json", "--out", "out"])
+    with pytest.raises(checker.IdentityCheckError, match="no identity references"):
+        checker.resolve_scoring_inputs(args)

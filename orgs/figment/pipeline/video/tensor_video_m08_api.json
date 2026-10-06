@@ -1,0 +1,336 @@
+{
+  "3": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 123,
+      "steps": 6,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "48",
+        0
+      ],
+      "positive": [
+        "101",
+        0
+      ],
+      "negative": [
+        "101",
+        1
+      ],
+      "latent_image": [
+        "101",
+        2
+      ]
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "__VIDEO_PROMPT__",
+      "clip": [
+        "38",
+        0
+      ]
+    }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走 ",
+      "clip": [
+        "38",
+        0
+      ]
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ]
+    }
+  },
+  "37": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "wan2.1_14B_SCAIL_2_fp8_scaled.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "38": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "default"
+    }
+  },
+  "39": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    }
+  },
+  "48": {
+    "class_type": "ModelSamplingSD3",
+    "inputs": {
+      "shift": 5,
+      "model": [
+        "96",
+        0
+      ]
+    }
+  },
+  "49": {
+    "class_type": "VHS_VideoCombine",
+    "inputs": {
+      "frame_rate": 16,
+      "loop_count": 0,
+      "filename_prefix": "SCAIL-2",
+      "format": "video/h264-mp4",
+      "pingpong": false,
+      "save_output": true,
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "images": [
+        "8",
+        0
+      ]
+    }
+  },
+  "56": {
+    "class_type": "CLIPVisionEncode",
+    "inputs": {
+      "crop": "none",
+      "clip_vision": [
+        "57",
+        0
+      ],
+      "image": [
+        "103",
+        0
+      ]
+    }
+  },
+  "57": {
+    "class_type": "CLIPVisionLoader",
+    "inputs": {
+      "clip_name": "clip_vision_h.safetensors"
+    }
+  },
+  "58": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "__START_IMAGE__"
+    }
+  },
+  "96": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "lora_name": "Wan21_I2V_14B_lightx2v_cfg_step_distill_lora_rank64.safetensors",
+      "strength_model": 1,
+      "model": [
+        "37",
+        0
+      ]
+    }
+  },
+  "101": {
+    "class_type": "WanSCAILToVideo",
+    "inputs": {
+      "width": [
+        "104",
+        0
+      ],
+      "height": [
+        "104",
+        1
+      ],
+      "length": 81,
+      "batch_size": 1,
+      "pose_strength": 1,
+      "pose_start": 0,
+      "pose_end": 1,
+      "video_frame_offset": 0,
+      "previous_frame_count": 5,
+      "replacement_mode": false,
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ],
+      "pose_video": [
+        "113",
+        0
+      ],
+      "pose_video_mask": [
+        "107",
+        0
+      ],
+      "reference_image": [
+        "103",
+        0
+      ],
+      "reference_image_mask": [
+        "107",
+        1
+      ],
+      "clip_vision_output": [
+        "56",
+        0
+      ]
+    }
+  },
+  "102": {
+    "class_type": "ResizeImageMaskNode",
+    "inputs": {
+      "resize_type": "scale total pixels",
+      "resize_type.megapixels": 0.5,
+      "scale_method": "nearest-exact",
+      "input": [
+        "58",
+        0
+      ]
+    },
+    "_meta": {
+      "runtime_schema_status": "source-verified flat dotted fields at 135abed8da169e33ab0b86550e05e3ae55d6df8c; runtime execution unproved"
+    }
+  },
+  "103": {
+    "class_type": "ResizeImageMaskNode",
+    "inputs": {
+      "resize_type": "scale to multiple",
+      "resize_type.multiple": 32,
+      "scale_method": "nearest-exact",
+      "input": [
+        "102",
+        0
+      ]
+    },
+    "_meta": {
+      "runtime_schema_status": "source-verified flat dotted fields at 135abed8da169e33ab0b86550e05e3ae55d6df8c; runtime execution unproved"
+    }
+  },
+  "104": {
+    "class_type": "GetImageSize",
+    "inputs": {
+      "image": [
+        "103",
+        0
+      ]
+    }
+  },
+  "107": {
+    "class_type": "SCAIL2ColoredMask",
+    "inputs": {
+      "object_indices": "",
+      "sort_by": "area",
+      "replacement_mode": false,
+      "driving_track_data": [
+        "112",
+        0
+      ],
+      "ref_track_data": [
+        "116",
+        0
+      ]
+    }
+  },
+  "109": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "human",
+      "clip": [
+        "110",
+        1
+      ]
+    }
+  },
+  "110": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "sam3.1_multiplex_fp16.safetensors"
+    }
+  },
+  "112": {
+    "class_type": "SAM3_VideoTrack",
+    "inputs": {
+      "detection_threshold": 0.5,
+      "max_objects": 0,
+      "detect_interval": 1,
+      "images": [
+        "113",
+        0
+      ],
+      "model": [
+        "110",
+        0
+      ],
+      "conditioning": [
+        "109",
+        0
+      ]
+    }
+  },
+  "113": {
+    "class_type": "VHS_LoadVideo",
+    "inputs": {
+      "video": "__DRIVING_VIDEO__",
+      "force_rate": 16,
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 81,
+      "skip_first_frames": 0,
+      "select_every_nth": 1,
+      "format": "None"
+    }
+  },
+  "115": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "human",
+      "clip": [
+        "110",
+        1
+      ]
+    }
+  },
+  "116": {
+    "class_type": "SAM3_VideoTrack",
+    "inputs": {
+      "detection_threshold": 0.5,
+      "max_objects": 0,
+      "detect_interval": 1,
+      "images": [
+        "103",
+        0
+      ],
+      "model": [
+        "110",
+        0
+      ],
+      "conditioning": [
+        "115",
+        0
+      ]
+    }
+  }
+}

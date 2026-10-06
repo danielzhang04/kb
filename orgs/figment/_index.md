@@ -52,5 +52,5 @@ run root's own README — see `pipeline/README.md` "Run roots live inside the re
 - Rented compute prohibits adult content: everything unclothed is generated and trained on operator
   hardware, by the operator. Agents build that path with clothed data.
 - Every pod is terminated **and verified absent** on every exit path; every live run carries `--max-usd`.
-- $50 hard cap on the creator-001 arc; zero spend on any platform, ever.
+- $75 cap on the creator-003 tensor arc, counted from $0 starting 2026-09-29 (earlier `figment-*.tsv` rows are history, not counted); zero spend on any platform, ever.
 - `pipeline/qa_stamp.py` is the only writer of `review_status`. `parked` is always a legal answer.

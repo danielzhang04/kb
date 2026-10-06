@@ -536,7 +536,7 @@ def test_qwen3vl_mode_fails_closed_on_an_empty_caption_from_the_runner(tmp_path)
 @pytest.mark.parametrize("bad_body", [
     "line one\nline two",  # newline
     "control\x07char",  # bell control character
-    "x" * 501,  # over 500 chars
+    "x" * (bts.CAPTIONS_MAX_BODY_CHARS + 1),  # over the bound
     "del\x7fchar",  # MINOR 9 (REVIEW): DEL (U+007F), missed by `ord(ch) < 32`
     "line one line two",  # MINOR 9: Unicode LINE SEPARATOR
     "line one line two",  # MINOR 9: Unicode PARAGRAPH SEPARATOR
@@ -545,7 +545,7 @@ def test_qwen3vl_mode_m10_rejects_a_control_character_or_overlong_caption_body(t
     """m10/MINOR 9: a pod's raw text output is never trusted verbatim -- a caption body
     with a newline/control character (including DEL and the Unicode line/paragraph
     separators, which split a prompt across lines exactly like a raw \\n would), or one
-    over 500 chars, is refused before it ever reaches a caption sidecar (and,
+    over CAPTIONS_MAX_BODY_CHARS, is refused before it ever reaches a caption sidecar (and,
     downstream, a training/gen prompt)."""
     src_dir = tmp_path / "graded"
     src_dir.mkdir()
@@ -559,17 +559,45 @@ def test_qwen3vl_mode_m10_rejects_a_control_character_or_overlong_caption_body(t
     assert not (tmp_path / "out").exists()
 
 
-def test_qwen3vl_mode_m10_accepts_a_caption_body_at_exactly_the_500_char_ceiling(tmp_path):
+def test_qwen3vl_mode_m10_accepts_a_caption_body_at_exactly_the_bound_ceiling(tmp_path):
     src_dir = tmp_path / "graded"
     src_dir.mkdir()
     _make_image(src_dir / "a.png")
-    body = "x" * 500
+    body = "x" * bts.CAPTIONS_MAX_BODY_CHARS
     manifest = bts.build_training_set(
         approved_cells=None, source_dir=src_dir, caption_mode="qwen3vl",
         out_dir=tmp_path / "out", trigger=TRIGGER,
         job_runner=lambda job: [body],
     )
     assert manifest["count"] == 1
+
+
+def test_qwen3vl_mode_m10_accepts_the_live_2026_09_16_560_char_body(tmp_path):
+    """LIVE FAILURE 2026-09-16 (third caption pod, $0.15): a genuine Qwen3-VL-8B
+    caption at max_new_tokens=128 came back ~560 chars and was wrongly rejected by
+    the old 500-char cap. It must pass now that the bound is 1200."""
+    src_dir = tmp_path / "graded"
+    src_dir.mkdir()
+    _make_image(src_dir / "a.png")
+    body = "x" * 560
+    manifest = bts.build_training_set(
+        approved_cells=None, source_dir=src_dir, caption_mode="qwen3vl",
+        out_dir=tmp_path / "out", trigger=TRIGGER,
+        job_runner=lambda job: [body],
+    )
+    assert manifest["count"] == 1
+
+
+def test_qwen3vl_mode_m10_rejects_a_1300_char_body(tmp_path):
+    src_dir = tmp_path / "graded"
+    src_dir.mkdir()
+    _make_image(src_dir / "a.png")
+    with pytest.raises(bts.DatasetBuildError, match="invalid caption body"):
+        bts.build_training_set(
+            approved_cells=None, source_dir=src_dir, caption_mode="qwen3vl",
+            out_dir=tmp_path / "out", trigger=TRIGGER,
+            job_runner=lambda job: ["x" * 1300],
+        )
 
 
 def test_cli_qwen3vl_mode_fails_closed_with_no_wired_dispatcher(tmp_path, capsys):

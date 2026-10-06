@@ -20,8 +20,11 @@ TRAINING_KEYS = {
     "pod_class", "price_ceiling_usd_per_hour", "skin_lora",
     "style_lora", "style_lora_strength", "chosen_checkpoint_step",
     "chosen_checkpoint_sha256", "chosen_checkpoint_approval",
-    "dop_enabled", "dop_multiplier", "dop_class",
+    "dop_enabled", "dop_multiplier", "dop_class", "dataset_source",
+    "dataset_replicates", "gen_prompt_style", "gen_refine_denoise", "gen_detailer_denoise",
+    "recipe_profile", "tensor_body", "tensor_tester_prompt",
 }
+ALLOWED_GEN_PROMPT_STYLES = {"look-clause", "trigger-scene", "look-clause-close"}
 DEFAULT_TRAINING = {
     "trigger": None,
     "base_arch": "krea2",
@@ -64,8 +67,46 @@ DEFAULT_TRAINING = {
     "dop_enabled": False,
     "dop_multiplier": 1.0,
     "dop_class": "person",
+    # P2 (MANDATE.md stage 2): the dataset stage's own fan-out source. "qwen-edit" is
+    # today's module-10 replica (qwen-image-edit-2511 lightning + klein-4b-edit refine,
+    # `_dataset_manifests`) -- kept as the default so every existing dataset test and
+    # persona stays exactly as it was before this key existed. "klein-multiref" is the
+    # bake-off m1 winner (facenet 0.87-0.93): FLUX.2 klein 4B Base, ReferenceLatent x3
+    # off the persona's own identity references, no edit/denoise pass
+    # (`_dataset_manifests_klein_multiref`).
+    "dataset_source": "qwen-edit",
+    # P2 task 2 (2026-09-16): how many distinct-seed renders `_dataset_jobs`
+    # (`figment_train.py`, `qwen-edit` source only) emits per prompt row, to push the
+    # dataset yield above the identity gate's approval floor when a chunk of cells fail
+    # it. 1 (default) reproduces today's job counts and manifests byte-for-byte -- every
+    # existing test and persona keeps behaving exactly as it did before this key existed.
+    "dataset_replicates": 1,
+    # 2026-09-22 fix (live evidence, orgs/figment/runs/creator-001/live-20260916b):
+    # "look-clause" reproduces today's gen-stage prompt composition byte-for-byte --
+    # the full identity.look clause (hair/eyes/brows/lips/makeup/build/clothing)
+    # prepended ahead of the scene. "trigger-scene" is the 10sorlabs-doctrine
+    # alternative (r15b-generation.md "Prompt-and-LoRA-must-agree"): trigger + a
+    # close-framed scene, no look-feature words at all, so the LoRA's own learned
+    # identity is never fought by a contradicting text description.
+    "gen_prompt_style": "look-clause",
+    # 2026-09-23 (live evidence, orgs/figment/runs/creator-001 tester-vs-gen A/B):
+    # `_gen_workflow`'s node 15 (KSampler, latent refine pass off the 4x-upscaled
+    # base) at its shipped denoise 0.35. 0.0 removes the pass entirely (nodes 14/15/16
+    # deleted, the detailer reads the upscaled/scaled image straight off node 13) --
+    # every existing persona/plan keeps behaving exactly as before this key existed.
+    "gen_refine_denoise": 0.35,
+    # `_gen_workflow`'s node 33 (DetailerForEach, face-region re-render) at its shipped
+    # denoise 0.15. 0.0 removes the detailer entirely (SaveImage reads node 33's own
+    # image input directly) -- default reproduces today's workflow byte-for-byte.
+    "gen_detailer_denoise": 0.15,
+    # Spec 2026-09-29 §6: which recipe a stage runs -- "tensor" (the 10sorlabs package
+    # copied exactly, the default) or "clean" (the licence-clean substitutes every
+    # creator-001 plan was built with). Decides pixels, so it is a TRAIN_TIME_KEY.
+    "recipe_profile": "tensor",
 }
 ALLOWED_ARCHES = {"krea2"}
+ALLOWED_RECIPE_PROFILES = {"tensor", "clean"}
+ALLOWED_DATASET_SOURCES = {"qwen-edit", "klein-multiref"}
 # M4: "qwen3vl" is an operator-facing declaration only -- apply_rulings' dataset-stage
 # assembly (figment_train.py) routes it through the live pinned qwen3vl captioning pod
 # job and writes real .txt sidecars locally, exactly like "provided" does, BEFORE any
@@ -136,8 +177,26 @@ def validate_training(raw: Any, creator_id: str) -> dict[str, Any]:
     unknown = sorted(set(raw) - TRAINING_KEYS)
     if unknown:
         raise TrainingConfigError(f"persona.training has unknown key(s): {unknown}")
+    if creator_id == "creator-001" and "recipe_profile" not in raw:
+        raise TrainingConfigError(
+            "creator-001 must name persona.training.recipe_profile explicitly (its recorded "
+            "plans were built with the clean profile)"
+        )
     config = dict(DEFAULT_TRAINING)
     config.update(raw)
+    if config["recipe_profile"] == "tensor":
+        if raw.get("trigger") is not None:
+            raise TrainingConfigError("tensor profile has no textual trigger; omit trigger or use null")
+        for key, value in {"steps": 3000, "save_every": 250, "dataset_replicates": 1,
+                           "dataset_source": "qwen-edit", "dop_enabled": False,
+                           "caption_mode": "qwen3vl", "skin_lora": None}.items():
+            if key in raw and (type(raw[key]) is not type(value) or raw[key] != value):
+                raise TrainingConfigError(f"tensor profile fixes {key} to {value!r}")
+            config[key] = value
+        config["artifact_name"] = creator_id
+    for key in ("tensor_body", "tensor_tester_prompt"):
+        if key in raw and not isinstance(raw[key], dict):
+            raise TrainingConfigError(f"persona.training.{key} must be an object")
 
     if config["base_arch"] not in ALLOWED_ARCHES:
         raise TrainingConfigError(
@@ -155,6 +214,19 @@ def validate_training(raw: Any, creator_id: str) -> dict[str, Any]:
     if config["caption_mode"] not in ALLOWED_CAPTION_MODES:
         raise TrainingConfigError(
             f"persona.training.caption_mode must be one of {sorted(ALLOWED_CAPTION_MODES)}"
+        )
+    if config["dataset_source"] not in ALLOWED_DATASET_SOURCES:
+        raise TrainingConfigError(
+            f"persona.training.dataset_source must be one of {sorted(ALLOWED_DATASET_SOURCES)}"
+        )
+    if config["recipe_profile"] not in ALLOWED_RECIPE_PROFILES:
+        raise TrainingConfigError(
+            f"persona.training.recipe_profile must be one of {sorted(ALLOWED_RECIPE_PROFILES)}"
+        )
+    replicates = config["dataset_replicates"]
+    if isinstance(replicates, bool) or not isinstance(replicates, int) or replicates < 1:
+        raise TrainingConfigError(
+            "persona.training.dataset_replicates must be an integer >= 1"
         )
     if not isinstance(config["pod_class"], str) or not config["pod_class"].strip():
         raise TrainingConfigError("persona.training.pod_class must be a non-empty string")
@@ -176,6 +248,19 @@ def validate_training(raw: Any, creator_id: str) -> dict[str, Any]:
             "persona.training.style_lora_strength must be a positive number"
         )
     config["style_lora_strength"] = float(strength)
+    if config["gen_prompt_style"] not in ALLOWED_GEN_PROMPT_STYLES:
+        raise TrainingConfigError(
+            f"persona.training.gen_prompt_style must be one of "
+            f"{sorted(ALLOWED_GEN_PROMPT_STYLES)}"
+        )
+    for denoise_key in ("gen_refine_denoise", "gen_detailer_denoise"):
+        denoise_value = config[denoise_key]
+        if (isinstance(denoise_value, bool) or not isinstance(denoise_value, (int, float))
+                or not (0.0 <= denoise_value <= 1.0)):
+            raise TrainingConfigError(
+                f"persona.training.{denoise_key} must be a number between 0.0 and 1.0"
+            )
+        config[denoise_key] = float(denoise_value)
     chosen_step = config["chosen_checkpoint_step"]
     if chosen_step is not None and (
         isinstance(chosen_step, bool) or not isinstance(chosen_step, int) or chosen_step <= 0
@@ -220,7 +305,7 @@ def validate_training(raw: Any, creator_id: str) -> dict[str, Any]:
             raise TrainingConfigError(
                 f"persona.training.trigger must equal the derived trigger {expected!r}"
             )
-    config["trigger"] = expected
+    config["trigger"] = None if config["recipe_profile"] == "tensor" else expected
     config["price_ceiling_usd_per_hour"] = float(price)
     return config
 

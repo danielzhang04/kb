@@ -53,7 +53,20 @@ SELECTION_KEYS = frozenset({
 # never refuses a checkpoint over a field the checkpoint itself never trained with.
 # The plan.json file hash (`review_subject`'s own "plan" file_entry) still changes
 # with it, so gen-stage review freshness is unaffected.
-GEN_TIME_ONLY_KEYS = frozenset({"style_lora", "style_lora_strength"})
+# 2026-09-22: `gen_prompt_style` (training_config.py) is classified exactly like
+# `style_lora`/`style_lora_strength` above -- a gen-plan-time prompt-composition
+# choice, never a training input the accepted checkpoint's snapshot pins, and a
+# `plan --stage gen --gen-prompt-style` override is likewise transient (never
+# written back to the persona).
+# 2026-09-23: `gen_refine_denoise`/`gen_detailer_denoise` (training_config.py) join the
+# same set for the same reason -- gen-plan-time-only knobs on `_gen_workflow`'s refine/
+# detailer passes, never training inputs, and `plan --stage gen --gen-refine-denoise`/
+# `--gen-detailer-denoise` overrides are likewise transient (never written back to the
+# persona).
+GEN_TIME_ONLY_KEYS = frozenset({
+    "style_lora", "style_lora_strength", "gen_prompt_style",
+    "gen_refine_denoise", "gen_detailer_denoise",
+})
 # P4i: an imported checkpoint ladder (`plan --stage tester --import-checkpoints`) has no
 # in-plan `train` receipt -- its provenance IS the training config named by
 # `plan["imported_training_config"]` at tester-plan time, never the persona's current
@@ -66,7 +79,21 @@ GEN_TIME_ONLY_KEYS = frozenset({"style_lora", "style_lora_strength"})
 # price_ceiling_usd_per_hour) is a live gen-time choice and stays validated against the
 # persona's CURRENT training.yaml, exactly like the in-plan (non-imported) path. This
 # frozenset is the single place that split is named.
-TRAIN_TIME_KEYS = frozenset({"steps", "save_every", "skin_lora", "dop_enabled", "dop_multiplier", "dop_class"})
+#
+# P2 (MANDATE.md stage 2): `dataset_source` joins this set on the same footing as
+# `skin_lora` -- both are DATASET-stage inputs (which model/conditioning produced the
+# training images), not literal ai-toolkit trainer fields, yet both are at least as
+# identity-determining as anything else here: they pick what pixels the LoRA actually
+# trained on. `caption_mode` stays OUT deliberately -- it only changes caption text,
+# never pixels, and (for the far more common non-imported path) ANY training-dict
+# drift already invalidates promotion regardless of this frozenset
+# (`_validated_accepted_checkpoint`'s `current_projection != source_projection`
+# check) -- TRAIN_TIME_KEYS only matters for an `origin: "imported"` ladder, whose
+# dataset was never produced by this pipeline's own `dataset` stage to begin with.
+TRAIN_TIME_KEYS = frozenset({
+    "steps", "save_every", "skin_lora", "dop_enabled", "dop_multiplier", "dop_class",
+    "dataset_source", "recipe_profile", "tensor_body", "artifact_name",
+})
 
 
 class LineageError(ValueError):
@@ -100,9 +127,25 @@ def training_input_projection(training: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def pre_profile_compatible(recorded: Any, current: Any) -> Any:
+    """`current` with `recipe_profile` dropped when `recorded` predates the key and
+    `current` is "clean": records written before profiles existed were all clean-era.
+    Compatibility for old records only; new plans always record the key."""
+    if (isinstance(recorded, dict) and isinstance(current, dict)
+            and "recipe_profile" not in recorded and current.get("recipe_profile") == "clean"):
+        return {key: value for key, value in current.items() if key != "recipe_profile"}
+    return current
+
+
 def persona_input_projection(persona: dict[str, Any]) -> dict[str, Any]:
     projected = deepcopy(persona)
     projected.pop("_persona_path", None)
+    # Optional module16 face words are gen-only; gen_inputs binds their fresh
+    # descriptor projection explicitly. The original eight look slots stay here.
+    identity = projected.get("identity")
+    look = identity.get("look") if isinstance(identity, dict) else None
+    if isinstance(look, dict):
+        look.pop("face", None)
     training = projected.get("training")
     if isinstance(training, dict):
         projected["training"] = training_input_projection(training)
@@ -178,6 +221,14 @@ def assert_current(record: dict[str, Any], current_subject: dict[str, Any], *, l
     recorded = record.get("subject_sha256")
     if recorded != canonical_sha256(record["subject"]):
         raise LineageError(f"{label} has a corrupt recorded subject digest")
+    current_subject = dict(current_subject)
+    if "training" in current_subject:
+        current_subject["training"] = pre_profile_compatible(
+            record["subject"].get("training"), current_subject["training"])
+    persona = current_subject.get("persona")
+    if isinstance(persona, dict) and "training" in persona:
+        current_subject["persona"] = {**persona, "training": pre_profile_compatible(
+            (record["subject"].get("persona") or {}).get("training"), persona["training"])}
     current = canonical_sha256(current_subject)
     if recorded != current:
         raise LineageError(

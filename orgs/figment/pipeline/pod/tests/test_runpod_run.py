@@ -11,15 +11,18 @@ import os
 import shlex
 import signal
 import shutil
+import socket
 import subprocess
 import tempfile
 import threading
 import time
 import traceback
 from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+import requests
 
 import sys
 
@@ -757,6 +760,43 @@ def test_dry_run_accepts_shipped_training_manifests_without_local_payloads(
         "run", "--manifest", str(manifest_path), "--dry-run",
         "--out", str(tmp_path / manifest_path.stem),
     ]) == 0
+
+
+def test_readiness_timeout_learns_the_host_that_never_started(tmp_path, monkeypatch):
+    """LIVE 2026-09-23 (detail pod w20n3wtn30cceg, host 41actztivcth): 2400 s in
+    desiredStatus=RUNNING with proxy 404 and no runtime status -- the container never
+    started. That is machine-class evidence like a host-class bootstrap failure, so the
+    host is learned bad (run-local + session files) and the receipt says so."""
+    def timeout(*_args, **_kwargs):
+        raise rr.ReadinessTimeout(
+            "pod readiness timed out after 2400s: stuck in desiredStatus=RUNNING while "
+            "proxy /system_stats returned 404",
+            {"id": "pod-dead", "desiredStatus": "RUNNING"},
+        )
+
+    monkeypatch.setattr(rr, "wait_ready", timeout)
+    local_appdata = tmp_path / "local-appdata"
+    monkeypatch.setenv("LOCALAPPDATA", str(local_appdata))
+    api = PlacementAPI(["never-started-host"])
+
+    with pytest.raises(rr.ReadinessTimeout, match="never|RUNNING"):
+        rr.run_harness(
+            manifest(), tmp_path / "m.yaml", tmp_path / "out",
+            max_usd=1, max_minutes=1, dry_run=False, api=api,
+            logger=logger_and_stream()[0], comfy_factory=FakeComfy,
+            sleep=lambda _seconds: None, ledger_dir=tmp_path / "ledger",
+            allow_empty_ledger=True,
+        )
+
+    for path in (
+            tmp_path / "out" / "_harness" / "bad_hosts.json",
+            local_appdata / "kb-figment-pod" / "bad_hosts.json"):
+        entry = json.loads(path.read_text(encoding="utf-8"))["hosts"][0]
+        assert entry["host"] == "never-started-host"
+        assert "readiness timeout" in entry["reason"]
+    record = json.loads((tmp_path / "out" / "run.json").read_text(encoding="utf-8"))
+    assert record["host_learned"] is True
+    assert record["bootstrap_failure_class"] == "machine"
 
 
 def test_manifest_readiness_timeout_defaults_to_900_seconds():
@@ -2010,19 +2050,16 @@ def test_N3_daily_budget_sums_mixed_usd_headers_and_skips_headerless(tmp_path):
 def test_P1n_arc_budget_sums_all_matching_ledgers_with_mixed_headers(tmp_path):
     ledgers = tmp_path / "ledgers"
     ledgers.mkdir()
-    (ledgers / "figment-first.tsv").write_text(
+    (ledgers / "figment-2026-09-30.tsv").write_text(
         "model\tstep\tusd\nrunpod\tfirst\t1.250000\n", encoding="utf-8"
     )
-    (ledgers / "figment-second.tsv").write_text(
+    (ledgers / "figment-seed-2026-09-30.tsv").write_text(
         "note\tusd\nprior work\t0.500000\n", encoding="utf-8"
     )
-    (ledgers / "figment-notes.tsv").write_text(
-        "note\tdetail\nprior work\tno spend\n", encoding="utf-8"
-    )
-    (ledgers / "other.tsv").write_text(
+    (ledgers / "other-2026-09-30.tsv").write_text(
         "model\tstep\tusd\nother\twork\t9.000000\n", encoding="utf-8"
     )
-    logger, stream = logger_and_stream()
+    logger, _stream = logger_and_stream()
 
     cap, spent = rr.arc_budget_state(
         arc_cap_usd=50.0, ledger_dir=ledgers, logger=logger,
@@ -2030,13 +2067,18 @@ def test_P1n_arc_budget_sums_all_matching_ledgers_with_mixed_headers(tmp_path):
 
     assert cap == 50.0
     assert spent == pytest.approx(1.75)
-    assert "skipping arc ledger without usd column" in stream.getvalue()
+
+    (ledgers / "figment-notes-2026-09-30.tsv").write_text(
+        "note\tdetail\nprior work\tno spend\n", encoding="utf-8"
+    )
+    with pytest.raises(rr.HarnessError, match="no usd column"):
+        rr.arc_budget_state(arc_cap_usd=50.0, ledger_dir=ledgers, logger=logger)
 
 
 def test_P1n_arc_cap_refuses_before_create_and_records_just_under_cap(tmp_path):
     ledgers = tmp_path / "ledgers"
     ledgers.mkdir()
-    (ledgers / "figment-prior.tsv").write_text(
+    (ledgers / "figment-2026-09-30.tsv").write_text(
         "model\tstep\tusd\nrunpod\tprior\t0.750000\n", encoding="utf-8"
     )
 
@@ -2122,7 +2164,7 @@ def test_P1n_ready_price_over_arc_cap_terminates_and_records_cap(tmp_path):
 def test_P1n_status_prints_arc_total_and_cap(tmp_path, monkeypatch, capsys):
     ledgers = tmp_path / "ledgers"
     ledgers.mkdir()
-    (ledgers / "figment-prior.tsv").write_text(
+    (ledgers / "figment-2026-09-30.tsv").write_text(
         "model\tstep\tusd\nrunpod\tprior\t1.250000\n", encoding="utf-8"
     )
     session = StubSession([StubResponse(200, [])])
@@ -2279,6 +2321,108 @@ def test_N9_wait_outputs_counts_only_output_images(monkeypatch):
         "prompt", 10, QuietWatchdog()
     )
     assert outputs == [{"filename": "final.png", "subfolder": "", "type": "output"}]
+
+
+def test_wait_outputs_execution_error_includes_node_diagnostic():
+    history = {
+        "prompt": {
+            "status": {
+                "status_str": "error",
+                "completed": False,
+                "messages": [
+                    ["execution_start", {"prompt_id": "prompt"}],
+                    ["execution_error", {
+                        "prompt_id": "prompt",
+                        "node_id": "8",
+                        "node_type": "KSampler",
+                        "exception_type": "RuntimeError",
+                        "exception_message": "CUDA out of memory. Tried to allocate 2.00 GiB\nmore text",
+                        "traceback": ["line1", "line2"],
+                    }],
+                ],
+            },
+        }
+    }
+
+    class HistorySession:
+        def get(self, _url, **_kwargs):
+            return StubResponse(200, history)
+
+    class QuietWatchdog:
+        def check(self):
+            pass
+
+    with pytest.raises(rr.HarnessError) as caught:
+        rr.ComfyClient("http://comfy", session=HistorySession()).wait_outputs(
+            "prompt", 10, QuietWatchdog()
+        )
+    message = str(caught.value)
+    assert message.startswith("ComfyUI job prompt failed: ")
+    assert "node_id=8" in message
+    assert "node_type=KSampler" in message
+    assert "exception_type=RuntimeError" in message
+    assert "CUDA out of memory. Tried to allocate 2.00 GiB more text" in message
+    assert "\n" not in message
+    assert "traceback" not in message
+    assert "line1" not in message
+
+
+def test_wait_outputs_execution_error_without_messages_keeps_plain_text():
+    history = {
+        "prompt": {
+            "status": {"status_str": "error", "completed": False},
+        }
+    }
+
+    class HistorySession:
+        def get(self, _url, **_kwargs):
+            return StubResponse(200, history)
+
+    class QuietWatchdog:
+        def check(self):
+            pass
+
+    with pytest.raises(rr.HarnessError, match=r"^ComfyUI job prompt failed$"):
+        rr.ComfyClient("http://comfy", session=HistorySession()).wait_outputs(
+            "prompt", 10, QuietWatchdog()
+        )
+
+
+def test_wait_outputs_execution_error_message_is_bounded_and_sanitized():
+    long_message = ("x" * 400) + "\ttail"
+    history = {
+        "prompt": {
+            "status": {
+                "status_str": "error",
+                "completed": False,
+                "messages": [
+                    ["execution_error", {
+                        "node_id": "3",
+                        "node_type": "VAEDecode",
+                        "exception_type": "ValueError",
+                        "exception_message": long_message,
+                    }],
+                ],
+            },
+        }
+    }
+
+    class HistorySession:
+        def get(self, _url, **_kwargs):
+            return StubResponse(200, history)
+
+    class QuietWatchdog:
+        def check(self):
+            pass
+
+    with pytest.raises(rr.HarnessError) as caught:
+        rr.ComfyClient("http://comfy", session=HistorySession()).wait_outputs(
+            "prompt", 10, QuietWatchdog()
+        )
+    message = str(caught.value)
+    assert ("x" * 300) in message
+    assert ("x" * 301) not in message
+    assert "\t" not in message
 
 
 def test_C5_comfy_start_failure_short_circuits_before_health():
@@ -2688,6 +2832,828 @@ def test_non_2xx_upload_and_download_close_the_response(tmp_path):
 
     assert upload_response.closed is True
     assert download_response.closed is True
+
+
+def test_upload_part_post_is_bounded_by_a_hard_wall_clock_join_when_the_handler_hangs(
+        monkeypatch):
+    """A live upload once blocked ~3h53m on a single chunk POST despite a computed
+    ~76s `timeout` (orgs/figment/runs/creator-001/live-20260916b/downstream/gen/
+    gen-harness-stderr.log, pod u86413a8wjzsni, 2026-09-21): `requests`' `timeout`
+    bounds connect + each read, not a stalled body send. The POST must run under a
+    hard wall-clock join so a handler that never returns still fails fast, and the
+    session must be closed to unblock the leaked worker thread.
+
+    LOW-1's join-headroom (`_post_join_timeout`) is exercised by its own dedicated
+    arithmetic test; pinned to identity here so this test's tight timing keeps
+    proving the hang-abort mechanism itself, fast."""
+    monkeypatch.setattr(rr, "_post_join_timeout", lambda per_read_timeout: per_read_timeout)
+    closed = threading.Event()
+
+    class HangingSession:
+        headers = {}
+
+        def post(self, _url, **_kwargs):
+            time.sleep(30)  # far longer than timeout_seconds below; never returns in time
+            raise AssertionError("should have been abandoned before returning")
+
+        def close(self):
+            closed.set()
+
+    timeout_seconds = 1.0
+    started = time.monotonic()
+    with pytest.raises(rr.TransientProxyError, match="hard deadline"):
+        rr.ComfyClient("https://proxy", HangingSession()).upload_part(
+            b"data", "part-0000", "persona-a", False, timeout_seconds,
+        )
+    elapsed = time.monotonic() - started
+
+    assert elapsed < timeout_seconds + 5.0
+    assert closed.is_set()
+
+
+def test_upload_file_post_is_bounded_by_a_hard_wall_clock_join_when_the_handler_hangs(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(rr, "REQUEST_TIMEOUT", 0.5)
+    monkeypatch.setattr(rr, "_post_join_timeout", lambda per_read_timeout: per_read_timeout)
+    local = tmp_path / "frame.png"
+    local.write_bytes(b"pixels")
+    closed = threading.Event()
+
+    class HangingSession:
+        headers = {}
+
+        def post(self, _url, **_kwargs):
+            time.sleep(10)  # far longer than the (patched) REQUEST_TIMEOUT
+            raise AssertionError("should have been abandoned before returning")
+
+        def close(self):
+            closed.set()
+
+    started = time.monotonic()
+    with pytest.raises(rr.TransientProxyError, match="hard deadline"):
+        rr.ComfyClient("https://proxy", HangingSession()).upload_file(
+            local, "persona-a", overwrite=False,
+        )
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 5.5
+    assert closed.is_set()
+
+
+def test_post_join_timeout_adds_1_5x_plus_30s_headroom():
+    """LOW-1: the join must outlive the per-read socket timeout (unchanged) by
+    headroom, not equal it -- otherwise the hard join races requests' own timeout
+    and wins every time on a genuinely slow (not hung) transfer."""
+    assert rr._post_join_timeout(30.0) == pytest.approx(75.0)
+    assert rr._post_join_timeout(0.0) == pytest.approx(30.0)
+    assert rr._post_join_timeout(20.0) == pytest.approx(60.0)
+
+
+def test_upload_file_sizes_its_hard_deadline_to_the_whole_file_not_a_fixed_30s(tmp_path):
+    """MEDIUM-2: the hard join now bounds connect + the ENTIRE body send (it used
+    to be a per-read window), so a large unchunked file needs more than the fixed
+    REQUEST_TIMEOUT floor -- sized the same way upload_chunk_part_timeout sizes a
+    chunk part, via the same per-second floor constant."""
+    size = 10 * 1024 * 1024
+    local = tmp_path / "big.safetensors"
+    with local.open("wb") as handle:
+        handle.seek(size - 1)
+        handle.write(b"\0")
+    captured = {}
+
+    class RecordingSession:
+        headers = {}
+
+        def post(self, _url, **kwargs):
+            captured["timeout"] = kwargs["timeout"]
+            return StubResponse(200, {
+                "name": "big.safetensors", "subfolder": "persona-a", "type": "input",
+            })
+
+    rr.ComfyClient("https://proxy", RecordingSession()).upload_file(
+        local, "persona-a", overwrite=True,
+    )
+
+    expected = max(rr.REQUEST_TIMEOUT, size / rr.UPLOAD_CHUNK_ASSUMED_MIN_BYTES_PER_SECOND)
+    assert expected > rr.REQUEST_TIMEOUT
+    assert captured["timeout"] == pytest.approx(expected)
+
+
+def test_upload_file_lets_runcancelled_propagate_instead_of_retrying_it(
+        tmp_path, monkeypatch):
+    """MEDIUM-1: a signal handler can raise RunCancelled in the MAIN thread while
+    it is blocked inside _post_with_hard_deadline's join (Python delivers a signal
+    to the main thread, interrupting whatever it is doing there). That must
+    propagate as a real cancellation, never be reinterpreted by the broad
+    `except Exception` below it as a retryable TransientProxyError."""
+    local = tmp_path / "frame.png"
+    local.write_bytes(b"pixels")
+
+    def fake_post_with_hard_deadline(*_a, **_kw):
+        raise rr.RunCancelled("received signal 2")
+
+    monkeypatch.setattr(rr, "_post_with_hard_deadline", fake_post_with_hard_deadline)
+
+    with pytest.raises(rr.RunCancelled, match="received signal"):
+        rr.ComfyClient("https://proxy", object()).upload_file(
+            local, "persona-a", overwrite=True,
+        )
+
+
+def test_upload_part_lets_runcancelled_propagate_instead_of_retrying_it(monkeypatch):
+    """MEDIUM-1, mirrored for upload_part."""
+    def fake_post_with_hard_deadline(*_a, **_kw):
+        raise rr.RunCancelled("received signal 15")
+
+    monkeypatch.setattr(rr, "_post_with_hard_deadline", fake_post_with_hard_deadline)
+
+    with pytest.raises(rr.RunCancelled, match="received signal"):
+        rr.ComfyClient("https://proxy", object()).upload_part(
+            b"data", "part-0000", "persona-a", False, 1.0,
+        )
+
+
+def test_retry_transient_proxy_raises_runcancelled_once_the_cancel_event_is_set():
+    """MEDIUM-1: once `cancel` is set (e.g. by a signal handler racing the retry
+    loop), a TransientProxyError attempt must not fall into the ordinary 3-attempt
+    retry/backoff -- it must surface as a real cancellation instead."""
+    cancel = threading.Event()
+    logger, _stream = logger_and_stream()
+    watchdog = rr.Watchdog(10_000.0, lease=None, cancel=cancel, logger=logger)
+    cancel.set()
+
+    def operation():
+        raise rr.TransientProxyError("stalled")
+
+    with pytest.raises(rr.RunCancelled):
+        rr.retry_transient_proxy(operation, "upload x", watchdog, lambda _s: None, logger)
+
+
+def test_sliced_deadline_wait_is_suspend_proof_via_a_dual_clock_check():
+    """BLOCKER-1's shared primitive (used by both Watchdog._run and
+    _post_with_hard_deadline's join): whichever clock says 'over' wins, so a host
+    suspend -- simulated here by jumping the fake wall clock far forward while the
+    fake monotonic clock barely advances, exactly like a real suspend on this box's
+    QueryPerformanceCounter-backed monotonic clock -- is caught on the very next
+    slice instead of stretching the wait."""
+    monotonic_value = [0.0]
+    wall_value = [0.0]
+
+    def poll(_seconds):
+        return False  # never stops early on its own
+
+    outcome = {}
+
+    def run():
+        outcome["result"] = rr._sliced_deadline_wait(
+            total_seconds=1_000_000.0, poll=poll, slice_seconds=0.02,
+            monotonic=lambda: monotonic_value[0], wall_clock=lambda: wall_value[0],
+        )
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    time.sleep(0.05)
+    monotonic_value[0] += 0.02
+    wall_value[0] += 2_000_000.0
+    thread.join(timeout=1.0)
+
+    assert not thread.is_alive()
+    assert outcome["result"] is False
+
+
+def test_sliced_deadline_wait_grace_absorbs_a_90s_forward_step_taken_mid_wait():
+    """LOW-1/LOW-2: an ordinary forward NTP step (no suspend) must not fire the
+    wait early just because the wall clock alone looks past its deadline --
+    only a skew bigger than `WALL_CLOCK_GRACE_SECONDS` should matter. The step
+    is applied FROM THE POLL CALLBACK, on the first slice, jumping the wall
+    clock straight past its own deadline by 90s -- comfortably inside the
+    120s grace -- while monotonic is left untouched and so still has its full
+    budget. This exercises the grace actually keeping a single wait alive
+    mid-flight (a prior version of this test took two separate waits and
+    stepped the wall clock only between them, never touching the grace logic
+    at all -- it passed even with WALL_CLOCK_GRACE_SECONDS monkeypatched to
+    0, proving nothing). The paired test below pins WALL_CLOCK_GRACE_SECONDS
+    to 0 and asserts this same scenario then fails."""
+    monotonic_value = [0.0]
+    wall_value = [0.0]
+    calls = {"n": 0}
+
+    def poll(_seconds):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            # First slice past the nominal 10s deadline: an NTP-style forward
+            # step of 90s, landing the raw wall clock 90s beyond its own
+            # deadline. Monotonic is not touched, so it still has its full
+            # 10s of headroom.
+            wall_value[0] = 10.0 + 90.0
+            return False
+        return True
+
+    result = rr._sliced_deadline_wait(
+        total_seconds=10.0, poll=poll, slice_seconds=0.02,
+        monotonic=lambda: monotonic_value[0], wall_clock=lambda: wall_value[0],
+    )
+    assert result is True
+    assert calls["n"] == 2, "wait ended before poll got a second slice to complete it"
+
+
+def test_sliced_deadline_wait_grace_absorbs_a_90s_forward_step__fails_at_zero_grace(
+        monkeypatch):
+    """LOW-1: pins that the test above actually depends on the grace. Forcing
+    WALL_CLOCK_GRACE_SECONDS to 0 makes the same 90s mid-wait step read as
+    fully expired (remaining = -90) on the very next slice, so the wait
+    returns False and poll never gets its second call."""
+    monkeypatch.setattr(rr, "WALL_CLOCK_GRACE_SECONDS", 0.0)
+    monotonic_value = [0.0]
+    wall_value = [0.0]
+    calls = {"n": 0}
+
+    def poll(_seconds):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            wall_value[0] = 10.0 + 90.0
+            return False
+        return True
+
+    result = rr._sliced_deadline_wait(
+        total_seconds=10.0, poll=poll, slice_seconds=0.02,
+        monotonic=lambda: monotonic_value[0], wall_clock=lambda: wall_value[0],
+    )
+    assert result is False
+    assert calls["n"] == 1
+
+
+def test_sliced_deadline_wait_logs_skew_once_and_again_only_past_the_change_threshold():
+    """LOW-2: a long wait under a sustained skew must not re-log a warning on
+    every 15s-ish slice -- only once initially, and again once the skew has
+    moved by at least SKEW_LOG_CHANGE_THRESHOLD_SECONDS."""
+    monotonic_value = [0.0]
+    wall_value = [200.0]
+    calls = {"n": 0}
+
+    def poll(_seconds):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            wall_value[0] += 200.0  # opens a 200s skew -- must log (first time)
+            return False
+        if calls["n"] == 2:
+            wall_value[0] += 10.0  # skew moves by only 10s -- must NOT log again
+            return False
+        if calls["n"] == 3:
+            wall_value[0] += 100.0  # skew moves by 110s (>= 60) -- must log again
+            return False
+        return True  # stop on the fifth slice
+
+    logger, stream = logger_and_stream()
+    result = rr._sliced_deadline_wait(
+        total_seconds=1_000_000.0, poll=poll, slice_seconds=0.02,
+        monotonic=lambda: monotonic_value[0], wall_clock=lambda: wall_value[0],
+        logger=logger,
+    )
+    assert result is True
+    warnings = [ln for ln in stream.getvalue().splitlines() if "skew" in ln]
+    assert len(warnings) == 2, warnings
+
+
+def test_watchdog_suspend_proof_deadline_fires_on_the_next_slice_after_a_clock_jump():
+    """BLOCKER-1: the 09-21 pod ran 252 minutes against a 185-minute ceiling and the
+    watchdog never logged, because its one long relative `Event.wait(seconds)` does
+    not count time spent in a Windows suspend. Slicing the wait and checking a
+    wall-clock deadline alongside the monotonic one means a suspend -- simulated
+    here as a big wall-clock jump with monotonic barely moving -- fires the
+    watchdog on its very next slice."""
+    monotonic_value = [0.0]
+    wall_value = [0.0]
+
+    class FakeLease:
+        def __init__(self):
+            self.closed = threading.Event()
+
+        def close(self):
+            self.closed.set()
+
+    lease = FakeLease()
+    cancel = threading.Event()
+    logger, _stream = logger_and_stream()
+    watchdog = rr.Watchdog(
+        1_000_000.0, lease, cancel, logger,
+        monotonic=lambda: monotonic_value[0], wall_clock=lambda: wall_value[0],
+        slice_seconds=0.02,
+    )
+    watchdog.start()
+    time.sleep(0.1)
+    assert not watchdog.fired.is_set()
+
+    monotonic_value[0] += 0.02
+    wall_value[0] += 2_000_000.0
+
+    assert watchdog.fired.wait(timeout=1.0)
+    watchdog.stop(timeout=1.0)
+    assert lease.closed.is_set()
+
+
+def test_keep_awake_arms_and_disarms_around_a_lifecycle_including_the_exception_path():
+    """BLOCKER-2: SetThreadExecutionState must be asserted
+    (ES_CONTINUOUS | ES_SYSTEM_REQUIRED) while a pod is alive and cleared
+    (ES_CONTINUOUS) on every exit path, including an exception raised mid-run."""
+    calls = []
+    logger, _stream = logger_and_stream()
+    keep_awake = rr.KeepAwake(
+        logger, set_execution_state=lambda flags: calls.append(flags),
+        reassert_seconds=0.02,
+    )
+
+    class Boom(Exception):
+        pass
+
+    try:
+        keep_awake.arm()
+        time.sleep(0.08)  # let it reassert at least once
+        raise Boom("simulated mid-run failure")
+    except Boom:
+        pass
+    finally:
+        keep_awake.disarm()
+
+    assert (rr.ES_CONTINUOUS | rr.ES_SYSTEM_REQUIRED) in calls
+    assert calls[-1] == rr.ES_CONTINUOUS
+
+
+def test_keep_awake_warns_when_set_thread_execution_state_returns_zero():
+    """LOW-3: a 0 return from SetThreadExecutionState means the call failed (per
+    the Win32 docs) -- silently ignoring that leaves the host free to sleep with
+    no signal anything went wrong. Both the assert call and the clear call must
+    warn on failure."""
+    logger, stream = logger_and_stream()
+    keep_awake = rr.KeepAwake(
+        logger, set_execution_state=lambda flags: 0,  # always "fails"
+        reassert_seconds=0.02,
+    )
+    keep_awake.arm()
+    time.sleep(0.08)
+    keep_awake.disarm()
+
+    warnings = stream.getvalue()
+    assert "SetThreadExecutionState" in warnings
+    assert "returned 0" in warnings or "clear returned 0" in warnings
+
+
+def test_keep_awake_clears_the_flag_from_the_same_thread_that_asserted_it():
+    """LOW-3: SetThreadExecutionState is thread-scoped, so the clearing call
+    (ES_CONTINUOUS alone) must be made from the SAME thread that made the
+    asserting call (ES_CONTINUOUS | ES_SYSTEM_REQUIRED), never from disarm()'s
+    caller thread."""
+    thread_ids: list = []
+    logger, _stream = logger_and_stream()
+
+    def recording_setter(flags):
+        thread_ids.append(threading.current_thread().ident)
+        return 1
+
+    keep_awake = rr.KeepAwake(
+        logger, set_execution_state=recording_setter, reassert_seconds=0.02,
+    )
+    keep_awake.arm()
+    time.sleep(0.05)
+    disarm_thread_id = threading.current_thread().ident
+    keep_awake.disarm()
+
+    assert thread_ids, "setter was never called"
+    assert len(set(thread_ids)) == 1, "assert and clear ran on different threads"
+    assert thread_ids[0] != disarm_thread_id
+
+
+def test_keep_awake_is_a_no_op_off_windows(monkeypatch):
+    monkeypatch.setattr(rr.sys, "platform", "linux")
+    logger, _stream = logger_and_stream()
+    keep_awake = rr.KeepAwake(logger)
+    keep_awake.arm()
+    assert keep_awake._thread is None
+    keep_awake.disarm()  # must not raise
+
+
+def test_run_harness_arms_and_disarms_keep_awake_even_when_the_run_raises(
+        tmp_path, monkeypatch):
+    """BLOCKER-2 wired into run_harness: armed before the pod is created, disarmed
+    in the always-run `finally:` teardown -- even when the run raises."""
+    events = []
+
+    class RecordingKeepAwake:
+        def __init__(self, _logger, **_kw):
+            pass
+
+        def arm(self):
+            events.append("arm")
+
+        def disarm(self):
+            events.append("disarm")
+
+    monkeypatch.setattr(rr, "KeepAwake", RecordingKeepAwake)
+
+    # LOW-1: keep-awake must disarm LAST -- strictly after the watchdog is stopped
+    # and the pod's own `lease.close()` teardown call -- so record those too.
+    original_watchdog_stop = rr.Watchdog.stop
+
+    def recording_watchdog_stop(self, timeout=None):
+        events.append("watchdog-stop")
+        return original_watchdog_stop(self, timeout)
+
+    monkeypatch.setattr(rr.Watchdog, "stop", recording_watchdog_stop)
+
+    original_lease_close = rr.PodLease.close
+
+    def recording_lease_close(self):
+        events.append("lease-close")
+        return original_lease_close(self)
+
+    monkeypatch.setattr(rr.PodLease, "close", recording_lease_close)
+
+    class SlowUploadComfy(FakeComfy):
+        def upload_file(self, local_path, subfolder, _overwrite):
+            time.sleep(0.5)
+            return {"name": local_path.name, "subfolder": subfolder, "type": "input"}
+
+    configured, manifest_path = p1i_training_manifest(tmp_path)
+    api = FakeAPI()
+    with pytest.raises(rr.RunCancelled, match="maximum runtime"):
+        rr.run_harness(
+            configured, manifest_path, tmp_path / "out",
+            max_usd=1, max_minutes=0.002, dry_run=False, api=api,
+            logger=logger_and_stream()[0], comfy_factory=SlowUploadComfy,
+            sleep=lambda _seconds: None, ledger_dir=tmp_path / "ledger",
+            allow_empty_ledger=True,
+        )
+
+    assert events[0] == "arm"
+    assert events[-1] == "disarm"
+    assert "watchdog-stop" in events
+    assert events.index("watchdog-stop") < events.index("disarm")
+    if "lease-close" in events:
+        assert events.index("lease-close") < events.index("disarm")
+
+
+def test_bootstrap_script_contains_a_pod_side_dead_man_switch_sized_to_max_minutes():
+    """BLOCKER-3: independent of the host, a backgrounded loop on the pod itself
+    self-terminates `max_minutes + 10` minutes past the harness's own ceiling."""
+    script = rr.bootstrap_script(manifest(), None, 42.0)
+    expected_seconds = int(round((42.0 + 10) * 60))
+
+    assert f"DEAD_MAN_SECONDS={expected_seconds}" in script
+    assert "runpodctl remove pod" in script
+    assert "RUNPOD_POD_ID" in script
+    assert "RUNPOD_API_KEY" in script
+    assert "shutdown -h now" in script
+    assert "DEADMAN" in script
+    # armed as early as possible -- well before the ComfyUI health poll/wait.
+    assert script.index("DEAD_MAN_SECONDS=") < script.index("comfy-health")
+
+
+def test_create_payload_threads_max_minutes_into_the_dead_man_switch():
+    payload = rr.create_payload(manifest(), None, 7.0)
+    script = base64.b64decode(payload["env"]["FIGMENT_BOOTSTRAP_B64"]).decode()
+    expected_seconds = int(round((7.0 + 10) * 60))
+    assert f"DEAD_MAN_SECONDS={expected_seconds}" in script
+
+
+def test_bootstrap_script_never_bakes_a_real_runpod_api_key_into_the_dead_man_switch(
+        monkeypatch):
+    """The dead-man switch reads $RUNPOD_API_KEY from the pod's own environment at
+    fire-time (a literal shell reference); GUARDRAILS #5 -- it must never be
+    interpolated into the rendered script by this harness."""
+    secret = "ambient-runpod-key-must-not-enter-the-dead-man-switch"
+    monkeypatch.setenv("RUNPOD_API_KEY", secret)
+    script = rr.bootstrap_script(manifest())
+    assert secret not in script
+    assert '${RUNPOD_API_KEY:-}' in script
+
+
+def test_dead_man_switch_tries_an_ordered_chain_and_logs_credential_presence_only():
+    """MEDIUM-1: RunPod DOES inject a pod-scoped `RUNPOD_API_KEY` and preinstalls
+    `runpodctl` by default (docs.runpod.io/pods/references/environment-variables;
+    runpodctl overview) -- the dead-man switch should actually try to stop billing
+    via the CLI, in an ordered chain, before ever falling back to a bare shutdown.
+    It should also log runpodctl/API-key PRESENCE at bootstrap start (never the
+    key's value) so a failure to fire is diagnosable from `_bootstrap.log` alone."""
+    secret = "ambient-runpod-key-must-not-enter-the-dead-man-switch"
+    script = rr.bootstrap_script(manifest())
+
+    # Presence-only log line, emitted early (bootstrap start), never the key value.
+    assert 'log_line "dead-man: runpodctl=$RUNPODCTL_PRESENCE api_key=$API_KEY_PRESENCE"' in script
+    assert secret not in script
+
+    # The ordered chain: remove -> stop -> newer-CLI spellings -> shutdown fallback,
+    # each attempt strictly after the previous one's failure branch in script order.
+    remove_idx = script.index('runpodctl remove pod "$RUNPOD_POD_ID"')
+    stop_idx = script.index('runpodctl stop pod "$RUNPOD_POD_ID"')
+    pod_delete_idx = script.index('runpodctl pod delete "$RUNPOD_POD_ID"')
+    pod_stop_idx = script.index('runpodctl pod stop "$RUNPOD_POD_ID"')
+    shutdown_idx = script.rindex('shutdown -h now')
+    assert remove_idx < stop_idx < pod_delete_idx < pod_stop_idx < shutdown_idx
+
+
+def test_dead_man_epoch_persists_across_a_rerun_and_sleeps_only_the_remainder(tmp_path):
+    """MEDIUM-2: a container restart must not hand the dead-man switch a fresh
+    countdown -- it should persist the FIRST start's epoch to
+    `<volume>/.deadman_epoch` (write-once) and sleep only what remains of the
+    original `max_minutes + 10` budget. Exercised as real bash (Git Bash) against a
+    temp directory standing in for /workspace, since this is pure shell logic with
+    no pod/network dependency."""
+    bash = shutil.which("bash")
+    if not bash:
+        pytest.skip("bash (Git Bash) not on PATH")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    workspace_posix = "/" + str(workspace).replace("\\", "/").lstrip("/")
+    if len(workspace_posix) > 2 and workspace_posix[2] == ":":
+        # Windows "C:/..." -> Git Bash "/c/..." style, but a plain POSIX-looking
+        # path also works fine as a literal directory under Git Bash on Windows;
+        # keep it simple and just use the drive-letter form bash understands too.
+        workspace_posix = "/" + workspace_posix[1].lower() + workspace_posix[3:]
+
+    m = manifest()
+    m["volume_mount_path"] = workspace_posix
+    script = rr.bootstrap_script(m, None, 0.1)  # small max_minutes -> small budget
+
+    start_marker = "DEAD_MAN_SECONDS="
+    end_marker = '( sleep "$DEADMAN_REMAINING"'
+    snippet = script[script.index(start_marker):script.index(end_marker)]
+    snippet += 'echo "REMAINING=$DEADMAN_REMAINING EPOCH=$DEADMAN_EPOCH"\n'
+    harness = (
+        "log_line() { :; }\n"  # stub: the real log_line isn't defined in this slice
+        + snippet
+    )
+    env = dict(os.environ, RUNPOD_POD_ID="pod-aaa")
+
+    first = subprocess.run([bash, "-c", harness], capture_output=True, text=True, timeout=10, env=env)
+    assert first.returncode == 0, first.stderr
+    first_line = [ln for ln in first.stdout.splitlines() if ln.startswith("REMAINING=")][0]
+    first_remaining = int(first_line.split()[0].split("=")[1])
+    first_epoch = int(first_line.split()[1].split("=")[1])
+    assert (workspace / ".deadman_epoch.pod-aaa").exists()
+
+    time.sleep(1.1)
+    second = subprocess.run([bash, "-c", harness], capture_output=True, text=True, timeout=10, env=env)
+    assert second.returncode == 0, second.stderr
+    second_line = [ln for ln in second.stdout.splitlines() if ln.startswith("REMAINING=")][0]
+    second_remaining = int(second_line.split()[0].split("=")[1])
+    second_epoch = int(second_line.split()[1].split("=")[1])
+
+    assert second_epoch == first_epoch, "epoch was not persisted across the rerun"
+    assert second_remaining < first_remaining, "remaining budget did not shrink -- countdown restarted"
+
+
+def _deadman_snippet(m):
+    """Shared harness slice: bootstrap_script's dead-man epoch block plus an
+    echo of the resulting remaining/epoch, with `log_line` stubbed out."""
+    script = rr.bootstrap_script(m, None, 0.1)
+    start_marker = "DEAD_MAN_SECONDS="
+    end_marker = '( sleep "$DEADMAN_REMAINING"'
+    snippet = script[script.index(start_marker):script.index(end_marker)]
+    snippet += 'echo "REMAINING=$DEADMAN_REMAINING EPOCH=$DEADMAN_EPOCH"\n'
+    return "log_line() { :; }\n" + snippet
+
+
+def _run_deadman(bash, harness, env, extra_env=None):
+    full_env = dict(env)
+    if extra_env:
+        full_env.update(extra_env)
+    result = subprocess.run([bash, "-c", harness], capture_output=True, text=True, timeout=10, env=full_env)
+    assert result.returncode == 0, result.stderr
+    line = [ln for ln in result.stdout.splitlines() if ln.startswith("REMAINING=")][0]
+    remaining = int(line.split()[0].split("=")[1])
+    epoch = line.split()[1].split("=")[1]
+    return remaining, epoch
+
+
+def test_dead_man_epoch_is_keyed_by_pod_id_so_a_reused_volume_does_not_kill_a_new_pod(tmp_path):
+    """HIGH-1: a network volume can be reattached to a fresh pod carrying a
+    stale `.deadman_epoch` from a PRIOR pod's run. Keying the epoch file by
+    `$RUNPOD_POD_ID` means two different pod ids sharing the same volume each
+    get their own full countdown, while the same pod id reused twice (a
+    container restart of the SAME pod) still sees its remaining budget
+    shrink, per MEDIUM-2's original persistence guarantee."""
+    bash = shutil.which("bash")
+    if not bash:
+        pytest.skip("bash (Git Bash) not on PATH")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    workspace_posix = "/" + str(workspace).replace("\\", "/").lstrip("/")
+    if len(workspace_posix) > 2 and workspace_posix[2] == ":":
+        workspace_posix = "/" + workspace_posix[1].lower() + workspace_posix[3:]
+
+    m = manifest()
+    m["volume_mount_path"] = workspace_posix
+    harness = _deadman_snippet(m)
+    base_env = dict(os.environ)
+
+    # Different pod ids sharing the volume: each gets a full countdown (their
+    # own epoch files, not fooled by each other's).
+    remaining_a, epoch_a = _run_deadman(bash, harness, base_env, {"RUNPOD_POD_ID": "pod-a"})
+    remaining_b, epoch_b = _run_deadman(bash, harness, base_env, {"RUNPOD_POD_ID": "pod-b"})
+    assert epoch_a != epoch_b or remaining_a == remaining_b  # independent countdowns
+    assert (workspace / ".deadman_epoch.pod-a").exists()
+    assert (workspace / ".deadman_epoch.pod-b").exists()
+    full_budget = remaining_a
+
+    # Same pod id twice (a restart of the SAME pod): remaining must shrink,
+    # proving persistence still works within one pod's own epoch file.
+    time.sleep(1.1)
+    remaining_a2, epoch_a2 = _run_deadman(bash, harness, base_env, {"RUNPOD_POD_ID": "pod-a"})
+    assert epoch_a2 == epoch_a
+    assert remaining_a2 < full_budget, "remaining did not shrink -- same pod id's countdown restarted"
+
+
+def test_dead_man_epoch_validates_garbage_empty_future_and_unwritable_values(tmp_path):
+    """MEDIUM-1: a corrupted, empty, multi-token, or future epoch value must
+    never be trusted as-is -- each case falls back to a fresh `date +%s` epoch
+    (full budget), and a future epoch's arithmetic must not hand back MORE
+    than the full `DEAD_MAN_SECONDS` budget. An unwritable epoch-file
+    directory must not crash the countdown either -- it still gets the full
+    budget for this boot, just re-derived every time."""
+    bash = shutil.which("bash")
+    if not bash:
+        pytest.skip("bash (Git Bash) not on PATH")
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    workspace_posix = "/" + str(workspace).replace("\\", "/").lstrip("/")
+    if len(workspace_posix) > 2 and workspace_posix[2] == ":":
+        workspace_posix = "/" + workspace_posix[1].lower() + workspace_posix[3:]
+
+    m = manifest()
+    m["volume_mount_path"] = workspace_posix
+    harness = _deadman_snippet(m)
+    env = dict(os.environ, RUNPOD_POD_ID="pod-x")
+    epoch_file = workspace / ".deadman_epoch.pod-x"
+    full_budget = int(0.1 * 60) + 600  # dead_man_seconds for max_minutes=0.1 (see bootstrap_script)
+
+    for label, content in (("empty", ""), ("garbage", "garbage"), ("multi-token", "1 2 3")):
+        epoch_file.write_text(content)
+        remaining, epoch = _run_deadman(bash, harness, env)
+        assert epoch.isdigit(), f"{label}: epoch was not regenerated to a clean integer"
+        assert 0 <= remaining <= full_budget, f"{label}: remaining {remaining} out of sane range"
+
+    # Future epoch: arithmetic must be capped at the full budget, not allowed
+    # to exceed it just because "elapsed" comes out negative.
+    future_epoch = int(time.time()) + 10_000
+    epoch_file.write_text(str(future_epoch))
+    remaining, epoch = _run_deadman(bash, harness, env)
+    assert epoch == str(future_epoch)
+    assert remaining == full_budget, "future epoch was not capped at the full budget"
+
+    # Unwritable directory: the epoch file can't be created/read at all, but
+    # the countdown still gets the full budget rather than crashing or
+    # silently arming with 0.
+    unwritable_root = workspace / "locked"
+    unwritable_root.mkdir()
+    unwritable_posix = workspace_posix.rstrip("/") + "/locked"
+    m2 = manifest()
+    m2["volume_mount_path"] = unwritable_posix
+    harness2 = _deadman_snippet(m2)
+    env2 = dict(os.environ, RUNPOD_POD_ID="pod-x")
+    locked_harness = (
+        f'chmod 000 {shlex.quote(str(unwritable_root))} 2>/dev/null\n'
+        + harness2
+    )
+    try:
+        remaining2, epoch2 = _run_deadman(bash, locked_harness, env2)
+        assert epoch2.isdigit()
+        assert remaining2 == full_budget, "unwritable epoch dir did not fall back to full budget"
+    finally:
+        os.chmod(unwritable_root, 0o755)
+
+
+def test_hard_deadline_unblocks_a_real_hung_socket_and_a_fresh_attempt_then_succeeds(
+        monkeypatch):
+    """HIGH-1, reproduced live: the worker thread was still alive 20s after
+    `session.close()`, dying only at its own socket timeout -- `PoolManager.clear()`
+    only closes IDLE pooled connections, never one a worker thread is actively
+    blocked sending on. A real localhost server that accepts but never reads proves
+    the fix at the socket level: the worker must be dead within a few seconds of the
+    hard deadline, and a fresh attempt (HIGH-1: each POST gets its own fresh
+    Session, at the `_post_capturing_socket` level) against a server that DOES
+    respond must then succeed."""
+    monkeypatch.setattr(rr, "_post_join_timeout", lambda per_read_timeout: per_read_timeout)
+    logger, _stream = logger_and_stream()
+
+    hang_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    hang_server.bind(("127.0.0.1", 0))
+    hang_server.listen(1)
+    hang_port = hang_server.getsockname()[1]
+    accepted = threading.Event()
+
+    def hang_accept() -> None:
+        conn, _addr = hang_server.accept()
+        accepted.set()
+        time.sleep(15.0)  # never reads; the test closes hang_server well before this
+        try:
+            conn.close()
+        except OSError:
+            pass
+
+    hang_thread = threading.Thread(target=hang_accept, daemon=True)
+    hang_thread.start()
+
+    session = requests.Session()
+    session.trust_env = False
+    big_payload = b"x" * (64 * 1024 * 1024)  # large enough to fill socket buffers
+    result_holder: dict = {}
+    worker_handle: list = []
+
+    def _call() -> None:
+        try:
+            rr._post_with_hard_deadline(
+                session, f"http://127.0.0.1:{hang_port}/upload/image",
+                files={"image": ("f.bin", io.BytesIO(big_payload))}, data={},
+                timeout=1.0, logger=logger, label="test-hang",
+                _worker_handle=worker_handle,
+            )
+        except BaseException as exc:  # noqa: BLE001
+            result_holder["error"] = exc
+
+    caller = threading.Thread(target=_call, daemon=True)
+    caller.start()
+    assert accepted.wait(5.0)
+
+    started = time.monotonic()
+    caller.join(6.0)
+    elapsed = time.monotonic() - started
+
+    assert not caller.is_alive(), "caller thread did not return by its own deadline"
+    assert elapsed < 6.0
+    assert isinstance(result_holder.get("error"), rr.TransientProxyError)
+    assert "hard deadline" in str(result_holder["error"])
+
+    # HIGH-1: the caller returning only proves `_post_with_hard_deadline` gave up
+    # on the join -- it does NOT by itself prove the abandoned WORKER thread (the
+    # one actually blocked inside the socket send) was ever unblocked. Assert the
+    # worker itself dies shortly after, which only happens if the captured socket
+    # was really shut down.
+    assert len(worker_handle) == 1, "worker thread handle was not captured"
+    worker = worker_handle[0]
+    worker.join(3.0)
+    assert not worker.is_alive(), "worker thread was not unblocked by the socket shutdown"
+
+    hang_server.close()
+    hang_thread.join(timeout=2.0)
+
+    class _HealthyHandler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", "0"))
+            self.rfile.read(length)
+            body = json.dumps({"ok": True}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_a):
+            return
+
+    healthy = ThreadingHTTPServer(("127.0.0.1", 0), _HealthyHandler)
+    healthy_thread = threading.Thread(target=healthy.serve_forever, daemon=True)
+    healthy_thread.start()
+    try:
+        fresh_session = requests.Session()
+        fresh_session.trust_env = False
+        response = rr._post_with_hard_deadline(
+            fresh_session, f"http://127.0.0.1:{healthy.server_address[1]}/upload/image",
+            files={"image": ("f.bin", io.BytesIO(b"small"))}, data={},
+            timeout=5.0, logger=logger, label="test-healthy",
+        )
+        assert response.status_code == 200
+        assert response.json() == {"ok": True}
+    finally:
+        healthy.shutdown()
+        healthy_thread.join(timeout=2.0)
+
+
+def test_watchdog_fires_and_terminates_while_upload_is_blocked(tmp_path, monkeypatch):
+    """The wall-clock ceiling must hold regardless of what the main thread is doing:
+    the Watchdog is a separate daemon thread started right after pod acquisition, so
+    it must still terminate the pod even while the main thread is stuck inside a slow
+    (but eventually-returning, at the Comfy-client level) upload call."""
+    configured, manifest_path = p1i_training_manifest(tmp_path)
+
+    class SlowUploadComfy(FakeComfy):
+        def upload_file(self, local_path, subfolder, _overwrite):
+            time.sleep(0.5)  # real sleep: exceeds the tiny max_minutes ceiling below
+            return {"name": local_path.name, "subfolder": subfolder, "type": "input"}
+
+    api = FakeAPI()
+    with pytest.raises(rr.RunCancelled, match="maximum runtime"):
+        rr.run_harness(
+            configured, manifest_path, tmp_path / "out",
+            max_usd=1, max_minutes=0.002, dry_run=False, api=api,
+            logger=logger_and_stream()[0], comfy_factory=SlowUploadComfy,
+            sleep=lambda _seconds: None, ledger_dir=tmp_path / "ledger",
+            allow_empty_ledger=True,
+        )
+
+    assert api.deletes >= 1 and api.alive is False
 
 
 def test_zero_byte_upload_is_refused_except_for_the_ready_marker(tmp_path):
@@ -4423,3 +5389,558 @@ def test_minimum_runtime_minutes_includes_upload_allowance_and_job_wait_for(tmp_
 
     expected = 600 / 60 + (900 + 300 * 2 + 180) / 60 + 5
     assert minimum == pytest.approx(expected)
+
+
+# --- transient local-network (DNS) tolerance on polling paths -------------------
+
+
+requests = pytest.importorskip("requests")
+urllib3 = pytest.importorskip("urllib3")
+
+
+def dns_connection_error(host="rest.runpod.io"):
+    """The exact shape requests raises when this host's DNS drops for ~10-30 s."""
+    import socket
+
+    reason = urllib3.exceptions.NameResolutionError(
+        host, None, socket.gaierror(11001, "getaddrinfo failed"),
+    )
+    return requests.exceptions.ConnectionError(
+        urllib3.exceptions.MaxRetryError(None, f"https://{host}/v1/pods/x", reason=reason)
+    )
+
+
+class RecordingSleep:
+    def __init__(self):
+        self.delays = []
+
+    def __call__(self, seconds):
+        self.delays.append(seconds)
+
+
+def test_transient_poll_tolerance_retries_dns_failures_then_returns():
+    calls = {"n": 0}
+
+    def operation():
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise dns_connection_error()
+        return "ok"
+
+    logger, stream = logger_and_stream()
+    sleeper = RecordingSleep()
+
+    result = rr.poll_through_transient_network_errors(
+        operation, "pod status poll",
+        logger=logger, sleep=sleeper, monotonic=iter([0.0, 2.0]).__next__,
+    )
+
+    assert result == "ok"
+    assert calls["n"] == 3
+    assert sleeper.delays == [2.0, 4.0]
+    logs = stream.getvalue()
+    assert logs.count("transient network failure") == 2
+    assert "retrying in 2s" in logs and "retrying in 4s" in logs
+
+
+def test_transient_poll_tolerance_resets_its_window_after_a_success():
+    # One outage that nearly exhausts the window, a success, then another outage:
+    # the second outage must get a fresh window, never the leftover of the first.
+    clock = {"now": 0.0}
+    logger, _ = logger_and_stream()
+
+    def run_one(fail_for):
+        attempts = {"n": 0}
+
+        def operation():
+            attempts["n"] += 1
+            if attempts["n"] <= fail_for:
+                raise dns_connection_error()
+            return "ok"
+
+        def sleep(seconds):
+            clock["now"] += seconds
+
+        return rr.poll_through_transient_network_errors(
+            operation, "pod status poll",
+            logger=logger, sleep=sleep, monotonic=lambda: clock["now"],
+        )
+
+    assert run_one(8) == "ok"
+    assert clock["now"] > 60.0
+    assert run_one(8) == "ok"
+
+
+def test_transient_poll_tolerance_reraises_the_same_error_once_the_window_closes():
+    clock = {"now": 0.0}
+
+    def operation():
+        raise dns_connection_error()
+
+    def sleep(seconds):
+        clock["now"] += seconds
+
+    logger, stream = logger_and_stream()
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        rr.poll_through_transient_network_errors(
+            operation, "pod status poll",
+            logger=logger, sleep=sleep, monotonic=lambda: clock["now"],
+        )
+
+    # Bounded: never longer than the tolerance window itself.
+    assert clock["now"] <= rr.TRANSIENT_NETWORK_TOLERANCE_SECONDS
+    assert "tolerance window" in stream.getvalue()
+
+
+def test_transient_poll_tolerance_never_extends_the_callers_deadline():
+    clock = {"now": 0.0}
+    deadline = 5.0
+
+    def operation():
+        raise dns_connection_error()
+
+    def sleep(seconds):
+        clock["now"] += seconds
+
+    logger, stream = logger_and_stream()
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        rr.poll_through_transient_network_errors(
+            operation, "pod status poll",
+            logger=logger, sleep=sleep, monotonic=lambda: clock["now"],
+            remaining=lambda: deadline - clock["now"],
+        )
+
+    # The caller's 5 s deadline fires, not the 180 s tolerance window.
+    assert clock["now"] <= deadline
+    assert clock["now"] < rr.TRANSIENT_NETWORK_TOLERANCE_SECONDS
+
+
+def test_transient_poll_tolerance_honours_the_watchdog_between_retries():
+    class FiringWatchdog:
+        def __init__(self):
+            self.checks = 0
+
+        def check(self):
+            self.checks += 1
+            if self.checks > 1:
+                raise rr.RunCancelled("maximum runtime reached")
+
+    def operation():
+        raise dns_connection_error()
+
+    watchdog = FiringWatchdog()
+    logger, _ = logger_and_stream()
+
+    with pytest.raises(rr.RunCancelled):
+        rr.poll_through_transient_network_errors(
+            operation, "pod status poll",
+            logger=logger, sleep=lambda _seconds: None, monotonic=lambda: 0.0,
+            watchdog=watchdog,
+        )
+
+
+@pytest.mark.parametrize("factory", [
+    lambda: rr.HarnessError("pod 404"),
+    lambda: requests.exceptions.SSLError("certificate verify failed"),
+    lambda: ValueError("bad json"),
+], ids=["harness-error", "ssl-error", "value-error"])
+def test_transient_poll_tolerance_does_not_retry_a_non_transient_error(factory):
+    expected = factory()
+    calls = {"n": 0}
+
+    def operation():
+        calls["n"] += 1
+        raise expected
+
+    logger, _ = logger_and_stream()
+
+    with pytest.raises(type(expected)):
+        rr.poll_through_transient_network_errors(
+            operation, "pod status poll",
+            logger=logger, sleep=lambda _seconds: None, monotonic=lambda: 0.0,
+        )
+
+    assert calls["n"] == 1
+
+
+def test_readiness_polling_survives_a_dns_outage_without_tearing_the_pod_down():
+    class FlakyDnsAPI:
+        def __init__(self):
+            self.get_calls = 0
+            self.deletes = 0
+
+        def get_pod(self, _pod_id):
+            self.get_calls += 1
+            if self.get_calls <= 2:
+                raise dns_connection_error()
+            return ready_pod()
+
+        def delete_pod(self, _pod_id):
+            self.deletes += 1
+
+    class Proxy:
+        def health_status(self):
+            return 200
+
+        def fetch_artifact(self, _filename):
+            return 404, ""
+
+    class QuietWatchdog:
+        def check(self):
+            pass
+
+    api = FlakyDnsAPI()
+    logger, stream = logger_and_stream()
+    sleeper = RecordingSleep()
+
+    ready = rr.wait_ready(
+        api, "pod-123", 600, QuietWatchdog(), logger, Proxy(),
+        sleep=sleeper, bootstrap_log_every_polls=1,
+    )
+
+    assert ready == ready_pod()
+    assert api.get_calls == 3
+    assert api.deletes == 0
+    assert sleeper.delays == [2.0, 4.0]
+    assert "transient network failure" in stream.getvalue()
+
+
+def test_comfy_history_polling_survives_a_dns_outage_then_returns_outputs():
+    class FlakyHistorySession:
+        headers = {}
+
+        def __init__(self):
+            self.calls = 0
+
+        def get(self, _url, **_kwargs):
+            self.calls += 1
+            if self.calls <= 2:
+                raise dns_connection_error("pod-123-8188.proxy.runpod.net")
+            return StubResponse(200, {
+                "prompt": {
+                    "status": {"completed": True, "status_str": "success"},
+                    "outputs": {"9": {"images": [{"filename": "done.png", "type": "output"}]}},
+                }
+            })
+
+    class QuietWatchdog:
+        def check(self):
+            pass
+
+    session = FlakyHistorySession()
+    logger, stream = logger_and_stream()
+    sleeper = RecordingSleep()
+    comfy = rr.ComfyClient(
+        "http://comfy", session=session, logger=logger,
+        sleep=sleeper, monotonic=iter([0.0, 2.0]).__next__,
+    )
+
+    outputs = comfy.wait_outputs("prompt", 600, QuietWatchdog())
+
+    assert outputs[0]["filename"] == "done.png"
+    assert session.calls == 3
+    assert sleeper.delays == [2.0, 4.0]
+    assert "transient network failure" in stream.getvalue()
+
+
+def test_comfy_history_polling_fails_as_today_when_the_outage_outlasts_the_window():
+    class DeadDnsSession:
+        headers = {}
+
+        def __init__(self):
+            self.calls = 0
+
+        def get(self, _url, **_kwargs):
+            self.calls += 1
+            raise dns_connection_error("pod-123-8188.proxy.runpod.net")
+
+    class QuietWatchdog:
+        def check(self):
+            pass
+
+    clock = {"now": 0.0}
+
+    def sleep(seconds):
+        clock["now"] += seconds
+
+    session = DeadDnsSession()
+    logger, _ = logger_and_stream()
+    comfy = rr.ComfyClient(
+        "http://comfy", session=session, logger=logger,
+        sleep=sleep, monotonic=lambda: clock["now"],
+    )
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        comfy.wait_outputs("prompt", 600, QuietWatchdog())
+
+    assert clock["now"] <= rr.TRANSIENT_NETWORK_TOLERANCE_SECONDS
+
+
+def test_create_and_terminate_requests_are_never_wrapped_in_poll_tolerance():
+    class DeadDnsSession:
+        headers = {}
+
+        def __init__(self):
+            self.calls = 0
+
+        def request(self, _method, _url, **_kwargs):
+            self.calls += 1
+            raise dns_connection_error()
+
+    session = DeadDnsSession()
+    api = rr.RunPodAPI(session)
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        api.create_pod({"name": "figment-test", "gpuTypeIds": ["x"], "gpuCount": 1})
+    assert session.calls == 1
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        api.delete_pod("pod-123")
+    assert session.calls == 2
+
+
+def test_verified_teardown_keeps_its_own_retry_loop_and_never_gives_up_polling():
+    # GUARDRAILS #6: a DNS outage during teardown must still produce the
+    # unverified-termination banner through the existing 5-attempt path, and the
+    # poll-tolerance helper must not be involved.
+    class DeadDnsAPI:
+        def __init__(self):
+            self.deletes = 0
+            self.gets = 0
+
+        def create_pod(self, payload):
+            return ready_pod(payload["name"])
+
+        def get_pod(self, _pod_id):
+            self.gets += 1
+            raise dns_connection_error()
+
+        def list_pods(self):
+            raise dns_connection_error()
+
+        def delete_pod(self, _pod_id):
+            self.deletes += 1
+            raise dns_connection_error()
+
+    api = DeadDnsAPI()
+    logger, stream = logger_and_stream()
+    lease = rr.PodLease(
+        api, {"name": "figment-test"}, logger, sleep=lambda _seconds: None,
+    )
+    lease.__enter__()
+
+    with pytest.raises(rr.PodStillRunning):
+        lease.close()
+
+    assert api.deletes == rr.TERMINATE_ATTEMPTS
+    assert "terminate attempt 5/5" in stream.getvalue()
+
+
+def test_transient_poll_tolerance_terminates_even_if_the_clock_never_advances():
+    # A stalled/coarse monotonic() must not turn the window into an endless loop.
+    sleeper = RecordingSleep()
+
+    def operation():
+        raise dns_connection_error()
+
+    logger, _ = logger_and_stream()
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        rr.poll_through_transient_network_errors(
+            operation, "pod status poll",
+            logger=logger, sleep=sleeper, monotonic=lambda: 7.0,
+        )
+
+    assert sum(sleeper.delays) <= rr.TRANSIENT_NETWORK_TOLERANCE_SECONDS
+
+
+def _arc_ledger(ledgers: Path, name: str, usd: str) -> None:
+    ledgers.mkdir(exist_ok=True)
+    (ledgers / name).write_text(
+        f"model\tstep\tusd\nrunpod:l40s\tpod-create fixture\t{usd}\n", encoding="utf-8",
+    )
+
+
+def test_arc_counts_only_ledger_files_dated_on_or_after_the_arc_start(tmp_path, monkeypatch):
+    monkeypatch.delenv("KB_ARC_CAP_USD", raising=False)
+    ledgers = tmp_path / "ledgers"
+    _arc_ledger(ledgers, "figment-2026-09-28.tsv", "40.000000")
+    _arc_ledger(ledgers, "figment-2026-09-29.tsv", "1.250000")
+    _arc_ledger(ledgers, "figment-gemini-2026-09-30.tsv", "0.500000")
+    assert rr.ARC_START_DAY == "2026-09-29"
+    assert rr.arc_budget_state(ledger_dir=ledgers) == (75.0, pytest.approx(1.75))
+
+
+def test_pre_arc_history_is_never_opened(tmp_path):
+    ledgers = tmp_path / "ledgers"
+    ledgers.mkdir()
+    (ledgers / "figment-2026-09-15.tsv").write_text("note\nnot a ledger at all\n", encoding="utf-8")
+    assert rr.arc_budget_state(arc_cap_usd=75.0, ledger_dir=ledgers) == (75.0, 0.0)
+
+
+def test_arc_cap_default_is_75_and_cli_and_env_still_override(monkeypatch):
+    monkeypatch.delenv("KB_ARC_CAP_USD", raising=False)
+    assert rr.DEFAULT_ARC_CAP_USD == 75.0
+    assert rr.configured_arc_cap_usd() == 75.0
+    monkeypatch.setenv("KB_ARC_CAP_USD", "12.5")
+    assert rr.configured_arc_cap_usd() == 12.5
+    assert rr.configured_arc_cap_usd(3.0) == 3.0
+
+
+def test_arc_cap_enforced_at_75(tmp_path, monkeypatch):
+    monkeypatch.delenv("KB_ARC_CAP_USD", raising=False)
+    ledgers = tmp_path / "ledgers"
+    _arc_ledger(ledgers, "figment-2026-09-30.tsv", "74.000000")
+    assert rr.enforce_arc_cap(1.0, ledger_dir=ledgers) == (75.0, 74.0)
+    with pytest.raises(rr.HarnessError, match="ARC CAP REFUSED"):
+        rr.enforce_arc_cap(1.01, ledger_dir=ledgers)
+
+
+def test_run_that_would_exceed_the_arc_is_refused_before_create(tmp_path, monkeypatch):
+    monkeypatch.delenv("KB_ARC_CAP_USD", raising=False)
+    ledgers = tmp_path / "ledgers"
+    _arc_ledger(ledgers, "figment-2026-09-30.tsv", "74.600000")
+    budget = tmp_path / "budget.yaml"
+    budget.write_text("daily_usd_limit: 1000\n", encoding="utf-8")
+
+    class NeverCreateAPI(FakeAPI):
+        def __init__(self):
+            super().__init__(False)
+            self.creates = 0
+
+        def create_pod(self, payload):
+            self.creates += 1
+            return super().create_pod(payload)
+
+    refused = manifest()
+    refused["price_usd_per_hour"] = 0.50
+    api = NeverCreateAPI()
+    with pytest.raises(rr.HarnessError, match="ARC CAP REFUSED"):
+        rr.run_harness(
+            refused, tmp_path / "m.yaml", tmp_path / "refused",
+            max_usd=1, max_minutes=60, dry_run=False, api=api,
+            logger=logger_and_stream()[0], ledger_dir=ledgers, budget_path=budget,
+        )
+    assert api.creates == 0
+
+
+@pytest.mark.parametrize(("name", "body"), [
+    ("figment-2026-09-30.tsv", "model\tstep\tusd\nrunpod\tx\tnot-a-number\n"),
+    ("figment-2026-09-30.tsv", "model\tstep\tusd\nrunpod\tx\t-1.0\n"),
+    ("figment-2026-09-30.tsv", "model\tstep\tusd\nrunpod\tx\tnan\n"),
+    ("figment-2026-09-30.tsv", "model\tstep\tusd\nrunpod\tx\n"),
+    ("figment-2026-09-30.tsv", "model\tstep\tnote\nrunpod\tx\t1.0\n"),
+    ("figment-notes.tsv", "model\tstep\tusd\nrunpod\tx\t1.0\n"),
+    ("figment-2026-13-45.tsv", "model\tstep\tusd\nrunpod\tx\t1.0\n"),
+])
+def test_malformed_arc_ledger_fails_closed(tmp_path, name, body):
+    ledgers = tmp_path / "ledgers"
+    ledgers.mkdir()
+    (ledgers / name).write_text(body, encoding="utf-8")
+    with pytest.raises(rr.HarnessError):
+        rr.arc_budget_state(arc_cap_usd=75.0, ledger_dir=ledgers)
+
+
+def _billing_ledger(ledgers: Path) -> None:
+    ledgers.mkdir()
+    (ledgers / "figment-2026-09-30.tsv").write_text(
+        "model\tstep\tusd\n"
+        "runpod:l40s\tpod-create podmatch\t0.605392\n"
+        "runpod:l40s\tpod-create podoff\t0.400000\n",
+        encoding="utf-8",
+    )
+
+
+def test_reconcile_compares_ledger_pod_rows_with_runpod_billing(tmp_path, monkeypatch, capsys):
+    ledgers = tmp_path / "ledgers"
+    _billing_ledger(ledgers)
+    session = StubSession([
+        StubResponse(200, [{"amount": 0.60, "podId": "podmatch", "time": "2026-09-30T00:00:00Z",
+                            "timeBilledMs": 1676000}]),
+        StubResponse(200, [{"amount": 0.90, "podId": "podoff", "time": "2026-09-30T00:00:00Z",
+                            "timeBilledMs": 2490000}]),
+    ], key="secret-runpod-key")
+    redactor = rr.ApiKeyRedactionFilter(session)
+    monkeypatch.setattr(rr, "build_authenticated_session", lambda: (session, redactor))
+
+    code = rr.main(["reconcile", "--ledger-dir", str(ledgers), "--since", "2026-09-29"])
+
+    captured = capsys.readouterr()
+    lines = captured.out.splitlines()
+    assert code == 1
+    assert "podmatch\t0.6054\t0.6000\t1676\t+0.0054\tMATCH" in lines
+    assert "podoff\t0.4000\t0.9000\t2490\t-0.5000\tMISMATCH" in lines
+    assert "secret-runpod-key" not in captured.out + captured.err
+    assert [call[0] for call in session.calls] == ["GET", "GET"]
+    assert all("/billing/pods?" in call[1] and "grouping=podId" in call[1] for call in session.calls)
+    assert "podId=podmatch" in session.calls[0][1] and "startTime=2026-09-29T00%3A00%3A00Z" in session.calls[0][1]
+
+
+def test_reconcile_reports_no_provider_record_and_never_calls_it_a_match(tmp_path, monkeypatch, capsys):
+    ledgers = tmp_path / "ledgers"
+    _billing_ledger(ledgers)
+    session = StubSession([StubResponse(200, [])])
+    monkeypatch.setattr(rr, "build_authenticated_session",
+                        lambda: (session, rr.ApiKeyRedactionFilter(session)))
+    code = rr.main(["reconcile", "--ledger-dir", str(ledgers), "--pod-id", "podmatch"])
+    assert code == 1
+    assert "podmatch\t0.6054\t-\t-\t-\tNO-PROVIDER-RECORD" in capsys.readouterr().out.splitlines()
+
+
+def test_reconcile_http_error_fails_without_echoing_the_body(tmp_path, monkeypatch, capsys):
+    ledgers = tmp_path / "ledgers"
+    _billing_ledger(ledgers)
+    session = StubSession([StubResponse(403, {"echo": "secret-runpod-key"})], key="secret-runpod-key")
+    monkeypatch.setattr(rr, "build_authenticated_session",
+                        lambda: (session, rr.ApiKeyRedactionFilter(session)))
+    assert rr.main(["reconcile", "--ledger-dir", str(ledgers), "--pod-id", "podmatch"]) == 1
+    captured = capsys.readouterr()
+    assert "returned HTTP 403" in captured.err
+    assert "secret-runpod-key" not in captured.out + captured.err
+
+
+def test_reconcile_ledger_header_without_usd_fails_closed(tmp_path):
+    ledgers = tmp_path / "ledgers"
+    ledgers.mkdir()
+    (ledgers / "figment-2026-09-30.tsv").write_text(
+        "model\tstep\tcost\nrunpod:l40s\tpod-create podx\t0.5\n", encoding="utf-8")
+    with pytest.raises(rr.HarnessError, match="lacks a step or usd column"):
+        rr.ledger_pod_totals(ledgers)
+
+
+def test_reconcile_blank_pod_id_row_fails_closed(tmp_path):
+    ledgers = tmp_path / "ledgers"
+    ledgers.mkdir()
+    (ledgers / "figment-2026-09-30.tsv").write_text(
+        "model\tstep\tusd\nrunpod:l40s\tpod-create \t0.5\n", encoding="utf-8")
+    with pytest.raises(rr.HarnessError, match="blank pod id"):
+        rr.ledger_pod_totals(ledgers)
+
+
+def test_reconcile_pod_without_ledger_row_is_no_ledger_row(tmp_path, monkeypatch, capsys):
+    ledgers = tmp_path / "ledgers"
+    _billing_ledger(ledgers)
+    session = StubSession([])
+    monkeypatch.setattr(rr, "build_authenticated_session",
+                        lambda: (session, rr.ApiKeyRedactionFilter(session)))
+    code = rr.main(["reconcile", "--ledger-dir", str(ledgers), "--pod-id", "ghost"])
+    assert code == 1
+    assert "ghost\t-\t-\t-\t-\tNO-LEDGER-ROW" in capsys.readouterr().out.splitlines()
+    assert session.calls == []
+
+
+@pytest.mark.parametrize(("repo_id", "ok"), [
+    ("datasets/Gourieff/ReActor", True), ("Comfy-Org/z_image_turbo", True),
+    ("a/b/c", False), ("datasets/a/b/c", False), ("noslash", False),
+])
+def test_require_manifest_accepts_hugging_face_dataset_repo_ids(tmp_path, repo_id, ok):
+    candidate = manifest()
+    candidate["models"] = [{"repo_id": repo_id, "filename": "x.safetensors",
+                            "destination_dir": "/workspace/ComfyUI/models/x"}]
+    if ok:
+        rr.require_manifest(candidate, tmp_path / "m.yaml", allow_missing_uploads=True)
+    else:
+        with pytest.raises(rr.HarnessError, match="invalid public Hugging Face repo id"):
+            rr.require_manifest(candidate, tmp_path / "m.yaml", allow_missing_uploads=True)

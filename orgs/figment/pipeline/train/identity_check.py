@@ -723,6 +723,11 @@ def resolve_scoring_inputs(args: argparse.Namespace) -> tuple[Path, Path]:
         raise IdentityCheckError("--persona and --batch must be given together")
     persona = _load_persona_for_scoring(args.persona)
     references = persona["identity"]["references"]
+    if not references:
+        raise IdentityCheckError(
+            f"{args.persona} has no identity references yet -- nothing to score against "
+            "until the operator picks a passport"
+        )
     anchor = (Path(args.persona).resolve().parent / references[0]).resolve()
     image_dir = Path(args.batch).resolve().parent / "images"
     return anchor, image_dir

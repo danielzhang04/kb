@@ -279,6 +279,19 @@ CAPTION_WARDROBE = {
 }
 
 
+# Shared with the klein-multiref dataset composer (figment_train.py's
+# `_klein_multiref_face_prompt`/`_klein_multiref_body_prompt`, 2026-09-16 fix) so both
+# dataset sources open every prompt with byte-identical adult-coded framing text
+# (look-spec-v2.md §4c) instead of a second hand-typed copy drifting from this one.
+# Extracting this into its own constant does not change `build_prompt`'s own output.
+ADULT_FRAMING_SENTENCE = (
+    "A candid phone photo of an adult woman in her early twenties, about "
+    "twenty-one — a college senior in her last year. Her hands and neck "
+    "read the same age as her face, and she has an adult woman's "
+    "proportions and an adult woman's frame."
+)
+
+
 def build_prompt(persona: dict, cell: dict) -> str:
     """One 80-250 word generation prompt per cell (Step 5.2). Every prompt
     states an explicit "adult woman" framing (never a bare pronoun), the
@@ -293,10 +306,7 @@ def build_prompt(persona: dict, cell: dict) -> str:
     light = LIGHT_PHRASES[cell["light"]]
     wardrobe = WARDROBE_PHRASES[cell["wardrobe_family"]]
     return (
-        "A candid phone photo of an adult woman in her early twenties, about "
-        "twenty-one — a college senior in her last year. Her hands and neck "
-        "read the same age as her face, and she has an adult woman's "
-        f"proportions and an adult woman's frame. She is {angle}, {distance}. "
+        f"{ADULT_FRAMING_SENTENCE} She is {angle}, {distance}. "
         "Keep her identity, face shape, and features exactly as shown in the "
         "reference images; do not alter, blend, or invent any facial feature. "
         f"She is wearing {wardrobe}. The room is her own bedroom. "

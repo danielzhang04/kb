@@ -51,6 +51,7 @@ def test_persona_contract():
     assert persona["identity"]["floor"]["min_face_px"] == {
         "status": "uncalibrated",
         "value": 600,
+        "by_framing": {"half": 300},
         "calibration_set_sha": None,
         "locked_by_gate": None,
     }
@@ -294,3 +295,14 @@ def test_identity_look_age_numeral_rejected(tmp_path):
     path = _write_persona(tmp_path, data)
     with pytest.raises(PersonaError, match="never a numeral"):
         load_persona(path)
+
+
+def test_pre_passport_persona_may_have_no_references_until_a_promotion():
+    creator003 = PERSONA.parents[1] / "creator-003" / "persona.yaml"
+    persona = load_persona(creator003)
+    persona["identity"]["references"] = []
+    persona["identity"]["history"] = []
+    validate_persona(persona, base_dir=creator003.parent)
+    persona["identity"]["history"] = ["anchors/old.png"]
+    with pytest.raises(PersonaError, match="must not be empty once an anchor"):
+        validate_persona(persona, base_dir=creator003.parent)

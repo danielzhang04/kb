@@ -163,7 +163,7 @@ def build_context(args: argparse.Namespace) -> dict[str, object]:
     return context
 
 
-def check_module_11(config: dict) -> list[str]:
+def check_module_11(config: dict, *, tensor: bool = False) -> list[str]:
     """Return a list of drifts from the module-11 recipe (empty means faithful)."""
     process = config["config"]["process"][0]
     train = process["train"]
@@ -206,6 +206,12 @@ def check_module_11(config: dict) -> list[str]:
         ("model.low_vram", model["low_vram"], True),
         ("model.layer_offloading", model["layer_offloading"], False),
     ]
+    if tensor:
+        checks.extend([
+            ("model.name_or_path", model.get("name_or_path"), "/workspace/models/krea2/krea2_raw_bf16.safetensors"),
+            ("process.trigger_word", process.get("trigger_word"), None),
+            ("dataset.trigger_word", dataset.get("trigger_word"), None),
+        ])
     return [f"{name}: {actual!r} != {expected!r}"
             for name, actual, expected in checks if actual != expected]
 

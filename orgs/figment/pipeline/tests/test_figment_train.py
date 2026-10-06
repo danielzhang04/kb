@@ -1,10 +1,12 @@
 """Contract tests for the persona-driven Track-1 command (brief T1-G)."""
 from __future__ import annotations
 
+import ast
 import base64
 import hashlib
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 import threading
@@ -32,6 +34,30 @@ def load_module(name: str, path: Path):
 @pytest.fixture(scope="module")
 def command():
     return load_module("figment_train_test_module", MODULE_PATH)
+
+
+@pytest.fixture(autouse=True)
+def offline_fixture_models(command, monkeypatch):
+    """Exercise real gate/ruling plumbing without loading models for synthetic cells."""
+    class NoFaceModels:
+        def detect(self, image):
+            return None
+
+        def embed(self, image):
+            raise ValueError("synthetic fixture has no face")
+
+        def predict_age(self, image):
+            raise ValueError("synthetic fixture has no age estimate")
+
+    gate = command._identity_gate_module()
+    monkeypatch.setattr(gate, "_default_models", lambda: NoFaceModels())
+    monkeypatch.setattr(command._score_cells_module(), "score", lambda *args, **kwargs: None)
+
+    def unexpected_external_call(*args, **kwargs):
+        pytest.fail("fixture regression attempted external model/network execution")
+
+    monkeypatch.setattr(gate._vlm_judge_module(), "judge_images_for_stage", unexpected_external_call)
+    monkeypatch.setattr(command._verify_pins_module()._OPENER, "open", unexpected_external_call)
 
 
 def load_json(path: Path):
@@ -184,7 +210,15 @@ def test_pins_are_the_single_source_for_every_generated_manifest(command, tmp_pa
         accept_budget=True,
     )
     pins = load_json(PIPELINE / "train" / "tensor-pins.yaml")
-    for stage, profile in (("dataset", "dataset"), ("smoke", "train"),
+    # P2: creator-001's own training.yaml now sets dataset_source: klein-multiref, so
+    # its "dataset" stage manifests pull pins.pins.dataset_multiref, not pins.dataset --
+    # resolve the profile the same way _verify_pins_preflight does, rather than a fixed
+    # tuple that only ever matched the qwen-edit default.
+    dataset_profile = (
+        "dataset_multiref" if plan["training"].get("dataset_source") == "klein-multiref"
+        else "dataset"
+    )
+    for stage, profile in (("dataset", dataset_profile), ("smoke", "train"),
                            ("train", "train"), ("tester", "tester")):
         for run in plan["stages"][stage]["runs"]:
             manifest = load_json(plan_path(out, run))
@@ -224,6 +258,7 @@ def _synthetic_persona(
     anchor_names: tuple = ("a01.jpg", "a02.jpg", "a03.jpg"),
     exemplars: list = ("a02", "a03"),
     look: dict | None = None,
+    dataset_source: str = "qwen-edit",
 ) -> Path:
     source = load_json(PERSONAS / "creator-001" / "persona.yaml")
     target = personas_root / creator_id
@@ -263,10 +298,655 @@ def _synthetic_persona(
         # the live pipeline instead of falling back to DEFAULT_TRAINING's generic
         # "person" (training_config.py).
         "dop_class": "woman",
+        "dataset_source": dataset_source,
+        "recipe_profile": "clean",
     }
     path = target / "persona.yaml"
     path.write_text(json.dumps(source, indent=2) + "\n", encoding="utf-8")
     return path
+
+
+# ---------------------------------------------------------------------------
+# P2 (MANDATE.md stage 2): klein 3-ref dataset source
+# ---------------------------------------------------------------------------
+
+
+def test_klein_multiref_cells_are_15_face_plus_15_body_with_deterministic_seeds(command, tmp_path):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root, dataset_source="klein-multiref")
+    persona = command._training_config_module().load_persona_with_training(personas_root / "creator-002" / "persona.yaml")
+
+    face_cells, body_cells = command._klein_multiref_cells(persona)
+    assert len(face_cells) == 15
+    assert len(body_cells) == 15
+
+    # Deterministic: rebuilding from the same persona yields byte-identical cells.
+    face_again, body_again = command._klein_multiref_cells(persona)
+    assert face_cells == face_again
+    assert body_cells == body_again
+
+    all_seeds = [cell["seed"] for cell in face_cells + body_cells]
+    assert len(set(all_seeds)) == 30, "every cell must carry a unique seed"
+    for cell in face_cells:
+        assert cell["distance"] == "close"
+    for cell in body_cells:
+        assert cell["distance"] == "half"
+        assert "wardrobe_family" in cell
+
+
+def test_dataset_manifests_klein_multiref_binds_three_references_and_pins(command, tmp_path):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root, dataset_source="klein-multiref")
+    persona = command._training_config_module().load_persona_with_training(personas_root / "creator-002" / "persona.yaml")
+    training = command._training_config_module().validate_training(
+        {"recipe_profile": "clean", "dataset_source": "klein-multiref"}, persona["id"],
+    )
+    pins = command._read_json(command.PINS_PATH)
+
+    manifests = command._dataset_manifests_klein_multiref(persona, training, pins)
+    assert len(manifests) == 2
+
+    total_jobs = sum(len(manifest["jobs"]) for manifest in manifests)
+    assert total_jobs == 30
+
+    for manifest in manifests:
+        assert manifest["models"] == pins["pins"]["dataset_multiref"]["models"]
+        assert manifest["custom_nodes"] == pins["pins"]["dataset_multiref"]["custom_nodes"]
+        for node_id, name in zip(("6", "7", "8"), ("a01.jpg", "a02.jpg", "a03.jpg")):
+            assert manifest["workflow"][node_id]["inputs"]["image"] == f"creator-002/{name}"
+        assert manifest["seed_fields"] == ["noise_seed"]
+
+    # Ceiling: TENSOR-TRAINING.md's P2 "Dataset ceiling" section derives max_minutes=155
+    # per shard (job_timeout_seconds=480, HIGH-1 opus-review fix: the pinned
+    # klein4b_multiref_api.json's own creator-001 receipts measure 154.6-164.7 s/job on
+    # a 4090 BEFORE the 4x upscale tail) at $1.30/h = $3.3583/shard exactly (before
+    # manifest_ceiling's round-to-the-cent-up), $6.7167 total -- not just "clears some cap"
+    # (which a broken/regressed ceiling could still satisfy by accident).
+    per_shard_ceilings = [float(command.manifest_ceiling(manifest)) for manifest in manifests]
+    for ceiling in per_shard_ceilings:
+        assert ceiling == pytest.approx(3.3583, abs=0.01), ceiling
+    total_ceiling = sum(per_shard_ceilings)
+    assert total_ceiling == pytest.approx(6.7167, abs=0.02), total_ceiling
+
+    # Seeds carried through to the job dicts, matching _klein_multiref_cells exactly.
+    seeds = {job["seed"] for manifest in manifests for job in manifest["jobs"]}
+    assert len(seeds) == 30
+
+
+def test_dataset_manifests_klein_multiref_requires_exactly_three_references(command, tmp_path):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(
+        personas_root, dataset_source="klein-multiref",
+        anchor_names=("a01.jpg", "a02.jpg"), exemplars=["a02"],
+    )
+    persona = command._training_config_module().load_persona_with_training(personas_root / "creator-002" / "persona.yaml")
+    training = command._training_config_module().validate_training(
+        {"recipe_profile": "clean", "dataset_source": "klein-multiref"}, persona["id"],
+    )
+    pins = command._read_json(command.PINS_PATH)
+    with pytest.raises(command.FigmentTrainError, match="3"):
+        command._dataset_manifests_klein_multiref(persona, training, pins)
+
+
+def _klein_multiref_persona(command, tmp_path):
+    """Shared setup: a synthetic creator-002 persona on klein-multiref."""
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root, dataset_source="klein-multiref")
+    return command._training_config_module().load_persona_with_training(
+        personas_root / "creator-002" / "persona.yaml"
+    )
+
+
+def _klein_multiref_manifests(command, tmp_path):
+    """Shared setup: builds the klein-multiref dataset manifests once for a synthetic
+    creator-002 persona, reused by the review-fix tests below."""
+    persona = _klein_multiref_persona(command, tmp_path)
+    training = command._training_config_module().validate_training(
+        {"recipe_profile": "clean", "dataset_source": "klein-multiref"}, persona["id"],
+    )
+    pins = command._read_json(command.PINS_PATH)
+    return persona, command._dataset_manifests_klein_multiref(persona, training, pins)
+
+
+def test_klein_multiref_body_prompt_carries_exactly_one_wearing_clause(command, tmp_path):
+    """HIGH-1 (adversarial review; 2026-09-16 fix dropped `_compose_look_clause` from
+    this composer entirely, so there is no longer a second source of "wearing ..." to
+    collide with). Every body job prompt must carry exactly one "wearing" and the
+    wardrobe phrase for its own cell."""
+    persona, (_, body_manifest) = _klein_multiref_manifests(command, tmp_path)
+    expansion = command._build_expansion_set_module()
+    _, body_cells = command._klein_multiref_cells(persona)
+    for job, cell in zip(body_manifest["jobs"], body_cells):
+        prompt = job["substitutions"][0]["value"]
+        assert prompt.count("wearing") == 1, prompt
+        assert expansion.WARDROBE_PHRASES[cell["wardrobe_family"]] in prompt
+
+
+def test_klein_multiref_face_cells_never_use_profile_or_near_back_angle(command, tmp_path):
+    """HIGH-2 (adversarial review): the face shard must never draw an angle MTCNN/
+    FaceNet cannot gate (no frontal face in profile-l/near-back). Still 15 cells."""
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root, dataset_source="klein-multiref")
+    persona = command._training_config_module().load_persona_with_training(
+        personas_root / "creator-002" / "persona.yaml"
+    )
+    face_cells, body_cells = command._klein_multiref_cells(persona)
+    assert len(face_cells) == 15
+    assert len(body_cells) == 15
+    forbidden_angles = {"profile-l", "near-back"}
+    assert all(cell["angle"] not in forbidden_angles for cell in face_cells)
+
+    expansion = command._build_expansion_set_module()
+    forbidden_phrases = (
+        expansion.ANGLE_PHRASES["profile-l"], expansion.ANGLE_PHRASES["near-back"],
+    )
+    for cell in face_cells:
+        prompt = command._klein_multiref_face_prompt(cell)
+        for phrase in forbidden_phrases:
+            assert phrase not in prompt
+
+
+def test_klein_multiref_face_manifest_has_fifteen_unique_prompts(command, tmp_path):
+    """MEDIUM-3 (opus review, 2026-09-15): angles[:3] x 4 lights only produces 12 face
+    cells, so `_klein_multiref_cells` pads 3 more (f13-f15) -- before this fix those
+    pad cells cycled back through the SAME front angle and the SAME lights as
+    f01-f03, with the SAME crop clause, so they were byte-identical prompts: wasted
+    training signal. The pad cells now carry `crop: "tight"`, giving every one of the
+    15 face prompts a distinct string while staying "close"-framed (still gateable
+    at the 600px close floor) and never touching a profile/near-back phrase."""
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root, dataset_source="klein-multiref")
+    persona = command._training_config_module().load_persona_with_training(
+        personas_root / "creator-002" / "persona.yaml"
+    )
+    face_manifest, _body_manifest = command._dataset_manifests_klein_multiref(
+        persona,
+        command._training_config_module().validate_training(
+            {"recipe_profile": "clean", "dataset_source": "klein-multiref"}, persona["id"],
+        ),
+        command._read_json(command.PINS_PATH),
+    )
+    prompts = [job["substitutions"][0]["value"] for job in face_manifest["jobs"]]
+    assert len(prompts) == 15
+    assert len(set(prompts)) == 15, "every face cell must have a distinct prompt"
+
+    expansion = command._build_expansion_set_module()
+    forbidden_phrases = (
+        expansion.ANGLE_PHRASES["profile-l"], expansion.ANGLE_PHRASES["near-back"],
+    )
+    for prompt in prompts:
+        for phrase in forbidden_phrases:
+            assert phrase not in prompt
+
+
+def test_klein_multiref_face_prompt_never_names_two_settings_at_once(command, tmp_path):
+    """LOW (opus review, 2026-09-15): `LIGHT_PHRASES["flat-white"]` names its own
+    setting ("daylight through a bedroom window") which used to collide with the face
+    composer's fixed "plain white wall background" clause -- two different rooms in
+    one prompt. The background clause must drop "white" for that light, and no
+    emitted face prompt (across all 15 real cells) may ever say "bedroom" and "white
+    wall" together."""
+    prompt = command._klein_multiref_face_prompt({"angle": "front", "light": "flat-white"})
+    assert "bedroom" in prompt
+    assert "white wall" not in prompt
+
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root, dataset_source="klein-multiref")
+    persona = command._training_config_module().load_persona_with_training(
+        personas_root / "creator-002" / "persona.yaml"
+    )
+    face_cells, _body_cells = command._klein_multiref_cells(persona)
+    for cell in face_cells:
+        prompt = command._klein_multiref_face_prompt(cell)
+        assert not ("bedroom" in prompt and "white wall" in prompt)
+
+
+def test_klein_multiref_jobs_substitute_node_4_with_reference_lock_and_cell_phrases(
+    command, tmp_path,
+):
+    """MEDIUM-2, updated 2026-09-16: every klein-multiref job substitutes node id '4'
+    (the graph's own CLIPTextEncode), and a face/body prompt each carry the shared
+    adult-framing sentence + reference-lock clause plus their own cell's
+    angle/light-or-wardrobe phrase."""
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root, dataset_source="klein-multiref")
+    persona = command._training_config_module().load_persona_with_training(
+        personas_root / "creator-002" / "persona.yaml"
+    )
+    face_manifest, body_manifest = command._dataset_manifests_klein_multiref(
+        persona,
+        command._training_config_module().validate_training(
+            {"recipe_profile": "clean", "dataset_source": "klein-multiref"}, persona["id"],
+        ),
+        command._read_json(command.PINS_PATH),
+    )
+    for manifest in (face_manifest, body_manifest):
+        for job in manifest["jobs"]:
+            assert len(job["substitutions"]) == 1
+            assert job["substitutions"][0]["node_id"] == "4"
+            assert job["substitutions"][0]["field"] == "text"
+
+    expansion = command._build_expansion_set_module()
+    face_cells, body_cells = command._klein_multiref_cells(persona)
+    face_prompt = face_manifest["jobs"][0]["substitutions"][0]["value"]
+    assert expansion.ADULT_FRAMING_SENTENCE in face_prompt
+    assert command._KLEIN_MULTIREF_REFERENCE_LOCK_CLAUSE in face_prompt
+    assert expansion.ANGLE_PHRASES[face_cells[0]["angle"]] in face_prompt
+    assert expansion.LIGHT_PHRASES[face_cells[0]["light"]] in face_prompt
+
+    body_prompt = body_manifest["jobs"][0]["substitutions"][0]["value"]
+    assert expansion.ADULT_FRAMING_SENTENCE in body_prompt
+    assert command._KLEIN_MULTIREF_REFERENCE_LOCK_CLAUSE in body_prompt
+    assert expansion.ANGLE_PHRASES[body_cells[0]["angle"]] in body_prompt
+    assert expansion.WARDROBE_PHRASES[body_cells[0]["wardrobe_family"]] in body_prompt
+
+
+def test_klein_multiref_face_prompts_never_carry_an_identity_look_value(command, tmp_path):
+    """2026-09-16 fix: the live 0/30 dataset gate (orgs/figment/runs/creator-001/
+    live-20260915b) traced to the composer prepending `_compose_look_clause` (a
+    hair/eyes/brows/makeup/skin text description) ahead of the three ReferenceLatent
+    images -- the text encoder followed the description over the references.
+    `identity.look`'s value strings must never appear in a klein-multiref face OR body
+    prompt again; identity now comes from the reference images alone."""
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root, dataset_source="klein-multiref")
+    persona = command._training_config_module().load_persona_with_training(
+        personas_root / "creator-002" / "persona.yaml"
+    )
+    look = persona["identity"]["look"]
+    look_values = [
+        look[key] for key in
+        ("age_stage", "hair", "eyes", "skin", "brows", "makeup", "build", "clothing")
+    ]
+
+    face_manifest, body_manifest = command._dataset_manifests_klein_multiref(
+        persona,
+        command._training_config_module().validate_training(
+            {"recipe_profile": "clean", "dataset_source": "klein-multiref"}, persona["id"],
+        ),
+        command._read_json(command.PINS_PATH),
+    )
+    for manifest in (face_manifest, body_manifest):
+        for job in manifest["jobs"]:
+            prompt = job["substitutions"][0]["value"]
+            for value in look_values:
+                assert value not in prompt, (value, prompt)
+
+
+def test_klein_multiref_unknown_grammar_token_raises_figment_train_error(command, tmp_path):
+    """LOW (adversarial review): an unknown grammar token must fail closed with
+    FigmentTrainError, never a bare KeyError."""
+    with pytest.raises(command.FigmentTrainError):
+        command._klein_multiref_face_prompt({"angle": "upside-down", "light": "flat-white"})
+    with pytest.raises(command.FigmentTrainError):
+        command._klein_multiref_face_prompt({"angle": "front", "light": "strobe"})
+    with pytest.raises(command.FigmentTrainError):
+        command._klein_multiref_body_prompt(
+            {"angle": "front", "wardrobe_family": "tuxedo"},
+        )
+
+
+def test_klein_multiref_shards_do_not_alias_the_upload_files_list(command, tmp_path):
+    """LOW (adversarial review): each shard's `uploads[0]["files"]` must be its own
+    list, never the same list object shared (and silently co-mutated) across shards."""
+    _, (face_manifest, body_manifest) = _klein_multiref_manifests(command, tmp_path)
+    assert face_manifest["uploads"][0]["files"] == body_manifest["uploads"][0]["files"]
+    face_manifest["uploads"][0]["files"].append("_uploads/creator-002/intruder.jpg")
+    assert "_uploads/creator-002/intruder.jpg" not in body_manifest["uploads"][0]["files"]
+
+
+def test_klein_multiref_workflow_carries_the_upscale_tail_between_decode_and_save(
+    command, tmp_path,
+):
+    """UPSCALE TAIL (adopt): the emitted klein-multiref workflow must carry the same
+    output tail `tensor_dataset_v2_api.json` uses (`UpscaleModelLoader` +
+    `ImageUpscaleWithModel` with the pinned `4xNomosWebPhoto_RealPLKSR`, then
+    `ImageScaleBy 0.5`) wired between the graph's `VAEDecode` and `SaveImage` nodes, so
+    the dataset identity gate's `face_px_min: 600` has native 2048x2560 pixels to
+    measure against instead of the graph's raw 1024x1280 render."""
+    _, (face_manifest, _) = _klein_multiref_manifests(command, tmp_path)
+    workflow = face_manifest["workflow"]
+    decode_id = next(
+        node_id for node_id, node in workflow.items() if node["class_type"] == "VAEDecode"
+    )
+    save_id = next(
+        node_id for node_id, node in workflow.items() if node["class_type"] == "SaveImage"
+    )
+    save_source_id = workflow[save_id]["inputs"]["images"][0]
+    scale_by = workflow[save_source_id]
+    assert scale_by["class_type"] == "ImageScaleBy"
+    assert scale_by["inputs"]["scale_by"] == 0.5
+    upscale_id = scale_by["inputs"]["image"][0]
+    upscale = workflow[upscale_id]
+    assert upscale["class_type"] == "ImageUpscaleWithModel"
+    assert upscale["inputs"]["image"][0] == decode_id
+    loader_id = upscale["inputs"]["upscale_model"][0]
+    loader = workflow[loader_id]
+    assert loader["class_type"] == "UpscaleModelLoader"
+    assert loader["inputs"]["model_name"] == "4xNomosWebPhoto_RealPLKSR.safetensors"
+
+    pins = command._read_json(command.PINS_PATH)
+    pinned = next(
+        m for m in pins["pins"]["dataset_multiref"]["models"]
+        if m["filename"] == "4xNomosWebPhoto_RealPLKSR.safetensors"
+    )
+    assert pinned["destination_dir"] == "/workspace/ComfyUI/models/upscale_models"
+
+
+def test_klein_multiref_jobs_carry_their_own_cell_framing(command, tmp_path):
+    """2026-09-15 per-framing face floor ruling: every klein-multiref job's `framing`
+    must be `cell["distance"]` verbatim ("close" for the 15 face cells, "half" for the
+    15 body cells) -- never a second hand-authored label -- so `_grading_images` can
+    carry it onto the gate row that grades this cell."""
+    persona, (face_manifest, body_manifest) = _klein_multiref_manifests(command, tmp_path)
+    face_cells, body_cells = command._klein_multiref_cells(persona)
+    assert [job["framing"] for job in face_manifest["jobs"]] == [
+        cell["distance"] for cell in face_cells
+    ]
+    assert all(framing == "close" for framing in (job["framing"] for job in face_manifest["jobs"]))
+    assert [job["framing"] for job in body_manifest["jobs"]] == [
+        cell["distance"] for cell in body_cells
+    ]
+    assert all(framing == "half" for framing in (job["framing"] for job in body_manifest["jobs"]))
+
+
+def test_build_plan_dataset_stage_klein_multiref_dry_runs_clean(command, tmp_path):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root, dataset_source="klein-multiref")
+    out = tmp_path / "klein-multiref-plan"
+    plan = command.build_plan(
+        "creator-002", "dataset", out, personas_root=personas_root, skip_pin_verify=True,
+    )
+    assert plan["training"]["dataset_source"] == "klein-multiref"
+    runs = plan["stages"]["dataset"]["runs"]
+    assert len(runs) == 2
+
+    for index, run in enumerate(runs):
+        generated = plan_path(out, run)
+        result = subprocess.run(
+            [
+                sys.executable, str(POD_RUNNER), "run",
+                "--manifest", str(generated),
+                "--out", str(tmp_path / "dry-runs" / str(index)),
+                "--dry-run",
+            ],
+            cwd=ROOT, text=True, capture_output=True,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_build_plan_rejects_malformed_identity_floor_by_framing_before_writing_a_manifest(command, tmp_path):
+    """MEDIUM-1 (opus review, 2026-09-15): `identity_gate.load_thresholds` already
+    fails closed on a persona's `identity.floor.min_face_px.by_framing` override that
+    exceeds the persona's own default floor -- but until this fix, nothing called it
+    at plan time, so a malformed override rode along silently until the dataset gate
+    ran, days and dollars later. `build_plan` must call it up front and raise before a
+    single manifest is written."""
+    personas_root = tmp_path / "personas"
+    persona_path = _synthetic_persona(personas_root, dataset_source="klein-multiref")
+    document = load_json(persona_path)
+    document["identity"]["floor"]["min_face_px"]["by_framing"] = {"half": 900}
+    persona_path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+
+    out = tmp_path / "malformed-floor-plan"
+    identity_gate_module = command._identity_gate_module()
+    with pytest.raises(identity_gate_module.IdentityGateError, match="exceeds"):
+        command.build_plan(
+            "creator-002", "dataset", out, personas_root=personas_root, skip_pin_verify=True,
+        )
+    assert not (out / "plan.json").exists()
+    assert not list(out.glob("*.yaml"))
+
+
+def test_build_plan_dataset_stage_qwen_edit_default_still_produces_four_manifests(command, tmp_path):
+    """Regression: the existing qwen-edit path (default dataset_source) must stay
+    exactly as it was before this key existed -- 3 half/close shards + 1 fullbody
+    manifest, never touched by the new klein-multiref branch."""
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)  # default dataset_source="qwen-edit"
+    out = tmp_path / "qwen-edit-plan"
+    plan = command.build_plan(
+        "creator-002", "dataset", out, personas_root=personas_root, skip_pin_verify=True,
+    )
+    assert plan["training"]["dataset_source"] == "qwen-edit"
+    assert len(plan["stages"]["dataset"]["runs"]) == 4
+
+
+def test_dataset_jobs_qwen_edit_face_rows_are_tagged_close_framing(command, tmp_path):
+    """2026-09-15 per-framing face floor ruling: face rows are always plain strings
+    (already close framings, per `_dataset_jobs`'s own docstring) -- they must be
+    tagged `framing: "close"`, not the body branch's "half" default, so
+    `identity_floor_gate` never applies the half-body 300px floor to a face cell."""
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)  # default dataset_source="qwen-edit"
+    persona = command._training_config_module().load_persona_with_training(
+        personas_root / "creator-002" / "persona.yaml"
+    )
+    prompts = command._generalized_prompts(persona)
+    jobs = command._dataset_jobs(persona, prompts)
+    face_jobs = [job for job in jobs if job["output_name"].split("-tds-")[-1].startswith("f")]
+    body_jobs = [job for job in jobs if job["output_name"].split("-tds-")[-1].startswith("b")]
+    assert face_jobs and body_jobs
+    assert all(job["framing"] == "close" for job in face_jobs)
+    assert {job["framing"] for job in body_jobs} <= {"half", "full"}
+
+
+def test_dataset_manifests_qwen_edit_keeps_framing_on_the_written_job(command, tmp_path):
+    """`_dataset_manifests` used to `pop("framing")` before bucketing a job into the
+    half/full shard lists -- the 2026-09-15 ruling needs `framing` to survive onto the
+    WRITTEN manifest so `_grading_images` can read it back off `manifest["jobs"]`."""
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)  # default dataset_source="qwen-edit"
+    persona = command._training_config_module().load_persona_with_training(
+        personas_root / "creator-002" / "persona.yaml"
+    )
+    training = command._training_config_module().validate_training(
+        {"recipe_profile": "clean", "dataset_source": "qwen-edit"}, persona["id"],
+    )
+    pins = command._read_json(command.PINS_PATH)
+    prompts = command._generalized_prompts(persona)
+    manifests = command._dataset_manifests(persona, training, pins, prompts)
+    for manifest in manifests:
+        for job in manifest["jobs"]:
+            assert job["framing"] in ("close", "half", "full")
+
+
+# ---------------------------------------------------------------------------
+# P2 task 2 (2026-09-16): `dataset_replicates` -- N distinct-seed jobs per prompt row
+# ---------------------------------------------------------------------------
+
+
+def _qwen_edit_dataset_manifests(command, personas_root, *, dataset_replicates=None):
+    _synthetic_persona(personas_root)  # default dataset_source="qwen-edit"
+    persona = command._training_config_module().load_persona_with_training(
+        personas_root / "creator-002" / "persona.yaml"
+    )
+    raw_training = {"recipe_profile": "clean", "dataset_source": "qwen-edit"}
+    if dataset_replicates is not None:
+        raw_training["dataset_replicates"] = dataset_replicates
+    training = command._training_config_module().validate_training(raw_training, persona["id"])
+    pins = command._read_json(command.PINS_PATH)
+    prompts = command._generalized_prompts(persona)
+    return command._dataset_manifests(persona, training, pins, prompts)
+
+
+def test_dataset_replicates_default_produces_manifests_identical_to_today(command, tmp_path):
+    """`dataset_replicates` defaults to 1 -- every existing qwen-edit persona/fixture
+    must keep producing byte-identical manifests (job count, shard count, seeds,
+    output names, shard notes) now that the key exists."""
+    explicit = _qwen_edit_dataset_manifests(
+        command, tmp_path / "explicit", dataset_replicates=1,
+    )
+    default = _qwen_edit_dataset_manifests(command, tmp_path / "default")
+    assert explicit == default
+    assert len(default) == 4  # 3 half/close shards + 1 fullbody manifest, unchanged
+    total_jobs = sum(len(manifest["jobs"]) for manifest in default)
+    assert total_jobs == 30  # 15 face + 15 body rows, unchanged
+
+
+def test_dataset_replicates_two_doubles_jobs_and_varies_seeds_per_replicate(
+    command, tmp_path,
+):
+    """`dataset_replicates: 2` must double the total job count (60), give every row's
+    k=2 copy a DIFFERENT (outer seed, seed-node substitution) pair than its k=1 copy
+    (so the pod renders a genuinely different image, not a byte-identical duplicate),
+    keep every output_name unique, preserve `framing` per row, and keep every
+    manifest's job count within its pinned `max_minutes` (the shard COUNT scales with
+    replicates instead of the shard SIZE growing past the pin)."""
+    replicates_1 = _qwen_edit_dataset_manifests(command, tmp_path / "r1", dataset_replicates=1)
+    manifests = _qwen_edit_dataset_manifests(command, tmp_path / "r2", dataset_replicates=2)
+
+    total_jobs = sum(len(manifest["jobs"]) for manifest in manifests)
+    assert total_jobs == 60
+    assert sum(len(manifest["jobs"]) for manifest in replicates_1) * 2 == total_jobs
+
+    all_jobs = [job for manifest in manifests for job in manifest["jobs"]]
+    names = [job["output_name"] for job in all_jobs]
+    assert len(set(names)) == len(names), "every output_name must be unique"
+
+    def _seed_pair(job):
+        substitution_seed = next(
+            s["value"] for s in job["substitutions"] if s["field"] == "seed"
+        )
+        return (job["seed"], substitution_seed)
+
+    by_base_name = {}
+    for job in all_jobs:
+        base_name = job["output_name"][:-3] if job["output_name"].endswith(("r02",)) else job["output_name"]
+        by_base_name.setdefault(base_name, []).append(job)
+    replicate_rows = [jobs for jobs in by_base_name.values() if len(jobs) == 2]
+    assert replicate_rows, "expected at least one row with both a k=1 and a k=2 job"
+    for k1_job, k2_job in replicate_rows:
+        assert _seed_pair(k1_job) != _seed_pair(k2_job), (
+            "a row's k=1 and k=2 jobs must not share the same seed pair, or the pod "
+            "would render byte-identical images for two different replicates"
+        )
+        assert not k1_job["output_name"].endswith("r02")
+        assert k2_job["output_name"].endswith("r02")
+
+    # k=1 jobs reproduce the exact seed pairs `dataset_replicates=1` produces.
+    r1_seed_pairs = {job["output_name"]: _seed_pair(job) for m in replicates_1 for job in m["jobs"]}
+    k1_jobs = [job for job in all_jobs if not job["output_name"].endswith("r02")]
+    assert len(k1_jobs) == len(r1_seed_pairs) == 30
+    for job in k1_jobs:
+        assert _seed_pair(job) == r1_seed_pairs[job["output_name"]]
+
+    # `framing` must still be one of the three valid values, carried onto every job.
+    for job in all_jobs:
+        assert job["framing"] in ("close", "half", "full")
+
+    # Shard count doubled (6 half/close + 2 fullbody = 8 manifests), never max_minutes.
+    assert len(manifests) == 8
+    pod_runner = command._pod_runner_module()
+    for manifest in manifests:
+        minimum_minutes = pod_runner.minimum_runtime_minutes(manifest)
+        assert minimum_minutes <= manifest["max_minutes"], (
+            manifest["_shard"], minimum_minutes, manifest["max_minutes"],
+        )
+
+
+def _build_and_grade_dataset(command, tmp_path, *, label: str, dataset_source: str):
+    """Shared helper: plan the dataset stage for a synthetic persona, fake every
+    job's output image, grade it, and return (gate.json, rulings-template) dicts."""
+    personas_root = tmp_path / f"personas-{label}"
+    _synthetic_persona(personas_root, dataset_source=dataset_source)
+    out = tmp_path / f"grade-plan-{label}"
+    command.build_plan(
+        "creator-002", "dataset", out, personas_root=personas_root, skip_pin_verify=True,
+    )
+    plan_file = out / "plan.json"
+    plan = load_json(plan_file)
+
+    for run in plan["stages"]["dataset"]["runs"]:
+        manifest = load_json(plan_path(out, run))
+        run_out = out / run["out"]
+        run_out.mkdir(parents=True)
+        for job in manifest["jobs"]:
+            (run_out / f"{job['output_name']}.png").write_bytes(PNG_1X1)
+
+    grade = command.build_grade("creator-002", "dataset", plan_file)
+    gate = load_json(Path(grade["gate"]))
+    template = load_json(Path(grade["rulings_template"]))
+    return gate, template
+
+
+def test_dataset_grade_path_schema_is_unchanged_for_klein_multiref(command, tmp_path):
+    """The existing dataset grade path must consume klein-multiref cells unchanged --
+    the SAME gate.json schema (top-level keys, per-row keys) and the SAME
+    rulings-template shape as the qwen-edit path, built and graded side by side so
+    this is a real structural comparison, not two independently-asserted literals."""
+    qwen_gate, qwen_template = _build_and_grade_dataset(
+        command, tmp_path, label="qwen-edit", dataset_source="qwen-edit",
+    )
+    klein_gate, klein_template = _build_and_grade_dataset(
+        command, tmp_path, label="klein-multiref", dataset_source="klein-multiref",
+    )
+
+    assert klein_gate["schema"] == qwen_gate["schema"] == "figment/gate@1"
+    assert set(klein_gate) == set(qwen_gate)
+    assert set(klein_gate["rows"][0]) == set(qwen_gate["rows"][0])
+    assert set(klein_gate["summary"]) == set(qwen_gate["summary"])
+    assert klein_gate["summary"]["total"] == qwen_gate["summary"]["total"] == 30
+    for row in klein_gate["rows"]:
+        assert "image_id" in row and "pass" in row
+
+    assert set(klein_template) == set(qwen_template)
+    assert len(klein_template["rulings"]) == len(qwen_template["rulings"]) == 30
+    assert set(klein_template["rulings"][0]) == set(qwen_template["rulings"][0])
+
+
+def test_klein_multiref_framing_reaches_gate_json_through_build_grade(command, tmp_path):
+    """2026-09-15 per-framing face floor ruling, end to end: a klein-multiref plan's
+    job-record `framing` ("close" for face cells, "half" for body cells) must survive
+    plan -> manifest -> `_grading_images` -> `score_cells_for_stage` -> gate.json row,
+    and each row's `stage1` must record which `face_px_min` floor it was gated against
+    (`face_px_min_applied`) -- never inferred from the image or the output_name string.
+    Real `build_grade`/`score_cells_for_stage` with an offline no-face model; the fixture's fabricated
+    1x1 images have no real face, so every cell fails closed, but the plumbing under
+    test (framing + face_px_min_applied) does not depend on that outcome."""
+    gate, _ = _build_and_grade_dataset(
+        command, tmp_path, label="klein-multiref-framing", dataset_source="klein-multiref",
+    )
+    assert gate["summary"]["total"] == 30
+    face_rows = [row for row in gate["rows"] if row["image_id"].split("-tds-mr-")[-1].startswith("f")]
+    body_rows = [row for row in gate["rows"] if row["image_id"].split("-tds-mr-")[-1].startswith("b")]
+    assert len(face_rows) == 15
+    assert len(body_rows) == 15
+    assert all(row["framing"] == "close" for row in face_rows)
+    assert all(row["framing"] == "half" for row in body_rows)
+    # stage1 is present (though failed, since no real face) and records the floor it
+    # gated against: face cells against the persona default (600), body cells against
+    # the persona's own by-framing override (300, creator-001's own persona.yaml, which
+    # `_synthetic_persona` clones verbatim for this fixture's identity.floor block).
+    for row in face_rows:
+        assert row["stage1"]["face_px_min_applied"] == 600
+    for row in body_rows:
+        assert row["stage1"]["face_px_min_applied"] == 300
+
+
+def test_qwen3vl_caption_prompt_and_settings_match_module_11(command):
+    """Confirm (per the brief) that the caption pod prompt equals module 11's
+    tool-default caption prompt (r15b-training.md) and settings float8/512/128 --
+    both already matched before this task; this pins that fact as a regression test."""
+    build_set = command._build_set_module()
+    assert build_set.QWEN3VL_CAPTION_SETTINGS == {
+        "dtype": "float8", "max_resolution": 512, "max_new_tokens": 128,
+    }
+    assert build_set.QWEN3VL_CAPTION_MODEL_ID == "Qwen/Qwen3-VL-8B-Instruct"
+
+    template_path = PIPELINE / "train" / "runs" / "start-qwen3vl-caption.sh.template"
+    text = template_path.read_text(encoding="utf-8")
+    # MEDIUM-3 (adversarial review): parse the actual `instruction = (...)` string
+    # literal the template runs, rather than a fuzzy substring-or-fragments check that
+    # would still pass with extra/reworded text between the fragments.
+    match = re.search(r"instruction = \(\n(.*?)\n\)\n", text, re.DOTALL)
+    assert match, "start-qwen3vl-caption.sh.template must define instruction = (...)"
+    instruction = ast.literal_eval("(" + match.group(1) + ")")
+    assert instruction == (
+        "Caption this image as if you were going to try to generate it with an image "
+        "generator. Be thorough. Do not say things like 'It appears that' or 'possibly'. "
+        "Start out with things like 'A person on the beach'. No preamble."
+    )
 
 
 def test_generalized_prompts_note_derives_from_actual_reference_names_not_g01_g07(
@@ -1273,7 +1953,9 @@ def test_build_grade_writes_gate_json_and_a_pass_fail_board(command, tmp_path):
     assert gate_document["summary"]["failed"] == 30
 
     page_text = Path(grade["page"]).read_text(encoding="utf-8")
-    assert "failed gate (30)" in page_text
+    # Spec 2026-09-29 §7: the failed group is shown expanded, never collapsed.
+    assert re.search(r"failed gate[^<]*\(30\)</h2>", page_text)
+    assert "<details" not in page_text
     assert "Cells passing the gate (0)" in page_text
 
 
@@ -1567,7 +2249,7 @@ def test_run_identity_gate_threads_explicit_codex_backend(command, tmp_path, mon
     command._run_identity_gate(
         {}, [], [], tmp_path / "grade", judge_backend="codex-diagnostic",
     )
-    assert captured == {"skip_judge": False, "judge_backend": "codex-diagnostic"}
+    assert captured == {"skip_judge": False, "judge_backend": "codex-diagnostic", "reference_free": False}
 
 
 def test_grade_parser_defaults_to_claude_and_accepts_explicit_codex(command):
@@ -1857,7 +2539,7 @@ def test_train_first_plan_run_stage_all_executes_train_then_tester_in_order(
     pod_module = command._pod_runner_module()
     order: list[str] = []
 
-    def _fake_harness_run(argv, cwd=None):
+    def _fake_harness_run(argv, cwd=None, **kwargs):
         manifest_path = Path(argv[argv.index("--manifest") + 1])
         run_out = Path(argv[argv.index("--out") + 1])
         manifest = load_json(manifest_path)
@@ -2120,7 +2802,7 @@ def test_planning_freezes_explicit_ledger_for_both_plan_entrypoints_and_harness_
     stale = tmp_path / "stale-worktree" / "cost"
     for directory, usd in ((reconciled, "49.000000"), (stale, "1.000000")):
         directory.mkdir(parents=True)
-        (directory / "figment-fixture.tsv").write_text(
+        (directory / "figment-2026-09-30.tsv").write_text(
             f"model\tstep\tusd\nrunpod:test\tprior\t{usd}\n", encoding="utf-8",
         )
     monkeypatch.setenv("KB_LEDGER_DIR", str(stale))
@@ -2219,9 +2901,9 @@ def test_ledger_dir_resolution_follows_documented_precedence_e3(
     )
     assert plan["ledger_dir"] == str(pod_module.repo_ledger_dir().resolve())
     cap, spent = pod_module.arc_budget_state(
-        arc_cap_usd=float(command.ARC_CAP_USD), ledger_dir=Path(plan["ledger_dir"]),
+        arc_cap_usd=float(command._arc_cap_usd()), ledger_dir=Path(plan["ledger_dir"]),
     )
-    assert cap == float(command.ARC_CAP_USD)
+    assert cap == float(command._arc_cap_usd())
     assert spent == 0.0, "this repo checkout carries no real ledger rows (M3): they live on ops"
 
 
@@ -2234,7 +2916,7 @@ def test_creator001_live_3000_step_train_ceiling_still_clears_the_arc_cap_f5(
     $10.00 daily cap on its own (a separate, deliberate consequence -- see
     train/tests/test_tensor_track.py's
     test_train_manifest_ceiling_exceeds_the_daily_cap_and_is_refused_by_it) but must still
-    clear the much larger whole-arc cap (`ARC_CAP_USD`) -- this is the actual gate
+    clear the much larger whole-arc cap (`_arc_cap_usd()`) -- this is the actual gate
     `run --stage train` checks before ever creating a pod.
 
     M3: this repo carries no real ledger rows of its own (that history lives on ops), so
@@ -2252,7 +2934,7 @@ def test_creator001_live_3000_step_train_ceiling_still_clears_the_arc_cap_f5(
     assert len(checkpoints) == 11, "11 intermediates (250..2750) plus the final = 12 total"
 
     ceiling = float(budget["ceiling_usd"])
-    arc_cap_usd = float(command.ARC_CAP_USD)
+    arc_cap_usd = float(command._arc_cap_usd())
     # A realistic near-cap scenario: seed a synthetic ledger with a deliberately narrow
     # $0.50 margin so this still proves train's own ceiling can clear the arc cap by a
     # real, narrow amount -- not trivially against an oversized cap or an emptied ledger.
@@ -2261,7 +2943,7 @@ def test_creator001_live_3000_step_train_ceiling_still_clears_the_arc_cap_f5(
     assert spent_seed > 0, "train's ceiling plus the intended margin must fit under the cap"
     ledger_dir = tmp_path / "ledger"
     ledger_dir.mkdir()
-    (ledger_dir / "figment-2026-01-01.tsv").write_text(
+    (ledger_dir / "figment-2026-09-30.tsv").write_text(
         f"model\tstep\tusd\nl40s\tpod-create seed\t{spent_seed:.6f}\n", encoding="utf-8",
     )
 
@@ -2286,10 +2968,10 @@ def test_build_plan_refuses_when_planned_ceilings_exceed_remaining_arc_and_recor
     passed, and record the numbers on the plan when it is."""
     ledger_dir = tmp_path / "ledger"
     ledger_dir.mkdir()
-    # Seed the arc ledger so only $1.00 remains of ARC_CAP_USD -- any nonzero multi-stage
+    # Seed the arc ledger so only $1.00 remains of _arc_cap_usd() -- any nonzero multi-stage
     # synthetic plan's summed ceilings exceed that.
-    seed_spent = float(command.ARC_CAP_USD) - 1.0
-    (ledger_dir / "figment-2026-01-01.tsv").write_text(
+    seed_spent = float(command._arc_cap_usd()) - 1.0
+    (ledger_dir / "figment-2026-09-30.tsv").write_text(
         f"model\tstep\tusd\nl40s\tpod-create seed\t{seed_spent:.6f}\n", encoding="utf-8",
     )
     personas_root = tmp_path / "personas"
@@ -2416,6 +3098,13 @@ def test_apply_rulings_dataset_stage_routes_through_the_live_qwen3vl_job_when_de
             handle.write(f"{model}\tpod-create {pod_id}\t0.010000\n")
         return type("Result", (), {"returncode": 0})()
 
+    verifier = command._verify_pins_module()
+    caption_models = command._read_json(command.PINS_PATH)["pins"]["caption"]["models"]
+    pins_by_url = {verifier._pin_url(model): model for model in caption_models}
+    def fixture_head(url, *, timeout=30.0):
+        model = pins_by_url[url]
+        return 200, {"x-repo-commit": model["revision"], "x-linked-etag": model["sha256"]}
+    monkeypatch.setattr(verifier, "head_etag", fixture_head)
     monkeypatch.setattr(command.subprocess, "run", fake_harness)
     result = command.apply_rulings("creator-002", "dataset", plan_file, filled)
 
@@ -2456,6 +3145,166 @@ def test_caption_manifest_carries_only_pinned_safetensors_and_no_pickle(command)
     assert manifest["training"]["start_script_file"] == "start-qwen3vl-caption.sh.template"
 
 
+def test_caption_manifest_carries_the_diagnostics_enabling_field(command):
+    """M4 pod-log fix (2026-09-16): pod/runpod_run.py only sets `training_diagnostics_dir`
+    (and therefore only ever fetches `_training.log`/`_training.heartbeat`) when the
+    manifest's own `artifacts` list is non-empty -- the same field `_train_manifest`
+    relies on. Pin that `_caption_manifest` sets it too, so a future refactor can't
+    silently drop the harness's ability to fetch this pod's diagnostics."""
+    pins = command._read_json(command.PINS_PATH)
+    manifest = command._caption_manifest(pins, "creator-002", "creator002krea2", ["01.png"])
+    assert isinstance(manifest.get("artifacts"), list) and manifest["artifacts"]
+
+
+def test_caption_manifest_requires_pinned_pip_specs(command):
+    """The template installs `pins.pins.caption.pip` before running its python block
+    (transformers/accelerate -- neither is in ComfyUI's own requirements, which is what
+    starved the first live pod of a usable transformers). A caption pin missing that
+    list must fail fast in `_caption_manifest`, not render a template with an empty
+    install command."""
+    pins = command._read_json(command.PINS_PATH)
+    import copy
+    broken = copy.deepcopy(pins)
+    del broken["pins"]["caption"]["pip"]
+    with pytest.raises(command.FigmentTrainError, match="pip"):
+        command._caption_manifest(broken, "creator-002", "creator002krea2", ["01.png"])
+
+
+def test_caption_manifest_pip_specs_render_into_the_start_script(command, tmp_path):
+    """End-to-end (offline) regression for the 2026-09-16 live failure: the rendered
+    start script actually installs both pinned specs before the python block runs, and
+    writes/fetches under the name the harness's own diagnostic poll looks for
+    (pod/runpod_run.py TRAINING_DIAGNOSTIC_FILENAMES = ("_training.heartbeat",
+    "_training.log")), with the python traceback captured into that same log instead of
+    escaping to wherever the pod's own stdout/stderr goes."""
+    runpod_run = load_module("runpod_run_caption_pip_test_module", POD_RUNNER)
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    manifest_path = plan_root / planned["manifest"]
+    manifest = load_json(manifest_path)
+    pins = command._read_json(command.PINS_PATH)
+    pip_specs = pins["pins"]["caption"]["pip"]
+    assert pip_specs, "fixture pins must carry at least one caption pip spec"
+
+    _remote_path, rendered = runpod_run.rendered_training_start_script(manifest, manifest_path)
+
+    pip_install_pos = rendered.index("python -m pip install --no-cache-dir $caption_pip_specs")
+    images_marker_pos = rendered.index("images marker observed")
+    pycap_pos = rendered.index("<<'PYCAP'")
+    assert images_marker_pos < pip_install_pos < pycap_pos, (
+        "caption deps must install after the images marker and before the python block"
+    )
+    for spec in pip_specs:
+        assert spec in rendered, f"pinned spec {spec!r} must reach the rendered script"
+
+    assert '"${output_dir}/_training.log"' in rendered
+    assert "_training.heartbeat" in rendered
+    assert "import traceback" in rendered
+    assert "traceback.print_exc()" in rendered
+
+
+def test_caption_dtype_float8_loads_bfloat16_not_a_float8_storage(command, tmp_path):
+    """LIVE FAILURE 2026-09-16 (second caption pod, 8bi3qae4icrz3t): module 11's
+    `float8` is ai-toolkit's own quantize-time setting (qfloat8 via its quantizer),
+    never a `from_pretrained(dtype=...)` value -- `torch.set_default_dtype(float8)`
+    has no storage object and raises `TypeError`. The rendered script must map
+    `float8` to `bfloat16` for the LOAD dtype, log that it did, and never pass
+    `torch.float8_e4m3fn` to `from_pretrained`. `QWEN3VL_CAPTION_SETTINGS["dtype"]`
+    itself stays `"float8"` (module 11's recorded setting, pinned by
+    `test_qwen3vl_caption_prompt_and_settings_match_module_11`)."""
+    runpod_run = load_module("runpod_run_caption_dtype_test_module", POD_RUNNER)
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    manifest_path = plan_root / planned["manifest"]
+    manifest = load_json(manifest_path)
+    assert manifest["training"]["caption_model_dtype"] == "float8"
+
+    _remote_path, rendered = runpod_run.rendered_training_start_script(manifest, manifest_path)
+
+    assert "torch.float8_e4m3fn" not in rendered
+    assert (
+        "float8 is a quantize-time setting (module 11 / ai-toolkit); loading bf16 "
+        "weights, no quantizer on this pod"
+    ) in rendered
+    assert '{"float8": torch.bfloat16, "bfloat16": torch.bfloat16}' in rendered
+
+
+def test_caption_manifest_carries_the_body_char_bound_from_build_training_set(command, tmp_path):
+    """LIVE FAILURE 2026-09-16 (third caption pod, $0.15): a genuine
+    max_new_tokens=128 caption came back ~560 chars and was rejected by a hardcoded
+    500-char body cap. `_caption_manifest` must render the SAME bound
+    build_training_set.py enforces locally (CAPTIONS_MAX_BODY_CHARS), not an
+    independent copy that can drift."""
+    build_set = command._build_set_module()
+    assert build_set.CAPTIONS_MAX_BODY_CHARS == 1200
+
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    manifest_path = plan_root / planned["manifest"]
+    manifest = load_json(manifest_path)
+    assert manifest["training"]["caption_max_body_chars"] == build_set.CAPTIONS_MAX_BODY_CHARS
+
+
+def test_caption_body_bound_renders_into_the_template_with_no_hardcoded_500(command, tmp_path):
+    """The rendered pod script's own mirror check must use the rendered
+    {{caption_max_body_chars}} value, never a literal `> 500` -- and the actual
+    rendered comparison, evaluated against representative bodies, must match
+    build_training_set.py's own accept/reject boundary (560 chars accepted, the
+    live-failure length; 1300 chars rejected)."""
+    build_set = command._build_set_module()
+    runpod_run = load_module("runpod_run_caption_body_bound_test_module", POD_RUNNER)
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    manifest_path = plan_root / planned["manifest"]
+    manifest = load_json(manifest_path)
+
+    _remote_path, rendered = runpod_run.rendered_training_start_script(manifest, manifest_path)
+
+    assert "> 500" not in rendered
+    assert f"max_body_chars='{build_set.CAPTIONS_MAX_BODY_CHARS}'" in rendered
+
+    match = re.search(
+        r"if len\(text\) > (\w+) or any\(ord\(ch\) < 32 for ch in text\):", rendered,
+    )
+    assert match, "rendered validator must still gate on a body-length bound"
+    bound_var = match.group(1)
+    assert bound_var != "500", "the bound must be a variable, not a hardcoded literal"
+
+    def check(text_value: str) -> bool:
+        namespace = {"text": text_value, bound_var: build_set.CAPTIONS_MAX_BODY_CHARS}
+        condition_src = f"len(text) > {bound_var} or any(ord(ch) < 32 for ch in text)"
+        return bool(eval(condition_src, {}, namespace))
+
+    assert check("x" * 560) is False, "the live 2026-09-16 560-char caption must pass"
+    assert check("x" * 1300) is True, "a 1300-char body must still be rejected"
+
+
+def test_captions_max_body_chars_fits_captions_max_json_bytes(command):
+    """32 captions at the new 1200-char cap (worst case, ASCII, plus JSON string
+    quoting/escaping and filename-key overhead) must still fit comfortably under
+    CAPTIONS_MAX_JSON_BYTES (256 KiB): 32 * 1200 = 38,400 bytes vs a
+    262,144-byte ceiling -- more than 6x headroom."""
+    build_set = command._build_set_module()
+    worst_case = 32 * build_set.CAPTIONS_MAX_BODY_CHARS
+    assert worst_case < command.CAPTIONS_MAX_JSON_BYTES
+
+
 def test_plan_qwen3vl_caption_writes_a_dry_manifest_and_never_touches_subprocess(
     command, tmp_path, monkeypatch,
 ):
@@ -2477,6 +3326,584 @@ def test_plan_qwen3vl_caption_writes_a_dry_manifest_and_never_touches_subprocess
     assert manifest_path.is_file()
     assert "--max-usd" in planned["argv"]
     assert planned["ceiling_usd"] == command.manifest_ceiling(load_json(manifest_path))
+
+
+def _plan_qwen3vl_caption_images(tmp_path):
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    for name in ("a.png", "b.png"):
+        (images_dir / name).write_bytes(PNG_1X1)
+    return [images_dir / "a.png", images_dir / "b.png"]
+
+
+def test_plan_qwen3vl_caption_regenerates_a_manifest_with_no_recorded_run(
+    command, tmp_path,
+):
+    """MEDIUM-1 (adversarial review): a caption manifest survives on disk after a pod
+    that never got as far as writing a run.json (crash before dispatch, a launch that
+    never happened, etc). That must NOT permanently block every future
+    `apply-rulings --stage dataset` retry -- regenerate the manifest instead."""
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    first = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    manifest_path = plan_root / first["manifest"]
+    run_out = plan_root / first["out"]
+    assert not (run_out / "run.json").exists()
+
+    second = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    assert (plan_root / second["manifest"]) == manifest_path
+    assert manifest_path.is_file()
+
+
+def test_plan_qwen3vl_caption_refuses_to_overwrite_a_manifest_with_a_recorded_run(
+    command, tmp_path,
+):
+    """MEDIUM-1 (adversarial review): once a run.json exists for this manifest, a pod
+    actually consumed it -- overwriting it now would sever that receipt's own lineage,
+    so the refusal stays."""
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    run_out = plan_root / planned["out"]
+    run_out.mkdir(parents=True, exist_ok=True)
+    (run_out / "run.json").write_text(json.dumps({"error": None}), encoding="utf-8")
+
+    with pytest.raises(command.FigmentTrainError, match="refusing to overwrite"):
+        command.plan_qwen3vl_caption(
+            "creator-002", "creator002krea2", images, plan_root,
+            skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+        )
+
+
+# ---------------------------------------------------------------------------------
+# P5 (LIVE 2026-09-16, creator-001/live-20260916b): a RunPod capacity 500 at
+# `POST /pods` create time never places a pod at all. The harness records this
+# fail-closed -- `pod_id: null`, `placement_attempts: []`, `jobs: []`, `artifacts: []`,
+# `error` naming `CreateCallError`, and a `recovery-*.json` journal stuck at
+# `state: "uncertain"` -- which used to permanently block every future
+# `apply-rulings --stage dataset` retry (MEDIUM-1's bare `run.json` existence check).
+# ---------------------------------------------------------------------------------
+
+_NEVER_CREATED_CAPTION_ERROR = (
+    'PodStillRunning: create call failed (CreateCallError: RunPod POST /pods returned '
+    'HTTP 500: {"error":"create pod: There are no instances currently available",'
+    '"status":500}\n) and no pod with this name is visible \u2014 most likely never '
+    'created; verify with `status`'
+)
+_NEVER_CREATED_CAPTION_POD_NAME = "figment-bakeoff-20260916-115914-a88add"
+
+
+def _write_never_created_caption_run(run_out: Path, *, extra_receipt_fields=None) -> None:
+    """The exact receipt/journal shape
+    `creator-001/live-20260916b/train/runs/out/creator001krea2-tensor-caption/`
+    recorded, reproduced as a fixture (never reading that live run dir itself, which
+    this branch does not touch)."""
+    run_out.mkdir(parents=True, exist_ok=True)
+    receipt = {
+        "schema": "figment/runpod-run@1",
+        "dry_run": False,
+        "pod_id": None,
+        "gpu": {"type": "NVIDIA L40S", "count": 1, "cloud": "SECURE"},
+        "jobs": [],
+        "artifacts": [],
+        "placement_attempts": [],
+        "termination_verified": False,
+        "error": _NEVER_CREATED_CAPTION_ERROR,
+        "create_error": _NEVER_CREATED_CAPTION_ERROR,
+    }
+    if extra_receipt_fields:
+        receipt.update(extra_receipt_fields)
+    (run_out / "run.json").write_text(json.dumps(receipt), encoding="utf-8")
+    journal = {
+        "schema": "figment/pod-recovery@1",
+        "state": "uncertain",
+        "attempt_id": _NEVER_CREATED_CAPTION_POD_NAME,
+        "pod_name": _NEVER_CREATED_CAPTION_POD_NAME,
+        "manifest_path": "C:/nowhere/manifest.yaml",
+        "manifest_sha256": "0" * 64,
+        "max_minutes": 90,
+        "max_usd": 1.95,
+        "created_utc": "2026-09-16T11:59:14+00:00",
+        "receipt_path": str(run_out / "run.json"),
+        "pod_id": None,
+        "absence_verified": False,
+        "recovery_status": "run-termination-unverified",
+        "intent_sha256": "irrelevant-for-this-fixture",
+    }
+    (run_out / f"recovery-{_NEVER_CREATED_CAPTION_POD_NAME}.json").write_text(
+        json.dumps(journal), encoding="utf-8",
+    )
+
+
+def test_plan_qwen3vl_caption_regenerates_a_never_created_capacity_failure(
+    command, tmp_path, monkeypatch,
+):
+    """LIVE 2026-09-16: a RunPod capacity 500 on create is routine, not a one-off hand
+    fix -- `plan_qwen3vl_caption` must regenerate the manifest (renaming the dead out
+    dir to `.failed-1`, the same helper `--retry-failed` uses) once a live scan proves
+    no pod was ever actually created."""
+    monkeypatch.setattr(command, "_default_pod_name_scan", lambda pod_name: [])
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    manifest_path = plan_root / planned["manifest"]
+    run_out = plan_root / planned["out"]
+    _write_never_created_caption_run(run_out)
+
+    second = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+
+    assert (plan_root / second["manifest"]) == manifest_path
+    assert manifest_path.is_file()
+    renamed = run_out.with_name(f"{run_out.name}.failed-1")
+    assert renamed.is_dir()
+    assert (renamed / "run.json").is_file()
+    assert not run_out.exists()
+
+
+def test_plan_qwen3vl_caption_refuses_a_never_created_fixture_with_a_pod_id(
+    command, tmp_path, monkeypatch,
+):
+    """A recorded `pod_id` proves a pod WAS created -- `_prior_attempt_never_created`
+    must refuse this even though every other field matches the never-created shape, so
+    the ordinary "refusing to overwrite" rule still applies."""
+    monkeypatch.setattr(command, "_default_pod_name_scan", lambda pod_name: [])
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    run_out = plan_root / planned["out"]
+    _write_never_created_caption_run(run_out, extra_receipt_fields={"pod_id": "pod-real"})
+
+    with pytest.raises(command.FigmentTrainError, match="refusing to overwrite"):
+        command.plan_qwen3vl_caption(
+            "creator-002", "creator002krea2", images, plan_root,
+            skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+        )
+
+
+def test_plan_qwen3vl_caption_refuses_when_live_scan_finds_a_pod(
+    command, tmp_path, monkeypatch,
+):
+    """The live absence check is load-bearing, not decorative: even though the run.json
+    and journal both look exactly like a never-created capacity failure, a scan that
+    finds a pod with this name means the create may have actually succeeded, so the
+    manifest is not safe to regenerate."""
+    monkeypatch.setattr(
+        command, "_default_pod_name_scan",
+        lambda pod_name: [{"id": "surprise-pod", "name": pod_name}],
+    )
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    run_out = plan_root / planned["out"]
+    _write_never_created_caption_run(run_out)
+
+    with pytest.raises(command.FigmentTrainError, match="refusing to overwrite"):
+        command.plan_qwen3vl_caption(
+            "creator-002", "creator002krea2", images, plan_root,
+            skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+        )
+
+
+def _write_real_transport_caption_run(run_out: Path) -> None:
+    """A `.failed-N` (or current) out dir shaped as a real (spend-eligible),
+    verified-teardown transport failure -- distinct from the never-created shape above:
+    `pod_id` is set, so `_prior_attempt_never_created` refuses it and
+    `_count_prior_retry_attempts` counts it as real."""
+    run_out.mkdir(parents=True, exist_ok=True)
+    receipt = {
+        "schema": "figment/runpod-run@1", "dry_run": False, "pod_id": "pod-real",
+        "termination_verified": True,
+        "placement_attempts": [
+            {"pod_id": "pod-real", "termination_verified": True, "estimated_actual_usd": 0.01},
+        ],
+        "jobs": [], "artifacts": [],
+        "error": "ConnectionError: transient blip talking to the pod provider",
+    }
+    (run_out / "run.json").write_text(json.dumps(receipt), encoding="utf-8")
+
+
+def test_plan_qwen3vl_caption_regenerates_through_two_never_created_failures(
+    command, tmp_path, monkeypatch,
+):
+    """P6 (2026-09-16): a RunPod capacity 500 at qwen3vl caption pod-create time spends
+    nothing, so two of them recorded as `.failed-*` siblings do NOT trip
+    `MAX_RUN_RETRIES` (2) -- only the much larger `MAX_NEVER_CREATED_RETRIES` (8) bounds
+    never-created failures, and the manifest still regenerates."""
+    monkeypatch.setattr(command, "_default_pod_name_scan", lambda pod_name: [])
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    manifest_path = plan_root / planned["manifest"]
+    run_out = plan_root / planned["out"]
+    for index in (1, 2):
+        _write_never_created_caption_run(run_out.with_name(f"{run_out.name}.failed-{index}"))
+    _write_never_created_caption_run(run_out)
+
+    second = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+
+    assert (plan_root / second["manifest"]) == manifest_path
+    assert manifest_path.is_file()
+    renamed = run_out.with_name(f"{run_out.name}.failed-3")
+    assert renamed.is_dir()
+    assert not run_out.exists()
+
+
+def test_plan_qwen3vl_caption_refuses_past_the_never_created_retry_limit(
+    command, tmp_path, monkeypatch,
+):
+    """P6: the 9th never-created capacity failure still requires a fresh, reviewed
+    plan -- `MAX_NEVER_CREATED_RETRIES` (8) is a real ceiling, not an unbounded pass."""
+    monkeypatch.setattr(command, "_default_pod_name_scan", lambda pod_name: [])
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    run_out = plan_root / planned["out"]
+    for index in range(1, command.MAX_NEVER_CREATED_RETRIES + 1):
+        _write_never_created_caption_run(run_out.with_name(f"{run_out.name}.failed-{index}"))
+    _write_never_created_caption_run(run_out)
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match=r"already been retried 8 never-created time\(s\) \(limit 8\)",
+    ):
+        command.plan_qwen3vl_caption(
+            "creator-002", "creator002krea2", images, plan_root,
+            skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+        )
+
+
+def test_plan_qwen3vl_caption_refuses_past_the_real_retry_limit(command, tmp_path):
+    """P6: real (spend-eligible) verified-teardown failures still share the tighter
+    `MAX_RUN_RETRIES` (2), unaffected by the separate, larger never-created cap --
+    unchanged behavior, now expressed through the shared classifier."""
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    run_out = plan_root / planned["out"]
+    for index in (1, 2):
+        _write_real_transport_caption_run(run_out.with_name(f"{run_out.name}.failed-{index}"))
+    _write_real_transport_caption_run(run_out)
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match=r"already been retried 2 time\(s\) \(limit 2\)",
+    ):
+        command.plan_qwen3vl_caption(
+            "creator-002", "creator002krea2", images, plan_root,
+            skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+        )
+
+
+_JOB_CLASS_CAPTION_ERROR = (
+    "HarnessError: training failed marker appeared "
+    "(/workspace/output/_caption.failed seen before /workspace/output/_caption.complete)"
+)
+_JOB_CLASS_CAPTION_POD_NAME = "figment-creator001-live20260916b-caption"
+
+
+def _write_verified_teardown_job_failure_caption_run(
+    run_out: Path, *, extra_receipt_fields=None, journal_fields=None,
+) -> None:
+    """`--retry-caption-after-fix` (2026-09-16): the exact shape
+    `creator-001/live-20260916b`'s qwen3vl caption pod recorded -- a real pod was
+    created and verified torn down (`termination_verified: true`, zero job/artifact
+    output, ~$0.14 spent), but the pod-side SCRIPT ITSELF failed
+    (`HarnessError: training failed marker appeared`), not a transport/placement blip.
+    `HarnessError` is not in `RETRY_ELIGIBLE_ERROR_SUBSTRINGS`, so
+    `_out_dir_retry_eligibility_reason` rightly refuses this without the flag."""
+    run_out.mkdir(parents=True, exist_ok=True)
+    receipt = {
+        "schema": "figment/runpod-run@1", "dry_run": False, "pod_id": "pod-job-failed",
+        "termination_verified": True,
+        "placement_attempts": [{
+            "pod_id": "pod-job-failed", "termination_verified": True,
+            "estimated_actual_usd": 0.14,
+        }],
+        "jobs": [], "artifacts": [],
+        "error": _JOB_CLASS_CAPTION_ERROR,
+        "estimated_actual_usd": 0.14,
+    }
+    if extra_receipt_fields:
+        receipt.update(extra_receipt_fields)
+    (run_out / "run.json").write_text(json.dumps(receipt), encoding="utf-8")
+    journal = {
+        "schema": "figment/pod-recovery@1", "state": "terminated",
+        "attempt_id": _JOB_CLASS_CAPTION_POD_NAME, "pod_name": _JOB_CLASS_CAPTION_POD_NAME,
+        "absence_verified": True, "recovery_status": "terminated",
+    }
+    if journal_fields:
+        journal.update(journal_fields)
+    (run_out / f"recovery-{_JOB_CLASS_CAPTION_POD_NAME}.json").write_text(
+        json.dumps(journal), encoding="utf-8",
+    )
+
+
+def test_plan_qwen3vl_caption_refuses_a_job_class_failure_without_the_flag(
+    command, tmp_path,
+):
+    """The live 2026-09-16 situation this flag exists for: a verified-teardown,
+    zero-output failure whose `error` is JOB-class (`HarnessError`), not
+    transport/placement -- refused byte-for-byte today's behavior without
+    `--retry-caption-after-fix`."""
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    run_out = plan_root / planned["out"]
+    _write_verified_teardown_job_failure_caption_run(run_out)
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match="not a recognized transport/placement failure",
+    ):
+        command.plan_qwen3vl_caption(
+            "creator-002", "creator002krea2", images, plan_root,
+            skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+        )
+
+
+def test_plan_qwen3vl_caption_retry_after_fix_regenerates_a_job_class_failure(
+    command, tmp_path,
+):
+    """With the flag and a fixed cause, the same job-class failure regenerates the
+    manifest (renaming the dead out dir the same way every other retry path does) and
+    the regenerated manifest records why it was allowed."""
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    manifest_path = plan_root / planned["manifest"]
+    run_out = plan_root / planned["out"]
+    _write_verified_teardown_job_failure_caption_run(run_out)
+
+    reason = "pod template rewrite (49a7a33e) installs qwen3vl deps and captures the pod log"
+    second = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+        retry_after_fix_reason=reason,
+    )
+
+    assert (plan_root / second["manifest"]) == manifest_path
+    renamed = run_out.with_name(f"{run_out.name}.failed-1")
+    assert renamed.is_dir()
+    assert not run_out.exists()
+    manifest = load_json(manifest_path)
+    retry_after_fix = manifest["training"]["retry_after_fix"]
+    assert retry_after_fix["reason"] == reason
+    assert retry_after_fix["prior_out"] == renamed.name
+    assert retry_after_fix["template_sha256"] == command._sha256(
+        command.QWEN3VL_CAPTION_START_PATH,
+    )
+    assert isinstance(retry_after_fix["git_head"], str) and retry_after_fix["git_head"]
+
+
+def test_plan_qwen3vl_caption_retry_after_fix_refuses_with_outputs_present(
+    command, tmp_path,
+):
+    """The flag never admits an attempt that actually produced output -- the
+    job-output check runs before the error-class check either way."""
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    run_out = plan_root / planned["out"]
+    _write_verified_teardown_job_failure_caption_run(
+        run_out, extra_receipt_fields={"jobs": [{"files": ["output.png"]}]},
+    )
+
+    with pytest.raises(command.FigmentTrainError, match="refusing to overwrite"):
+        command.plan_qwen3vl_caption(
+            "creator-002", "creator002krea2", images, plan_root,
+            skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+            retry_after_fix_reason="fixed",
+        )
+
+
+def test_plan_qwen3vl_caption_retry_after_fix_refuses_unverified_teardown(
+    command, tmp_path,
+):
+    """The flag never admits an attempt whose pod teardown was never verified --
+    caught by the ordinary `termination_verified` check before the error-class check
+    it's meant to relax."""
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    run_out = plan_root / planned["out"]
+    _write_verified_teardown_job_failure_caption_run(
+        run_out, extra_receipt_fields={"termination_verified": False},
+    )
+
+    with pytest.raises(command.FigmentTrainError, match="refusing to overwrite"):
+        command.plan_qwen3vl_caption(
+            "creator-002", "creator002krea2", images, plan_root,
+            skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+            retry_after_fix_reason="fixed",
+        )
+
+
+def test_plan_qwen3vl_caption_retry_after_fix_regenerates_past_the_ordinary_limit(
+    command, tmp_path,
+):
+    """The flag's own, wider cap (`MAX_RETRY_AFTER_FIX` = 4) is what applies while the
+    flag is present -- two real job-class failures (equal to the ordinary
+    `MAX_RUN_RETRIES` = 2) still regenerate here, unlike the unflagged path."""
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    manifest_path = plan_root / planned["manifest"]
+    run_out = plan_root / planned["out"]
+    for index in (1, 2):
+        _write_verified_teardown_job_failure_caption_run(
+            run_out.with_name(f"{run_out.name}.failed-{index}"),
+        )
+    _write_verified_teardown_job_failure_caption_run(run_out)
+
+    second = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+        retry_after_fix_reason="fixed",
+    )
+    assert (plan_root / second["manifest"]) == manifest_path
+    renamed = run_out.with_name(f"{run_out.name}.failed-3")
+    assert renamed.is_dir()
+    assert not run_out.exists()
+
+
+def test_plan_qwen3vl_caption_retry_after_fix_refuses_past_max_retry_after_fix(
+    command, tmp_path,
+):
+    """`MAX_RETRY_AFTER_FIX` (4) still bounds the flagged path -- a 5th job-class
+    failure with the flag set requires a fresh, reviewed plan."""
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    run_out = plan_root / planned["out"]
+    for index in (1, 2, 3, 4):
+        _write_verified_teardown_job_failure_caption_run(
+            run_out.with_name(f"{run_out.name}.failed-{index}"),
+        )
+    _write_verified_teardown_job_failure_caption_run(run_out)
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match=r"already been retried 4 time\(s\) \(limit 4\)",
+    ):
+        command.plan_qwen3vl_caption(
+            "creator-002", "creator002krea2", images, plan_root,
+            skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+            retry_after_fix_reason="fixed",
+        )
+
+
+def test_apply_rulings_retry_caption_after_fix_rejects_an_empty_reason(command):
+    """`--retry-caption-after-fix` requires a non-empty reason -- argparse itself
+    refuses an empty string before `apply_rulings` ever runs."""
+    parser = command.build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args([
+            "apply-rulings", "--creator", "creator-002", "--stage", "dataset",
+            "--rulings", "rulings.json", "--retry-caption-after-fix", "",
+        ])
+
+
+def test_plan_qwen3vl_caption_images_ready_sentinel_is_non_empty_and_parses(
+    command, tmp_path,
+):
+    """LIVE FAILURE 2026-09-16 (run creator-001/live-20260916b): `_images.ready` was
+    written as a zero-byte file. `pod/runpod_run.py`'s upload preflight rejects any
+    zero-byte upload except the exact name `_dataset.ready` (the train path's own
+    sentinel) -- so the very first live qwen3vl caption pod never got past upload
+    verification. The sentinel's content is free (the pod-side consumer only tests
+    `-f` existence), so it must carry real, parseable, non-empty content."""
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    sentinel = plan_root / "train" / "runs" / "_uploads" / "creator-002" / "_images.ready"
+    assert sentinel.is_file()
+    raw = sentinel.read_text(encoding="utf-8")
+    assert raw.strip() != ""
+    payload = json.loads(raw)
+    assert payload == {
+        "schema": "figment/images-ready@1",
+        "images": len(images),
+        "trigger": "creator002krea2",
+    }
+
+
+def test_plan_qwen3vl_caption_manifest_passes_the_real_upload_preflight(
+    command, tmp_path,
+):
+    """The regression this bug needed: a bare unit assertion that a file exists is not
+    enough -- the fake test harness never ran the REAL `pod/runpod_run.py` upload
+    validator, which is exactly what rejected the zero-byte `_images.ready` sentinel
+    live (`upload file verification failed: expected a positive byte count`, first
+    live qwen3vl caption pod, 2026-09-16). Drive the actual emitted caption manifest
+    through the real harness's own `--dry-run` preflight, the same way
+    `test_build_plan_generates_every_stage...` and
+    `test_dop_train_plan_carries_its_own_step_derived_budget` already do for the other
+    stages."""
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    result = subprocess.run(
+        planned["argv"] + ["--dry-run"], cwd=ROOT, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "upload preflight" in result.stderr
 
 
 def test_live_qwen3vl_job_runner_rejects_a_pod_that_never_produced_captions(
@@ -2651,3 +4078,197 @@ def test_load_current_approval_refuses_a_gate_json_swapped_after_evaluation_m9(
     plan, root = command._load_plan("creator-002", plan_file)
     with pytest.raises(command.FigmentTrainError, match="gate.json changed"):
         command._load_current_approval(plan, root, "dataset")
+
+
+# ---------------------------------------------------------------------------------
+# P4 retry follow-ups (opus review of 1c29bc21): unit coverage for the two small
+# retry helpers that stand on their own, independent of the full harness fixture
+# `test_pipeline_command.py::_install_flaky_fake_harness` drives. See that file's
+# `-k retry` tests for the integration-level MEDIUM-1/2/3 coverage.
+# ---------------------------------------------------------------------------------
+
+
+def test_first_free_retry_rename_path_skips_an_existing_collision(command, tmp_path):
+    """LOW-3: a `.failed-N` collision (e.g. a leftover dir from an earlier, unrelated
+    interruption) is skipped for the next free suffix rather than raising a raw
+    `FileExistsError` at the caller's `out_dir.rename(...)`."""
+    out_dir = tmp_path / "run-out"
+    out_dir.mkdir()
+    (out_dir.with_name("run-out.failed-1")).mkdir()
+
+    target = command._first_free_retry_rename_path(out_dir, 1)
+
+    assert target == out_dir.with_name("run-out.failed-2")
+    assert not target.exists()
+
+
+def test_first_free_retry_rename_path_raises_when_exhausted(command, tmp_path):
+    """LOW-3: when every candidate in the search window is taken, raise
+    `FigmentTrainError` naming the path rather than looping forever or raising a raw
+    `FileExistsError`."""
+    out_dir = tmp_path / "run-out"
+    out_dir.mkdir()
+    out_dir.with_name("run-out.failed-5").mkdir()
+    out_dir.with_name("run-out.failed-6").mkdir()
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match=r"cannot find a free \.failed-N retry rename target near .*run-out",
+    ):
+        command._first_free_retry_rename_path(out_dir, 5, limit=2)
+
+
+def test_has_stray_retry_output_ignores_only_known_bookkeeping_files(command, tmp_path):
+    """LOW-2: `run.json`, `manifest.json`, `recovery-*.json` journals, and the two
+    `pod/recovery.py` lock files are the ONLY names a clean zero-output transport
+    failure legitimately leaves behind; anything else -- including something nested
+    in a subdirectory -- is a stray output."""
+    out_dir = tmp_path / "run-out"
+    out_dir.mkdir()
+    (out_dir / "run.json").write_text("{}", encoding="utf-8")
+    (out_dir / "manifest.json").write_text("{}", encoding="utf-8")
+    (out_dir / "recovery-figment-bakeoff-20260916-000000-abcdef.json").write_text(
+        "{}", encoding="utf-8",
+    )
+    (out_dir / ".figment-recovery-run.lock").write_text("", encoding="utf-8")
+    (out_dir / "recovery-figment-bakeoff-20260916-000000-abcdef.json.create-lock").write_text(
+        "", encoding="utf-8",
+    )
+    assert command._has_stray_retry_output(out_dir) is False
+
+    # LIVE 2026-09-16: the harness's captured diagnostics are bookkeeping, not output.
+    harness_dir = out_dir / "_harness"
+    harness_dir.mkdir()
+    (harness_dir / "_training.log").write_text("pip install ... Traceback ...", encoding="utf-8")
+    (harness_dir / "_training.heartbeat").write_text("2026-09-16T17:15:09Z", encoding="utf-8")
+    assert command._has_stray_retry_output(out_dir) is False
+    (harness_dir / "captions.json").write_text("{}", encoding="utf-8")
+    assert command._has_stray_retry_output(out_dir) is True
+    (harness_dir / "captions.json").unlink()
+
+    nested = out_dir / "nested" / "leftover.bin"
+    nested.parent.mkdir(parents=True)
+    nested.write_bytes(b"x")
+    assert command._has_stray_retry_output(out_dir) is True
+
+
+# ---------------------------------------------------------------------------------
+# `_prior_attempt_never_created` (P5, LIVE 2026-09-16 RunPod capacity 500 at create):
+# unit coverage independent of `plan_qwen3vl_caption`'s own regenerate/refuse tests
+# above and `test_pipeline_command.py -k retry`'s `--retry-failed` integration tests.
+# ---------------------------------------------------------------------------------
+
+
+def test_prior_attempt_never_created_accepts_the_live_capacity_failure_shape(
+    command, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(command, "_default_pod_name_scan", lambda pod_name: [])
+    run_out = tmp_path / "run-out"
+    _write_never_created_caption_run(run_out)
+
+    assert command._prior_attempt_never_created(run_out) is None
+
+
+def test_prior_attempt_never_created_refuses_a_recorded_pod_id(command, tmp_path, monkeypatch):
+    monkeypatch.setattr(command, "_default_pod_name_scan", lambda pod_name: [])
+    run_out = tmp_path / "run-out"
+    _write_never_created_caption_run(run_out, extra_receipt_fields={"pod_id": "pod-real"})
+
+    reason = command._prior_attempt_never_created(run_out)
+    assert reason is not None
+    assert "pod_id" in reason
+
+
+def test_prior_attempt_never_created_refuses_when_the_live_scan_finds_a_pod(
+    command, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(
+        command, "_default_pod_name_scan", lambda pod_name: [{"id": "p1", "name": pod_name}],
+    )
+    run_out = tmp_path / "run-out"
+    _write_never_created_caption_run(run_out)
+
+    reason = command._prior_attempt_never_created(run_out)
+    assert reason is not None
+    assert "live scan finds a pod" in reason
+
+
+def test_prior_attempt_never_created_refuses_without_a_recovery_journal(
+    command, tmp_path, monkeypatch,
+):
+    """`error` naming `CreateCallError` claims a create call was actually attempted --
+    `pod/runpod_run.py` always writes its recovery journal immediately before that
+    POST, so a missing journal here means the pod name (needed for the live scan)
+    cannot be identified; refuse rather than skip the live check."""
+    monkeypatch.setattr(command, "_default_pod_name_scan", lambda pod_name: [])
+    run_out = tmp_path / "run-out"
+    run_out.mkdir(parents=True)
+    (run_out / "run.json").write_text(json.dumps({
+        "pod_id": None, "placement_attempts": [], "jobs": [], "artifacts": [],
+        "error": "PodStillRunning: create call failed (CreateCallError: ...)",
+    }), encoding="utf-8")
+
+    reason = command._prior_attempt_never_created(run_out)
+    assert reason is not None
+    assert "recovery journal" in reason
+
+
+def test_readiness_timeout_is_a_retry_eligible_placement_failure(command, tmp_path):
+    """LIVE 2026-09-23: detail pod w20n3wtn30cceg never started its container (2400 s in
+    desiredStatus=RUNNING, proxy 404), verified teardown, zero output -- eligible; the
+    same receipt with a recorded job is not."""
+    run_out = tmp_path / "run-out"
+    run_out.mkdir(parents=True)
+    receipt = {
+        "pod_id": "w20n3wtn30cceg", "termination_verified": True,
+        "placement_attempts": [{"pod_id": "w20n3wtn30cceg", "machine_host": "41actztivcth",
+                                "termination_verified": True}],
+        "jobs": [], "artifacts": [],
+        "error": ("ReadinessTimeout: pod readiness timed out after 2400s: stuck in "
+                  "desiredStatus=RUNNING while proxy /system_stats returned 404"),
+    }
+    (run_out / "run.json").write_text(json.dumps(receipt), encoding="utf-8")
+    (run_out / "recovery-figment-bakeoff-20260923-052020-54c15e.json").write_text(json.dumps({
+        "state": "terminated", "absence_verified": True, "pod_id": "w20n3wtn30cceg",
+    }), encoding="utf-8")
+    assert command._out_dir_retry_eligibility_reason(run_out) is None
+
+    receipt["jobs"] = [{"output_name": "x", "files": ["x.png"]}]
+    (run_out / "run.json").write_text(json.dumps(receipt), encoding="utf-8")
+    assert command._out_dir_retry_eligibility_reason(run_out) is not None
+
+
+def test_prior_attempt_never_created_refuses_a_non_create_call_error(command, tmp_path):
+    run_out = tmp_path / "run-out"
+    run_out.mkdir(parents=True)
+    (run_out / "run.json").write_text(json.dumps({
+        "pod_id": None, "placement_attempts": [], "jobs": [], "artifacts": [],
+        "error": "NameResolutionError: could not resolve host",
+    }), encoding="utf-8")
+
+    reason = command._prior_attempt_never_created(run_out)
+    assert reason is not None
+    assert "CreateCallError" in reason
+
+
+def test_plan_argv_carries_the_one_arc_cap_and_its_env_override(command, tmp_path, monkeypatch):
+    personas = tmp_path / "personas"
+    _synthetic_persona(personas)
+    monkeypatch.delenv("KB_ARC_CAP_USD", raising=False)
+    assert not hasattr(command, "ARC_CAP_USD")
+    plan = command.build_plan(
+        "creator-002", "smoke", tmp_path / "a", personas_root=personas,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    run = plan["stages"]["smoke"]["runs"][0]
+    assert run["argv"][run["argv"].index("--arc-cap-usd") + 1] == "75.00"
+    assert plan["arc_cap_usd"] == "75.00"
+    # Relaunch recomputes `_planned_run` and refuses on any argv difference
+    # (figment_train.py run_planned_stage): a plan recorded under another cap is stale.
+    monkeypatch.setenv("KB_ARC_CAP_USD", "40")
+    recomputed = command._planned_run(
+        tmp_path / "a", tmp_path / "a" / run["manifest"], tmp_path / "a" / run["out"],
+        ledger_dir=Path(plan["ledger_dir"]),
+    )
+    assert recomputed["argv"] != run["argv"]
+    assert recomputed["argv"][recomputed["argv"].index("--arc-cap-usd") + 1] == "40.00"

@@ -1,4 +1,45 @@
+## Module08 motion stage
+
+Tensor video consumes an accepted module07 head swap of the exact driving clip's decoded frame0. The source graph uses fixed seed123, six steps, cfg1 and one81-frame/16fps native H264 MP4, with source-derived0.5MP/multiple32 dimensions. Input is conservatively CFR16/at least81 frames; no unproved resampling or padding is accepted. It does not use the trained persona LoRA or old clean gen-to-Wan2.2 adapter.
+
+Node-aware receipts and actual embedded prompt metadata bind the native movie. Decoded PNGs are review samples, never claimed harness outputs. Existing image and video eye gates remain required; fixture rulings cannot authorize production. Phase6 still needs **code implementing runtime admission from an approved real smoke receipt** with exact runtime/pin/graph/schema/termination/metadata evidence. Current launch refuses; approved public metadata alone is insufficient.
+
+## Module07 edit stage
+
+Module07 is an explicit tensor edit stage after an approved identity source. It uses its own approved BFS swap LoRA, so standalone passport editing does not depend on the persona checkpoint, body dataset or tester prompt. Graph parity retains four reference-latent nodes, the 1536 longest-side size, four scheduler steps and CFG1. Node76 receives the base; node169 receives the accepted identity.
+
+Plans bind the exact request/prompt and both source/staged image hashes, with original passport or accepted gen approval. Existing numeric grading, age holds, operator rulings and approval lineage remain authoritative. Fixture head-swap receipts bind clip/frame0 bytes but do not assert trusted extraction or semantic model success; they cannot become live runs. The official Klein9B gated HEAD verification limitation remains; no skip-pin-verification shortcut grants execution.
+
 # Tensor track — 10sorLabs module 11 on our harness
+
+## Current tensor baseline (2026-10-05)
+
+This section supersedes the historical clean-profile substitutions below for
+`training.recipe_profile: tensor`. The older measurements remain historical evidence;
+no new live dataset/training/tester run is claimed by this phase.
+
+| Stage | Implemented tensor recipe | Evidence or remaining limit |
+|---|---|---|
+| Dataset | Source module10 effective graph, 15 face + 15 body, one replicate, three 10-job shards; separate passport/body bindings; original linked prompts and refine prefixes | Verified source digest, independent widget/edge/prompt tests and mutation tests; no copied stale text widgets or bypassed restricted LoRA |
+| R1 base | Module04 qwen_image_edit_2511_bf16 loaded fp8_e4m3fn, Lightning strength 1, bfs_head_v5 strength 0.6, shift 3.1 | Approved R1; bf16 digest/revision verified with public HEAD metadata on 2026-10-05; no weight download |
+| Refine | Official Klein9B fp8, qwen_3_8b_fp8mixed type lumina2, source ReferenceLatent/detail-boost/sampler/upscale settings | lumina2 retained pending smoke; module10 flux2-vae comes from Comfy-Org/flux2-dev with installer digest d64f3a68..., distinct from the clean profile's older VAE pin |
+| Captions/training | Exact caption body without textual trigger; creator-id artifact stem; DOP off, raw Krea2, 3000 steps, save 250, keep 15, cached text embeddings, sampling off | Captions are planned locally and consumed only after a separately executed, verified receipt; smoke remains explicitly shorter |
+| Tester | Twelve checkpoints, 250..2750 plus final 3000, one approved scene prompt; 1448x2176, seed 1595, 4 steps, cfg 1, res_2s/beta, LoRA 1/1, zeroed negative | All twelve source branches compared after harness fanout collapse; selection stays an operator eye gate |
+| Traits | lips/brows/skin_pattern/hair/jaw, 0-100 match-to-passport, unavailable explicit | Display only; historical 95-row v1 inventory has no trait scores/labels; no thresholds fitted or activated |
+
+`tensor_body` and `tensor_tester_prompt` metadata, fixture markers and caption pending/resume
+commands are documented in [RUNBOOK](../../RUNBOOK.md#tensor-phase-2-offline-inputs-and-caption-resume).
+Dataset source and staged passport digests are frozen together; launch, grading and approval
+reject changed passport bytes or a changed selected source. Training-input comparisons use the
+existing semantic projection, so train-first's plan-only dataset_dir cannot invalidate its tester,
+while imported training values retain their recorded configuration authority.
+
+Pins live in `tensor-pins.yaml` (`dataset_tensor`, existing train/tester/caption groups).
+Klein9B has installer SHA 865ba09f... and public revision 902d9d..., but its unauthenticated weight
+HEAD returns 401. Gated access and an approved verification path remain prerequisites to live
+execution; offline pin bypass is not production verification. Rank/LR/optimizer/buckets,
+quantization and caption-instruction details absent from package text remain inherited pinned
+configuration/video-derived evidence, not newly established exact package proof.
 
 Detailed substitution/settings record for the `train`/`tester`/`gen` stages. Start at
 `pipeline/README.md` for the operator-facing pipeline overview, CLI, gate, and spend guards —
@@ -11,6 +52,138 @@ their UI/JSON, read out of upstream source, a declared ceiling, or (torch/CUDA, 
 compatibility, per-step throughput) measured live by the training smoke — see "Step count:
 3000, screened by the tester" below. Sources: `research/r15b-training.md` (module 11),
 `research/r15-10sorlabs-artefacts.md` §3e and §3g, and the two package JSONs.
+
+## P2 — module 10 dataset source, theirs vs. ours (both arms)
+
+MANDATE.md stage 2 / handoff item 1: the `dataset` stage gains a second source,
+`training.dataset_source: "klein-multiref"` (default stays `"qwen-edit"`, today's module-10
+qwen-edit + klein-4b-edit two-stage replica, `_dataset_manifests`/`tensor_dataset_v2_api.json` —
+unchanged, every existing test for it stays green). `klein-multiref` is FLUX.2 klein 4B **Base**,
+`ReferenceLatent` × 3 off the persona's own three identity references (g01/g02/g07 for
+creator-001) — the exact `klein4b_multiref_api.json` graph the bake-off m1 arm B already proved
+(facenet 0.87–0.93, `pipeline/README.md` "Live-proven runs" 09-07), reused here as a fresh-render
+dataset fan-out instead of a low-denoise *edit* of an existing photo. `_dataset_manifests_klein_multiref`
+(`figment_train.py`) rebinds it via `expand/build_expansion_set.py`'s own `_rebind_workflow` (nodes
+6/7/8 → `persona.identity.references` in order) — no second rebind implementation.
+
+| Setting | 10sorLabs value (module, source) | ours today (`qwen-edit`, unchanged) | ours after this change (`klein-multiref`) | Deviation reason |
+|---|---|---|---|---|
+| Dataset source model + conditioning | Module 10: FLUX.2-klein-9B (UNET) + Qwen2-8B lumina2 CLIP, low-denoise (0.23) **edit** of 2 self-generated passport photos (r15b-training.md module 10 table) | Qwen-Image-Edit-2511 (lightning 4-step) → klein-4b-edit refine (denoise 0.23), edit of the anchor references (`tensor_dataset_v2_api.json`) | FLUX.2 **klein 4B Base** (Apache-2.0), fresh-render conditioned by `ReferenceLatent` × 3 off g01/g02/g07 — no edit/denoise pass at all | Licence: klein-9B is FLUX Non-Commercial (r14 §6, REJECT); klein-4B Base is Apache-2.0. Bake-off evidence: r24/r25's bake-off m1 already measured this exact 3-ref graph at facenet 0.87–0.93 against g01, the best arm tested — reusing a proven graph rather than a new one |
+| Cell counts and structure | 15 face-angle + 15 body-pose = 30 cells from 2 source photos (module 10) | 30 half/close cells (3 shards) + a variable full-body-framed set (`dataset_fullbody`), from `persona.grammar`'s prompt-list rows | 30 cells: 15 face (angle × light, distance fixed "close") + 15 body (angle × wardrobe_family, distance fixed "half"), in 2 shards (face, body) | Matches module 10's own 15+15/30-cell shape exactly. Deviation from `qwen-edit`'s hand-authored 15+15 template rows (`tensor-dataset-prompts.yaml`): klein-multiref's 15+15 is DERIVED from `persona.grammar` (the same grammar `build_expansion_set.generate_allocation` already reads) rather than a second hand-written prompt list — cheaper to build/generalize per-persona, cost of losing module 10's exact per-row wording (documented trade-off, not hidden) |
+| Seeds | Fixed per cell (module 10: two fixed outer seeds, 15 rows each) | Fixed per cell (`_dataset_jobs`: two fixed outer seeds) | Fixed per cell: `KLEIN_MULTIREF_SEED_BASE + ordinal`, ordinal 1..30 in a stable face-then-body order, recorded on each job | Matches module 10's "fixed seed per cell" rule; base+ordinal (not module 10's own two literal seeds) keeps the scheme legible and collision-free against every other hardcoded seed already in this file (anchor/edit/tester/gen) |
+| Prompt template shape | 2× fixed 15-row prompt lists (`CR Prompt List` nodes), licensed content, not reproduced | 2× fixed 15-row hand-authored prompt lists (`tensor-dataset-prompts.yaml`), our own wording | ~~Grammar-derived: `_compose_look_clause(persona)` (identity) + one short angle/light or angle/wardrobe clause per cell~~ **SUPERSEDED 2026-09-16, see below** — angle/light/wardrobe phrase text itself still pulled from `build_expansion_set.ANGLE_PHRASES`/`LIGHT_PHRASES`/`WARDROBE_PHRASES`/`DISTANCE_PHRASES` — the SAME tables expansion-02's `build_prompt` reads, never a second near-duplicate table. `angles[:3] × lights` (3 angles × the shipped grammar's 4 lights = 12) falls short of the fixed 15 face cells, so `_klein_multiref_cells` pads 3 more (f13–f15), cycling back through the front angle and the same 4 lights (MEDIUM-3 fix, 2026-09-15: those pad cells now carry `crop: "tight"`, which `_klein_multiref_face_prompt` renders as a "framed tight head-and-shoulders portrait" clause instead of the wide "framed close from the chest up" one, so every one of the 15 face prompts is a distinct string even though f13–f15 repeat f01–f03's angle+light) | Same reason as "cell counts" above — avoids authoring a second 30-row prompt library by hand; documented deviation, not a hidden shortcut |
+| Prompt template shape — **LIVE 0/30 RESULT + FIX (2026-09-16)** | — | — | LIVE EVIDENCE (`orgs/figment/runs/creator-001/live-20260915b`, `grade/dataset/gate.json`): the klein-multiref dataset source rendered 30 clean, self-consistent cells at 2048×2560 ($1.62 actual) but the gate passed **0/30**. `identity_own` vs g01: median ≈0.61, range 0.16–0.85 (floor 0.7907); `face_px` on `close` cells 452–613 (floor 600) and on `half` cells 343–638 (floor 300 → all half cells cleared face_px). Root cause: `_klein_multiref_face_prompt`/`_klein_multiref_body_prompt` PREPENDED `_compose_look_clause` (a long textual description of hair/eyes/brows/makeup/skin) ahead of the three `ReferenceLatent` inputs, and the text encoder followed that description over the references. The prior run of the SAME graph (`expansion-03`, `calibration.json` set `expansion-03`, n=35) used a minimal reference-lock prompt (`build_expansion_set.build_prompt` style — "…Keep her identity, face shape, and features exactly as shown in the reference images; do not alter, blend, or invent any facial feature…", exp-03's shard jobs even used "The same woman as the reference, identical face; face the camera front-on, eyes on the lens; same room, same light.") and scored `identity_own` median **0.842** (0.678–0.91). The qwen-edit module-10 replica (`tensor_dataset_v2`, calibration set `track1-dataset`, n=31) scored median **0.924** with close cells at 1035–1494 px and half cells 251–563 px. **Fix applied**: `_klein_multiref_face_prompt`/`_klein_multiref_body_prompt` no longer call `_compose_look_clause` at all — no `identity.look` value string (hair/eyes/brows/makeup/skin text) appears in either prompt anymore. New shape: the adult-framing sentence (now shared verbatim with `build_expansion_set.build_prompt` via the new `ADULT_FRAMING_SENTENCE` constant) → the reference-lock clause FIRST (`_KLEIN_MULTIREF_REFERENCE_LOCK_CLAUSE`: "The same woman as the reference images, identical face; keep her identity, face shape, and features exactly as shown; do not alter, blend, or invent any facial feature.") → angle + distance/crop phrase → (body cells only) one `wearing <wardrobe>` clause → light + plain background (face only; body cells carry no light field) → a phone-camera/no-retouch clause (`_KLEIN_MULTIREF_PHONE_CAMERA_CLAUSE`). Still 15 unique face prompts / 15 unique body prompts; still one `wearing` per body prompt; still no profile/near-back angle; still no bedroom+white-wall contradiction. **Fix applied, NOT yet live-validated** — no live dataset run has scored this new prompt shape against the identity gate yet; see the rollout decision below (module-10 qwen-edit replica runs first to isolate training variables, klein-multiref revisited as a scored A/B later). |
+| Prompt template shape — **GEN-STAGE LIVE 0/12 RESULT + FIX (2026-09-22)** | — | — | LIVE EVIDENCE (`orgs/figment/runs/creator-001/live-20260916b`, `downstream/gen/gate.json`): the accepted step-2000 checkpoint's gen stage scored **0/12** — `identity_own` median 0.896 was fine, but judge `same_person` 45–68 (floor 70.2) and `face_px` 475–695 (floor 600), every still drifting to fuller lips/sharper arched brows — because the default gen prompt (`_generalized_gen_prompts`, `gen-prompts.yaml` `base_clause`) prepends the ENTIRE `identity.look` clause ahead of the scene, the same class of defect this table's dataset-stage row above already diagnosed. The SAME checkpoint's tester prompt (no look-feature words, close framing) scored judge 88. **Fix applied**: `training.gen_prompt_style: "trigger-scene"` (`training_config.py`, default stays `"look-clause"` — byte-identical to today) reuses the tester's own adult-framing/clothing/skin sentence plus a close-framed scene (`gen-prompts.yaml` `scenes_close`) with zero `identity.look` feature words, per 10sorlabs r15b-generation.md "Prompt-and-LoRA-must-agree." **NOT yet live-validated** — see `orgs/figment/runs/creator-001/ab-20260922-trigger-scene` for the local A/B plan. **2026-09-23 addendum**: the tester's single 4-step pass (no upscale/refine/detailer) still scores judge `same_person` 88 on this same checkpoint, while `krea2_gen_api.json`'s full chain (node 8 base → 11/12/13 4× upscale + 0.25 scale → 14 VAEEncode → 15 KSampler refine denoise 0.35 → 33 DetailerForEach denoise 0.15) scores 45–68 with the look-clause prompt and 30–60 with trigger-scene — the look clause helps, the post-render refine/detail passes hurt; `training.gen_refine_denoise`/`gen_detailer_denoise` (default 0.35/0.15, 0.0 removes the pass from `_gen_workflow` entirely) and `gen_prompt_style: "look-clause-close"` isolate which of those two effects is load-bearing before either gate threshold moves. **RESOLVED 2026-09-23, live**: `run1-20260923-close-norefine` (refine denoise 0, detailer denoise 0.20, `look-clause-close` prompts) scored **3/12 PASS** — the first gen stills ever to clear the full gate, judge same_person median 72 (35–78) vs the default recipe's 45–68 — proving refine was the dominant defect, not the prompt style alone; `detail1-20260923`'s own `d0.15` vs `d0.27` A/B on those kept stills confirms the same direction (`d0.15` judge same_person 78 vs `d0.27`'s 55–62, gate 1/6 pass), so detailer denoise ≤0.20 is the safer default too. Neither is wired as the persona/CLI default yet. |
+| Resolution | Module 10: `EmptyLatentImage` 1024×1440 (edit-pass latent) | Edit-pass latents per `tensor_dataset_v2_api.json` (module-10-shaped) | `EmptyFlux2LatentImage` 1024×1280 (klein4b_multiref_api.json's own verified graph) | Graph is reused as verified (bake-off m1); not re-tuned |
+| Resolution/gate (UPSCALE TAIL, adopt) | N/A | `tensor_dataset_v2_api.json`'s own resolution-boost tail (`ImageUpscaleWithModel` 4xNomosWebPhoto_RealPLKSR + `ImageScaleBy 0.5`, net 2x) already sits ahead of its low-denoise refine pass | Same tail (`UpscaleModelLoader` + `ImageUpscaleWithModel` + `ImageScaleBy 0.5`) now grafted between `klein4b_multiref_api.json`'s `VAEDecode` and `SaveImage` (`_klein_multiref_dataset_workflow`, dataset-stage code path only — the committed graph itself, and expansion-02's own use of it, are untouched) | The dataset identity gate's `face_px_min: 600` (`gate.yaml`) is measured on the SAVED image. **MEDIUM-4 fix (opus review, 2026-09-15): the 535–885 / 150–335 px figures previously here had no in-repo source and are replaced with real measurements.** No native (pre-tail) measurement of THIS exact graph exists in-repo; the closest real pre-tail counter-datapoint is `personas/creator-001/calibration/calibration.json`'s own `expansion-03` set (35 klein-edit cells, native resolution, no upscale tail): **80–379 px**, well under the 600 floor at native res — consistent with needing an upscale tail at all, even if not this exact graph. Post-tail, that SAME `calibration.json`'s `track1-dataset` set (this graph's own dataset-stage output, already through the 2x tail) measures close-framed (face) cells at **1035–1494 px** across 16 cells — comfortably clears 600 — and half-framed (body) cells at **251–563 px** across 14 measured cells (2 of them under 300, one further half-adjacent cell's `face_px` could not be measured at all). A handful of body-cell failures at the 300 floor are therefore an EXPECTED outcome of this distribution, not a defect. **RESOLVED by operator ruling 2026-09-15**: half-framed dataset cells now gate at a lower **300px** floor (`persona.yaml identity.floor.min_face_px.by_framing.half`, overlaid by `identity_gate.load_thresholds` into `gate.yaml`'s `face_px_min_by_framing`); close-framed cells are unchanged at 600. Body cells' ~300–670px post-tail range clears this floor; `identity_floor_gate` picks the floor from each cell's own `framing` (carried from the plan's job record, never inferred), and the gate row it produced records which floor applied (`face_px_min_applied`) |
+| Sampler/steps/cfg/denoise | Edit pass: seed fixed, steps 4, cfg 1, euler, beta, denoise 0.23 (identity-preserving edit) | Same edit-pass recipe (module-10 replica) | `Flux2Scheduler` 50 steps, `CFGGuider` cfg 4, `KSamplerSelect` euler, no denoise parameter (fresh generation, not an edit) — klein4b_multiref_api.json's own verified settings | Fresh-render graph has no analogous denoise knob; reused as bake-off-verified, not re-tuned here |
+| Captioner + prompt + settings | Qwen3-VL-8B-Instruct, float8, max res 512, max new tokens 128; caption prompt "Caption this image as if you were going to try to generate it with an image generator..." (r15b-training.md module 11) | `caption_mode: "provided"` (dataset stage's own `.txt` sidecars); `qwen3vl` hook exists (`_live_qwen3vl_job_runner`, M4) but not the persona default | `caption_mode: "qwen3vl"` — **already implemented and already matches module 11 exactly**: `QWEN3VL_CAPTION_SETTINGS` (`train/build_training_set.py`) is `{"dtype": "float8", "max_resolution": 512, "max_new_tokens": 128}` and `start-qwen3vl-caption.sh.template`'s `instruction` string is byte-identical to r15b's quoted tool-default prompt — checked as part of this task, no fix needed (see `test_qwen3vl_caption_prompt_and_settings_match_module_11` below) | Settings/prompt match module 11 exactly; **live-observed deviation (2026-09-16, second caption pod 8bi3qae4icrz3t)**: `float8` is module 11's ai-toolkit quantize-time setting (qfloat8 via its own quantizer), not a `from_pretrained` load dtype — there is no quantizer on this pod, so the caption model loads **bf16** weights instead (`start-qwen3vl-caption.sh.template`'s dtype map), producing the same captions modulo quantization noise |
+| Trigger/caption composition | N/A (module 11 auto-captions with no trigger token) | `"<trigger> <noun>"` pairing (`training_config.persona_trigger_clause`) prepended to every qwen3vl caption body | Unchanged — klein-multiref only changes which pod produced the underlying images, never how captions are composed downstream | DOP requires the trigger word in every caption regardless of dataset source (training_config.py's own DOP docstring); no reason to special-case it here |
+| Trainer arch / rank / LR / optimizer / steps / save cadence / buckets / cache text embeddings / caption dropout / DOP / checkpoint screening | See "Settings — theirs → ours" table below (module 11) | Unchanged (Krea-2 raw, rank 32, LR 1e-4, AdamW8bit, 3000 steps/save 250, buckets 512/768/1024, cache-text-embeddings on, caption dropout 0.05, DOP on per creator-001's own deliberate deviation) | Unchanged — `training.dataset_source` only feeds the `dataset` stage; the `train` stage never reads it (it just uploads whatever `.png`/`.txt` pairs a dataset directory holds, `_train_manifest`) | Nothing downstream of the dataset stage needs to know or care which source produced the training images |
+
+**Fixed during this pass (brief's "fix any cheap mismatch you find"):** none found. `QWEN3VL_CAPTION_SETTINGS` and the caption pod's instruction string already matched module 11's own tool-default settings/prompt byte-for-byte before this task started; the read-first pass above and a new regression test (`test_qwen3vl_caption_prompt_and_settings_match_module_11`) both confirm this rather than assume it.
+
+**`lineage.TRAIN_TIME_KEYS` argument:** `dataset_source` is added. Precedent: `skin_lora` is already in `TRAIN_TIME_KEYS` despite being a *dataset*-stage input (module 04/05's full-body second pass), not a literal ai-toolkit training-config field — the frozenset's real boundary is "determines what pixels the LoRA trained on," not "is read by the trainer pod." `dataset_source` is exactly that: it picks the model family and conditioning mode that produced every training image, which is at least as identity-determining as `skin_lora`. `caption_mode` stays OUT of `TRAIN_TIME_KEYS` (unchanged) — it only changes caption *text*, never the pixels, and the ordinary (non-imported) checkpoint-promotion path already invalidates on ANY training-dict drift regardless of this frozenset (`figment_train.py`'s `current_projection != source_projection` check); the frozenset only matters for an `origin: "imported"` ladder, where the dataset was never produced by this pipeline's own `dataset` stage in the first place.
+
+**Dataset ceiling (klein-multiref, 2 shards of 15 cells each):** `pins.pod_classes.l40s.stages.dataset_multiref` sets `readiness_timeout_seconds: 1800` (matches the `anchor` stage's own readiness budget for a comparable ~16 GB pull: klein-base-4b 7.75 GB + qwen_3_4b 8.04 GB + flux2-vae 0.34 GB, vs. `dataset`/`anchor_edit`'s heavier 2700 s for a 5-model, 4-custom-node pull) and `job_timeout_seconds: 480` per cell (HIGH-1 opus-review fix, 2026-09-15). Per-cell time estimate: this exact `klein4b_multiref_api.json` graph already ran live for creator-001 -- `personas/creator-001/batches/expansion-0{2,3}/pod-runs/*/run.json` record per-job times of **154.6-164.7 s on an RTX 4090** (Ada-class, same generation as the pinned L40S, no dedicated L40S benchmark found), all BEFORE the 4x upscale tail (`ImageUpscaleWithModel` + `ImageScaleBy 0.5`) this graph now appends per the UPSCALE TAIL ruling. `job_timeout_seconds: 480` is ~2.9× the measured 164.7 s ceiling before that tail, holding real margin for the added upscale pass instead of the old 300 s pin, which undercut the shipped 360 s shard precedent and left under 2x margin once the tail is counted. `minimum_runtime_minutes` (`pod/runpod_run.py`) then derives `max_minutes = 1800/60 + (480 × 15)/60 + 5 = 155` per shard; at `$1.30/h` that is **$3.3583/shard × 2 shards = $6.7167** (the operator's $20 covers dataset+captions+train+tester+gen+detail+video for the whole live chain).
+
+**[SUPERSEDED — see the 2026-09-16 rollout paragraph below, which flips this back to
+`dataset_source: "qwen-edit"`; `grade/tester/accepted-checkpoint.json`'s
+`training_inputs.dataset_source` is `"qwen-edit"`.]**
+
+**Rollout status — creator-001's live `training.yaml` now sets `dataset_source: "klein-multiref"`
+(operator ruling 2026-09-15: the live chain must run the new source).** `expand/tests/
+test_tensor_dataset.py` (31 tests) builds its ENTIRE fixture set by planning the `dataset` stage
+against a persona/training config at collection time, per its own module docstring ("never a
+synthetic one ... this file specifically replicates against the live config") — with creator-001
+now on klein-multiref, that plan would otherwise produce the wrong graph entirely for this
+qwen-edit-specific regression suite. Rather than add a second persona directory under `personas/`
+or retire the file, `_creator001_qwen_edit_personas_root()` (top of that file) mirrors creator-001's
+REAL persona.yaml/training.yaml/identity-spec.md/anchors (byte-for-byte, via `shutil.copytree`,
+preserving the real `orgs/figment/{pipeline,personas}` sibling layout so `register.spec.path`'s
+`"../../pipeline/look-spec-v2.md"` still resolves) into a `tempfile.mkdtemp()` root, with
+`training.dataset_source` overridden back to `"qwen-edit"` in the copy only — loaded through the
+exact same loader (`figment_train.build_plan` → `training_config.load_persona_with_training`), no
+new machinery, no second checked-in persona. All 31 tests pass unchanged in intent.
+`validate_training`/`_dataset_manifests_klein_multiref` are exercised end-to-end both by that live
+creator-001 plan (dry-run clean, `verify_pins.py` clean) and by synthetic-persona unit/integration
+tests in `tests/test_figment_train.py` (dry-run clean, gate-schema-identical to the qwen-edit path
+by direct side-by-side comparison, ceiling-checked).
+
+**Live 18/60 on the qwen-edit replica (2026-09-16, run `orgs/figment/runs/creator-001/live-20260916`,
+`dataset_replicates: 2`, $2.9 actual over 8 pods incl. one DNS-blip retry):** identity_own median 0.898
+(0.64–0.946) — identity is not the problem on this source. Gate losses were structural: 16 `close` cells
+failed ONLY `face_px < 600` (rendered chest-up at ~400–510 px, identity 0.82–0.94), all 10 `full` cells
+failed the 600 floor at 276–374 px (`full` framing has no `by_framing` override — operator ruling pending),
+13 cells failed the judge's `same_person` (55–68 vs 70.2) and 9 `|age_delta|`. Row-level: face rows worded
+"headshot" / "close-up" / "low-angle shot, looking up at her face" (f08, f09, f10, f12, f13, f14) rendered
+at 750–970 px; rows worded "DSLR photograph … view of her face", "profile view of her face", "shot … over
+her shoulder", "shot from behind the right shoulder", "Rembrandt lighting portrait", "portrait … showing the
+face and shoulders" (f01–f07, f11, f15) rendered at ~480 px. Module 10's face branch is face-dominant by
+construction (its input is the 1680² `FaceBoundingBox` crop of the reference). **Edit applied**: those nine
+rows now carry an explicit tight-framing clause in the passing rows' register (angle/gaze/light/background
+content unchanged, row order and seeds unchanged); pinned by
+`expand/tests/test_tensor_dataset.py::test_every_face_row_carries_a_tight_framing_clause`. Expectation:
+close cells ≥ ~750 px → ~26–30 approvals of 60. **Edited after live 18/60, NOT yet live-validated.**
+The 18/60 run is left at its gate (`GATE dataset: awaiting ruling`) as evidence for the pending `full`
+floor ruling; it is not the training set.
+
+**Rollout status — SUPERSEDED 2026-09-16: creator-001's live `training.yaml` flips back to
+`dataset_source: "qwen-edit"`, adding `dataset_replicates: 2`** (`caption_mode: "qwen3vl"`
+unchanged). The klein-multiref live run above (`live-20260915b`) is the reason -- see the
+"Prompt template shape — LIVE 0/30 RESULT + FIX" row above for the root cause and the fix applied
+to its prompts. That fix is real but NOT yet live-validated, so this rollout runs the already-proven
+qwen-edit/module-10 replica now instead of re-testing klein-multiref blind a second time in the same
+pass.
+
+Evidence (identity_own vs g01, median [range] where measured; judge pass rate from `gate.yaml`'s own
+calibration block, `orgs/figment/personas/creator-001/calibration/calibration.json`):
+
+| Source | identity_own median [range] | Judge pass rate | Note |
+|---|---|---|---|
+| klein-multiref (`live-20260915b`, live, n=30) | 0.61 [0.16–0.85] | 0/30 (0%) | New prompt shape, fix applied, not yet live-validated |
+| expansion-03 (klein-edit graph, calibration set, n=35) | 0.842 [0.678–0.91] | 23/35 (66%) | Reference-lock-only prompt, same family as the fix above |
+| track1-dataset (qwen-edit/module-10 replica, calibration set, n=31) | 0.924 [n/a] | 22/31 (71%) | THIS is the graph `dataset_source: "qwen-edit"` runs |
+
+**Decision:** run the proven qwen-edit/module-10 replica now (3000 steps, `qwen3vl` captions,
+module-11 trainer settings) to isolate the training-stage variables (LoRA rank/LR/steps/DOP) from
+dataset-source risk entirely -- track1-dataset is the graph with the highest measured identity score
+and the only one with a real (non-live-failed) pass rate for this exact conditioning path. Revisit
+klein-multiref's fixed reference-lock-only prompts later as a scored A/B against this run, once the
+training-stage question is answered, rather than gambling the training run on an unvalidated prompt
+fix.
+
+**Rollout note (2026-09-16, M4 caption pod):** the first live qwen3vl caption pod
+(`creator-001/live-20260916b`, 08:41) bootstrapped and uploaded cleanly but died 14s into its
+python block with no missing pip deps (`transformers`/`accelerate`) and no diagnostic reaching
+the harness (it logged only to `_caption.log`, a name `pod/runpod_run.py` never fetches); fixed
+offline by pinning those specs in `tensor-pins.yaml`, installing them before the python block,
+renaming the log to `_training.log`, and adding a heartbeat — live-proven 2026-09-16 (pod
+symlq3jynb83a8).
+
+**Rollout note (2026-09-16, fourth attempt, third caption pod `d84dzamf8gccbu`, $0.084):** deps
+installed and Qwen3-VL-8B loaded, and a caption was generated — then the pod's own validator
+rejected it: the body was ~560 chars against a hardcoded 500-char cap, contradicting the pinned
+`max_new_tokens: 128` setting (up to ~900 chars of English). Fixed offline by raising the bound to
+`CAPTIONS_MAX_BODY_CHARS = 1200` (`train/build_training_set.py`), rendered into the template as
+`{{caption_max_body_chars}}` instead of a hardcoded literal; still a hard failure past the bound,
+never a silent truncation — live-proven 2026-09-16 (pod symlq3jynb83a8): pod symlq3jynb83a8
+(run.json `termination_verified: true`, $0.1234) produced 32 captions with bodies 367–647 chars.
+
+**Yield arithmetic:** the qwen-edit dataset produces 30 base cells per replicate — 15 face (`close`,
+600px floor) + 10 half-body (`half`, 300px floor) + 5 full-body (`full`; `persona.yaml`
+`identity.floor.min_face_px.by_framing` only overrides `"half"`, so `"full"` falls back to the
+generic 600px floor, which its whole-body framing cannot clear structurally regardless of replicate
+count — these 5 are an expected write-off, not a defect). That leaves 25 gateable cells (15 + 10) as
+the real approval pool per replicate. At track1-dataset's own calibrated 71% judge pass rate (the
+closest real precedent — this IS the same graph's prior calibration set), 25 cells yield an expected
+~17.75 (~18) approvals: short of the ≥20 a training set needs. `dataset_replicates: 2` doubles the
+gateable pool to 50 cells, for an expected ~35.5 approvals at 71% (or ~33 at expansion-03's more
+conservative 66%) — comfortably above the 20 floor with real margin for a worse-than-calibration
+live run. (`_dataset_jobs` replicates every row uniformly, including the 5 structurally-unclearable
+full cells, for the sharding-simplicity reason `_dataset_manifests`'s own docstring gives — this
+spends a little extra on cells that were never going to help the approval count, not a deliberate
+yield optimization.)
 
 ## Model and licence
 
@@ -275,7 +448,7 @@ target. `_apply_train_budget`'s `TRAIN_STEP_RATE_DOP_S = 9.0` (`figment_train.py
 measured-with-margin DOP rate; at `steps=3000` it derives `job_timeout_seconds`/`max_minutes`
 dynamically per persona (never a fixed, unrecomputed pod-class pin — see `_apply_train_budget`
 and `pipeline/README.md` "Spend guards"), landing at `ceiling_usd=$15.73` — comfortably inside
-the $60.00 arc cap (raised from $50.00, operator ruling 2026-09-15; read live off the
+the $75.00 arc cap (operator ruling 2026-09-29; read live off the
 resolved ledger at plan time, M3) but **above** the $10.00/day
 governance limit on its own, so a live `train` run needs its own calendar day with no other
 Figment spend, exactly like `gen` already does. `save_every` stays module 11's `250`, so the
@@ -425,3 +598,11 @@ All 8/8 unique file pins across this directory's four manifests are now verified
 mutable `main`. `pod/tests/test_runpod_run.py`'s `model_revision`/`model_sha256` accept every
 value above (exercised by `train/tests/test_tensor_track.py::
 test_every_model_entry_is_pinned_with_revision_and_sha256`).
+
+## Module09 tensor generation integration
+
+The tensor gen profile uses the source module09 graph: RealisticSnapshot1.5, pawg0.65, then accepted identity LoRA1.0(model/clip); base1448x2176, four main steps/cfg1/res_2s/beta. Scene seeds are1594+original scene_index even when batching by framing. Refine seed40 and FaceDetailer seed137053700462745 stay fixed after job application. Close-up removes the entire upscale/refine branch and upscaled save under U5. Output receipts retain exact node/role identity; every saved variant enters grading.
+
+`gen_tensor` contains exact installer-approved model files and effective custom-node commits. Public metadata is recorded separately from runtime compatibility. The current scheduling/runtime envelope inherits the existing gen configuration; it is unmeasured for this source graph and is not production admission. Per-file style/NMKD mirror licences and RES4LYF licence classification remain unresolved. Fixture plans always refuse live dispatch.
+
+Scene request metadata and optional identity.look.face are gen-only. The generic persona projection excludes only the new optional face slot; all original eight look slots remain bound. Gen inputs explicitly hash/revalidate canonical passport descriptors, photo, text approval, framing and request files. This keeps an existing accepted training checkpoint valid when gen-only face words are supplied, while stale gen rulings fail. Clean gen composition and historic _03 behavior remain unchanged.

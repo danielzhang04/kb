@@ -32,6 +32,10 @@ gen_helpers = load_module(
 )
 
 
+# Freshness tests exercise real grading/rulings, never model downloads or inference.
+offline_fixture_models = train_helpers.offline_fixture_models
+
+
 @pytest.fixture(scope="module")
 def command():
     return load_module("figment_freshness_driver", PIPELINE / "figment_train.py")
@@ -184,7 +188,7 @@ def test_all_pauses_at_anchor_and_repeat_never_launches_duplicate_work(
     )
     calls = []
 
-    def fake_harness(argv, cwd=None):
+    def fake_harness(argv, cwd=None, **kwargs):
         manifest_path = Path(argv[argv.index("--manifest") + 1])
         run_out = Path(argv[argv.index("--out") + 1])
         manifest = read_json(manifest_path)
@@ -206,7 +210,7 @@ def test_all_pauses_at_anchor_and_repeat_never_launches_duplicate_work(
         model = command._pod_runner_module().gpu_model_label(manifest["gpu"]["type"])
         with ledger.open("a", encoding="utf-8") as handle:
             handle.write(f"{model}\tpod-create {pod_id}\t0.010000\n")
-        return type("Result", (), {"returncode": 0})()
+        return type("Result", (), {"returncode": 0, "stderr": ""})()
 
     monkeypatch.setattr(command.subprocess, "run", fake_harness)
     with pytest.raises(command.FigmentTrainError, match="anchor stage completed"):
@@ -361,3 +365,177 @@ def test_train_first_rechecks_rendered_training_config_before_launch(
     )
     with pytest.raises(command.FigmentTrainError, match="training.json changed"):
         command.run_planned_stage("creator-002", "train", out / "plan.json")
+
+
+def test_dataset_source_change_invalidates_training_input_projection_equality(command):
+    """MEDIUM-3 (adversarial review): membership in TRAIN_TIME_KEYS is inert unless it
+    actually participates in the freshness/equality checks checkpoint promotion runs.
+    Prove the BEHAVIOUR, not just the frozenset literal: a projection differing ONLY in
+    `dataset_source` must compare unequal on the direct (non-imported) promotion check
+    (`current_projection != source_projection`, figment_train.py) -- dataset_source
+    really does invalidate freshness. For the imported-ladder path (P4i), which
+    deliberately excludes every TRAIN_TIME_KEYS field from the "did the operator's live
+    persona training drift in a field this checkpoint doesn't own" comparison, a
+    dataset_source-only diff must be invisible there instead -- it is validated
+    separately against the imported config file itself, never against the persona's
+    live training.yaml. `dataset_source` picks the model family/conditioning that
+    produced every training image -- at least as identity-determining as `skin_lora`,
+    already in TRAIN_TIME_KEYS for the same dataset-stage-only reason (TENSOR-TRAINING.md
+    P2). `caption_mode` stays OUT on purpose: it only changes caption text, never
+    pixels."""
+    lineage = command._lineage_module()
+    base = {
+        "steps": 600, "save_every": 200, "trigger": "t", "base_arch": "krea2",
+        "dataset_source": "qwen-edit",
+    }
+    changed = dict(base, dataset_source="klein-multiref")
+    source_projection = lineage.training_input_projection(base)
+    current_projection = lineage.training_input_projection(changed)
+
+    # Direct (non-imported) promotion check: ANY projection diff invalidates freshness,
+    # dataset_source included -- this is the real mechanism, not a label.
+    assert current_projection != source_projection
+
+    # Imported-ladder gen-time check: TRAIN_TIME_KEYS fields (dataset_source included)
+    # are deliberately excluded here, so a dataset_source-only diff does NOT show up.
+    gen_time_keys = set(current_projection) - lineage.TRAIN_TIME_KEYS
+    current_gen_time = {key: current_projection[key] for key in gen_time_keys}
+    source_gen_time = {key: source_projection[key] for key in gen_time_keys}
+    assert current_gen_time == source_gen_time
+
+    assert "dataset_source" in lineage.TRAIN_TIME_KEYS  # the precedent this follows
+    assert "skin_lora" in lineage.TRAIN_TIME_KEYS  # the precedent this follows
+    assert "caption_mode" not in lineage.TRAIN_TIME_KEYS  # deliberately excluded
+
+
+def test_gen_prompt_style_is_gen_time_only_like_style_lora(command):
+    """2026-09-22: `training.gen_prompt_style` (training_config.py) is a gen-plan-time
+    prompt-composition choice, never a training input -- classified exactly like
+    `style_lora`/`style_lora_strength` (M3's own module comment above
+    `GEN_TIME_ONLY_KEYS`). `training_input_projection` must drop it entirely so a gen
+    plan whose `--gen-prompt-style` differs from the tester plan the checkpoint was
+    promoted from never fails the accepted-checkpoint freshness comparison over a field
+    the checkpoint itself never trained with."""
+    lineage = command._lineage_module()
+    assert "gen_prompt_style" in lineage.GEN_TIME_ONLY_KEYS
+    base = {
+        "steps": 600, "save_every": 200, "trigger": "t", "base_arch": "krea2",
+        "gen_prompt_style": "look-clause",
+    }
+    changed = dict(base, gen_prompt_style="trigger-scene")
+    assert lineage.training_input_projection(base) == lineage.training_input_projection(changed)
+    assert "gen_prompt_style" not in lineage.training_input_projection(base)
+
+
+def test_gen_refine_and_detailer_denoise_are_gen_time_only_like_gen_prompt_style(command):
+    """2026-09-23: `gen_refine_denoise`/`gen_detailer_denoise` join `GEN_TIME_ONLY_KEYS`
+    on the same footing as `gen_prompt_style` -- gen-plan-time-only knobs on
+    `_gen_workflow`'s refine/detailer passes, never training inputs."""
+    lineage = command._lineage_module()
+    assert "gen_refine_denoise" in lineage.GEN_TIME_ONLY_KEYS
+    assert "gen_detailer_denoise" in lineage.GEN_TIME_ONLY_KEYS
+    base = {
+        "steps": 600, "save_every": 200, "trigger": "t", "base_arch": "krea2",
+        "gen_refine_denoise": 0.35, "gen_detailer_denoise": 0.15,
+    }
+    changed = dict(base, gen_refine_denoise=0.0, gen_detailer_denoise=0.0)
+    assert lineage.training_input_projection(base) == lineage.training_input_projection(changed)
+    assert "gen_refine_denoise" not in lineage.training_input_projection(base)
+    assert "gen_detailer_denoise" not in lineage.training_input_projection(base)
+
+
+def test_recipe_profile_is_a_train_time_key(command):
+    assert "recipe_profile" in command._lineage_module().TRAIN_TIME_KEYS
+
+
+def test_pre_profile_record_stays_current_for_clean_and_refuses_tensor(command):
+    lineage = command._lineage_module()
+    base = {"steps": 3000, "save_every": 250}
+    subject = {"creator": "creator-001", "persona": {"id": "creator-001", "training": dict(base)},
+               "training": dict(base)}
+    record = {"subject": subject, "subject_sha256": lineage.canonical_sha256(subject)}
+
+    def current(profile):
+        training = {**base, "recipe_profile": profile}
+        return {"creator": "creator-001", "persona": {"id": "creator-001", "training": dict(training)},
+                "training": dict(training)}
+
+    lineage.assert_current(record, current("clean"), label="approval")
+    with pytest.raises(lineage.LineageError, match="stale"):
+        lineage.assert_current(record, current("tensor"), label="approval")
+    assert lineage.pre_profile_compatible(base, {**base, "recipe_profile": "clean"}) == base
+    keyed = {**base, "recipe_profile": "clean"}
+    assert lineage.pre_profile_compatible(keyed, {**base, "recipe_profile": "tensor"})["recipe_profile"] == "tensor"
+
+
+def _accepted_checkpoint_sites(command, tmp_path, monkeypatch, *, recorded, reloaded=None):
+    """Drive `_validated_accepted_checkpoint` directly (final review F6a) with a
+    pre-profile recorded projection. Everything outside its two projection comparison
+    sites is stubbed to pass, so a refusal can only come from those sites."""
+    lineage = command._lineage_module()
+    review = tmp_path / "review"
+    tester = review / "grade" / "tester"
+    tester.mkdir(parents=True)
+    plan_path = review / "plan.json"
+    plan_path.write_text("{}", encoding="utf-8")
+    lineage_path = tester / "approval-lineage.json"
+    lineage_path.write_text("{}", encoding="utf-8")
+    candidate = {"step": 250, "filename": "c.safetensors", "tester_image_id": "t01", "path": "p",
+                 "bytes": 1, "sha256": "a" * 64, "train_manifest": "m", "train_manifest_sha256": "b" * 64}
+    accepted = {
+        "schema": lineage.CHECKPOINT_SCHEMA, "creator": "creator-002",
+        "source_plan": str(plan_path), "source_plan_sha256": command._sha256(plan_path),
+        "approval_lineage": str(lineage_path), "approval_lineage_sha256": command._sha256(lineage_path),
+        "training_inputs": dict(recorded), "checkpoint": dict(candidate),
+    }
+    source_plan = {"training": dict(recorded)}
+    if reloaded is not None:
+        accepted["origin"] = "imported"
+        source_plan["imported_training_config"] = {"path": str(plan_path), "sha256": "c" * 64}
+        monkeypatch.setattr(command, "_reload_imported_training_projection",
+                            lambda *a, **k: dict(reloaded))
+    approval = tester / "accepted-checkpoint.json"
+    approval.write_text(json.dumps(accepted), encoding="utf-8")
+    monkeypatch.setattr(command, "_load_plan", lambda *a, **k: (source_plan, review))
+    monkeypatch.setattr(command, "_load_current_approval", lambda *a, **k: None)
+    monkeypatch.setattr(command, "_checkpoint_candidate", lambda *a, **k: dict(candidate))
+    monkeypatch.setattr(command, "_imported_checkpoint_candidate", lambda *a, **k: dict(candidate))
+
+    def validate(current):
+        training = {**current, "chosen_checkpoint_step": 250, "chosen_checkpoint_sha256": "a" * 64,
+                    "chosen_checkpoint_approval": str(approval)}
+        return command._validated_accepted_checkpoint({"id": "creator-002"}, training)
+    return validate
+
+
+def test_accepted_checkpoint_in_plan_site_keeps_pre_profile_clean_and_refuses_tensor(command, tmp_path, monkeypatch):
+    base = {"steps": 3000, "save_every": 250, "trigger": "t", "base_arch": "krea2"}
+    validate = _accepted_checkpoint_sites(command, tmp_path, monkeypatch, recorded=base)
+    assert validate({**base, "recipe_profile": "clean"})["step"] == 250
+    with pytest.raises(command.FigmentTrainError, match="training inputs changed after checkpoint promotion"):
+        validate({**base, "recipe_profile": "tensor"})
+    # `current` lacking the key: equal to a pre-profile record, so it stays current.
+    assert validate(dict(base))["step"] == 250
+
+
+def test_accepted_checkpoint_in_plan_site_refuses_current_lacking_a_recorded_profile(command, tmp_path, monkeypatch):
+    base = {"steps": 3000, "save_every": 250, "trigger": "t", "base_arch": "krea2"}
+    validate = _accepted_checkpoint_sites(command, tmp_path, monkeypatch,
+                                          recorded={**base, "recipe_profile": "clean"})
+    assert validate({**base, "recipe_profile": "clean"})["step"] == 250
+    with pytest.raises(command.FigmentTrainError, match="training inputs changed after checkpoint promotion"):
+        validate(dict(base))
+
+
+@pytest.mark.parametrize(("reloaded_profile", "passes"), [("clean", True), ("tensor", False), (None, True)])
+def test_accepted_checkpoint_imported_site_keeps_pre_profile_clean_and_refuses_tensor(
+    command, tmp_path, monkeypatch, reloaded_profile, passes,
+):
+    base = {"steps": 3000, "save_every": 250, "trigger": "t", "base_arch": "krea2"}
+    reloaded = dict(base) if reloaded_profile is None else {**base, "recipe_profile": reloaded_profile}
+    validate = _accepted_checkpoint_sites(command, tmp_path, monkeypatch, recorded=base, reloaded=reloaded)
+    if passes:
+        assert validate({**base, "recipe_profile": "clean"})["step"] == 250
+    else:
+        with pytest.raises(command.FigmentTrainError, match="imported training config changed"):
+            validate({**base, "recipe_profile": "clean"})

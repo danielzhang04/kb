@@ -1,5 +1,9 @@
 {
   "schema": "figment/tensor-pins@1",
+  "profiles": {
+    "clean": {"anchor": ["anchor", "anchor_edit"], "dataset": ["dataset"], "smoke": ["train"], "train": ["train"], "tester": ["tester"], "gen": ["gen"], "detail": ["detail"], "video": []},
+    "tensor": {"anchor": ["passport_tensor"], "dataset": ["dataset_tensor"], "smoke": ["train"], "train": ["train"], "tester": ["tester"], "caption": ["caption"], "edit": ["edit_tensor"], "video": ["video_tensor"], "gen": ["gen_tensor"]}
+  },
   "pod_classes": {
     "l40s": {
       "gpu": {"type": "NVIDIA L40S", "count": 1, "cloud": "SECURE"},
@@ -44,6 +48,15 @@
           "job_timeout_seconds": 600,
           "comfyui": {"root": "/workspace/ComfyUI", "git_ref": "v0.20.1", "port": 8188, "start_command": "python main.py"}
         },
+        "dataset_multiref": {
+          "max_minutes": 155,
+          "container_disk_gb": 100,
+          "volume_gb": 0,
+          "avoid_machine_hosts": ["qvf79yutw3t2"],
+          "readiness_timeout_seconds": 1800,
+          "job_timeout_seconds": 480,
+          "comfyui": {"root": "/workspace/ComfyUI", "git_ref": "v0.20.1", "port": 8188, "start_command": "python main.py"}
+        },
         "smoke": {
           "max_minutes": 105,
           "container_disk_gb": 80,
@@ -82,6 +95,21 @@
           "job_wait_for_seconds": 180,
           "comfyui": {"root": "/workspace/ComfyUI", "git_ref": "v0.34.0", "port": 8188, "start_command": "bash /workspace/start-comfy-lorapath.sh"}
         },
+        "gen_tensor": {
+          "max_minutes": 185,
+          "container_disk_gb": 80,
+          "volume_gb": 120,
+          "readiness_timeout_seconds": 2400,
+          "job_timeout_seconds": 600,
+          "upload_allowance_seconds": 300,
+          "job_wait_for_seconds": 180,
+          "comfyui": {
+            "root": "/workspace/ComfyUI",
+            "git_ref": "v0.34.0",
+            "port": 8188,
+            "start_command": "bash /workspace/start-comfy-lorapath.sh"
+          }
+        },
         "gen": {
           "max_minutes": 185,
           "container_disk_gb": 80,
@@ -101,11 +129,273 @@
           "upload_allowance_seconds": 300,
           "job_wait_for_seconds": 180,
           "comfyui": {"root": "/workspace/ComfyUI", "git_ref": "v0.34.0", "port": 8188, "start_command": "bash /workspace/start-comfy-lorapath.sh"}
+        },
+        "video_tensor": {
+          "max_minutes": 80,
+          "container_disk_gb": 80,
+          "volume_gb": 120,
+          "readiness_timeout_seconds": 2400,
+          "job_timeout_seconds": 1800,
+          "comfyui": {
+            "root": "/workspace/ComfyUI",
+            "git_ref": "135abed8da169e33ab0b86550e05e3ae55d6df8c",
+            "source_url": "https://github.com/Comfy-Org/ComfyUI",
+            "tarball_url": "https://codeload.github.com/Comfy-Org/ComfyUI/tar.gz/135abed8da169e33ab0b86550e05e3ae55d6df8c",
+            "replace_non_git_root": false,
+            "port": 8188,
+            "start_command": "python main.py"
+          },
+          "_note": "Offline envelope inherited from existing clean video_manifest builder (80min/2400s readiness/1800s job). Module08 runtime/VRAM not measured. Separate approved live smoke and all lifecycle guards remain mandatory."
+        },
+        "edit_tensor": {
+          "max_minutes": 95,
+          "container_disk_gb": 100,
+          "volume_gb": 0,
+          "avoid_machine_hosts": [
+            "qvf79yutw3t2"
+          ],
+          "readiness_timeout_seconds": 2700,
+          "job_timeout_seconds": 450,
+          "comfyui": {
+            "root": "/workspace/ComfyUI",
+            "git_ref": "v0.20.1",
+            "port": 8188,
+            "start_command": "python main.py"
+          },
+          "_note": "Offline inherited anchor_edit envelope; module07 runtime and memory not measured. Live gate and budget approval remain required."
+        },
+        "passport_tensor": {
+          "max_minutes": 91,
+          "container_disk_gb": 100,
+          "volume_gb": 0,
+          "avoid_machine_hosts": ["qvf79yutw3t2"],
+          "readiness_timeout_seconds": 1200,
+          "job_timeout_seconds": 330,
+          "comfyui": {"root": "/workspace/ComfyUI", "git_ref": "v0.20.1", "port": 8188, "start_command": "python main.py"}
         }
       }
     }
   },
   "pins": {
+    "video_tensor": {
+      "_note": "Exact module08 installer files; public immutable LFS/HEAD metadata verified2026-10-05. SAM3.1 has SAM licence, not MIT/Apache. VHS a7 is output49 source revision; both required class schemas match loader113's298 revision. Core v0.25.0 required for SCAIL2 schema; external installer SAM3 clone is unused. Runtime smoke unproved.",
+      "models": [
+        {
+          "repo_id": "Comfy-Org/sam3.1",
+          "filename": "checkpoints/sam3.1_multiplex_fp16.safetensors",
+          "revision": "7bb8374780a725b4353ed31f3a9395c9742b5621",
+          "sha256": "9ba99c92703c2e8b4f47de2d34a539bb8e18923049e238b780d70dbe6368eb03",
+          "destination_dir": "/workspace/ComfyUI/models/checkpoints",
+          "licence": "sam-license"
+        },
+        {
+          "repo_id": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+          "filename": "split_files/clip_vision/clip_vision_h.safetensors",
+          "revision": "123acf1cc74bccbb9bfff8ac1ee72edc08c2341d",
+          "sha256": "64a7ef761bfccbadbaa3da77366aac4185a6c58fa5de5f589b42a65bcc21f161",
+          "destination_dir": "/workspace/ComfyUI/models/clip_vision",
+          "licence": "apache-2.0"
+        },
+        {
+          "repo_id": "Comfy-Org/SCAIL-2",
+          "filename": "diffusion_models/wan2.1_14B_SCAIL_2_fp8_scaled.safetensors",
+          "revision": "fe3c728bc793ba21ca674688f822afb709ad44fb",
+          "sha256": "11513b4697ecf566de0cb74660c478f301fb6699a62b10369e91a6ed0fd6b083",
+          "destination_dir": "/workspace/ComfyUI/models/diffusion_models",
+          "licence": "mit"
+        },
+        {
+          "repo_id": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+          "filename": "split_files/vae/wan_2.1_vae.safetensors",
+          "revision": "123acf1cc74bccbb9bfff8ac1ee72edc08c2341d",
+          "sha256": "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b",
+          "destination_dir": "/workspace/ComfyUI/models/vae",
+          "licence": "apache-2.0"
+        },
+        {
+          "repo_id": "lightx2v/Wan2.1-I2V-14B-480P-StepDistill-CfgDistill-Lightx2v",
+          "filename": "loras/Wan21_I2V_14B_lightx2v_cfg_step_distill_lora_rank64.safetensors",
+          "revision": "fef288b326f4fed6d2983b9800c35363da31fcfe",
+          "sha256": "8833bd4fd7c8eabebf0bc8ee5cfaf47f4f310ce116928a02c1adf8941dd4b0f1",
+          "destination_dir": "/workspace/ComfyUI/models/loras",
+          "licence": "apache-2.0"
+        },
+        {
+          "repo_id": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+          "filename": "split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+          "revision": "123acf1cc74bccbb9bfff8ac1ee72edc08c2341d",
+          "sha256": "c3355d30191f1f066b26d93fba017ae9809dce6c627dda5f6a66eaa651204f68",
+          "destination_dir": "/workspace/ComfyUI/models/text_encoders",
+          "licence": "apache-2.0"
+        }
+      ],
+      "custom_nodes": [
+        {
+          "name": "ComfyUI-VideoHelperSuite",
+          "git_url": "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git",
+          "git_ref": "a7ce59e381934733bfae03b1be029756d6ce936d",
+          "licence": "GPL-3.0"
+        }
+      ]
+    },
+    "edit_tensor": {
+      "_note": "Module07 U12/U13. Klein/encoder/VAE exact records reused from dataset_tensor. Klein gated file/access verification remains a live prerequisite. Swap public immutable metadata verified 2026-10-05 (HF API plus non-following HEAD); source-declared EasyUse/LayerStyle commits and licences confirmed via GitHub APIs. API graph collapses rgthree singleton switches; no rgthree dependency. Runtime compatibility remains unproved. Installer security-level downgrade is NOT reproduced.",
+      "models": [
+        {
+          "repo_id": "black-forest-labs/FLUX.2-klein-9b-fp8",
+          "filename": "flux-2-klein-9b-fp8.safetensors",
+          "revision": "902d9d510b51533e07729f19211414a3648b77d2",
+          "sha256": "865ba09f5b4c3cbd3468a4bd3acb9fcb2f8740c54317482f0bcd4ed1d3655cee",
+          "destination_dir": "/workspace/ComfyUI/models/diffusion_models"
+        },
+        {
+          "repo_id": "Comfy-Org/vae-text-encorder-for-flux-klein-9b",
+          "filename": "split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors",
+          "revision": "3f62d9d8ae1fec33c6e91453d5c712855b096b55",
+          "sha256": "abad16806e0cbabc54e0325d6565847443fe396d5f0be38bb3cd3fe75a1201d6",
+          "destination_dir": "/workspace/ComfyUI/models/text_encoders"
+        },
+        {
+          "repo_id": "Comfy-Org/flux2-dev",
+          "filename": "split_files/vae/flux2-vae.safetensors",
+          "revision": "ed33133cd56476eac818c0943b6f9419b3e4a3a1",
+          "sha256": "d64f3a68e1cc4f9f4e29b6e0da38a0204fe9a49f2d4053f0ec1fa1ca02f9c4b5",
+          "destination_dir": "/workspace/ComfyUI/models/vae"
+        },
+        {
+          "repo_id": "Alissonerdx/BFS-Best-Face-Swap",
+          "filename": "bfs_head_v1_flux-klein_9b_step3500_rank128.safetensors",
+          "revision": "0ca3913ade4b4ada458d60c232354e8586c4c181",
+          "sha256": "70d8aaf332d710b905d5085afaa87c3ef577edffd54ffcfadeb8c47a854f9044",
+          "destination_dir": "/workspace/ComfyUI/models/loras",
+          "licence": "mit (HF card declaration; base-model terms remain separate)",
+          "provenance": "2026-10-05 public HF API LFS sha256 and pinned resolve HEAD302 agree; no model bytes fetched."
+        }
+      ],
+      "custom_nodes": [
+        {
+          "name": "ComfyUI-Easy-Use",
+          "git_url": "https://github.com/yolain/ComfyUI-Easy-Use.git",
+          "git_ref": "070001b36be2bbdfcf766b6a2d6f14c36cb62906",
+          "licence": "GPL-3.0",
+          "provenance": "Module07 node144 properties.ver; GitHub commit and licence API at this exact revision verified2026-10-05."
+        },
+        {
+          "name": "ComfyUI_LayerStyle",
+          "git_url": "https://github.com/chflame163/ComfyUI_LayerStyle.git",
+          "git_ref": "3d53de09d8c1fb904d5cb0a137b9bc75e9d77108",
+          "licence": "MIT",
+          "provenance": "Module07 node143 properties.ver; GitHub commit and licence API at this exact revision verified2026-10-05."
+        }
+      ]
+    },
+    "dataset_tensor": {
+      "_note": "R1 module04 bf16 file + fp8_e4m3fn loader; module10 effective graph. Public HF HEAD metadata verified 2026-10-05 for bf16, qwen_3_8b, bfs_head (no weights downloaded). Klein9B SHA is installer-stated; revision from public HF model metadata. Its unauthenticated HEAD returns 401: gated access/file verification remains a live prerequisite, not offline proof. lumina2 retained pending smoke. Existing pins reused for unchanged files and node dependencies.",
+      "models": [
+        {
+          "repo_id": "Comfy-Org/Qwen-Image-Edit_ComfyUI",
+          "filename": "split_files/diffusion_models/qwen_image_edit_2511_bf16.safetensors",
+          "revision": "f68ace85e60b4a02a323e394253731947657b7d2",
+          "sha256": "ae42d927b5fac4f278b9a894554c727e619727a63622976f2d95625be4bce08c",
+          "destination_dir": "/workspace/ComfyUI/models/diffusion_models"
+        },
+        {
+          "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+          "filename": "split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+          "revision": "25608066f9bf5cdc28020836ce9549587053f346",
+          "sha256": "cb5636d852a0ea6a9075ab1bef496c0db7aef13c02350571e388aea959c5c0b4",
+          "destination_dir": "/workspace/ComfyUI/models/text_encoders"
+        },
+        {
+          "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+          "filename": "split_files/vae/qwen_image_vae.safetensors",
+          "revision": "dfe60a0d63f0b946628080f070978594983b8b6e",
+          "sha256": "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f",
+          "destination_dir": "/workspace/ComfyUI/models/vae"
+        },
+        {
+          "repo_id": "lightx2v/Qwen-Image-Edit-2511-Lightning",
+          "filename": "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+          "revision": "fd3a43ffb5bc98c7d09b2238e5b09a63284a16f8",
+          "sha256": "22226e8d05d354bb356627d428809f5afd7819399b077238a2b70a82883a904f",
+          "destination_dir": "/workspace/ComfyUI/models/loras"
+        },
+        {
+          "repo_id": "black-forest-labs/FLUX.2-klein-9b-fp8",
+          "filename": "flux-2-klein-9b-fp8.safetensors",
+          "revision": "902d9d510b51533e07729f19211414a3648b77d2",
+          "sha256": "865ba09f5b4c3cbd3468a4bd3acb9fcb2f8740c54317482f0bcd4ed1d3655cee",
+          "destination_dir": "/workspace/ComfyUI/models/diffusion_models"
+        },
+        {
+          "repo_id": "Comfy-Org/vae-text-encorder-for-flux-klein-9b",
+          "filename": "split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors",
+          "revision": "3f62d9d8ae1fec33c6e91453d5c712855b096b55",
+          "sha256": "abad16806e0cbabc54e0325d6565847443fe396d5f0be38bb3cd3fe75a1201d6",
+          "destination_dir": "/workspace/ComfyUI/models/text_encoders"
+        },
+        {
+          "repo_id": "gravedigga/loras",
+          "filename": "bfs_head_v5_2511_merged_version_rank_16_fp16.safetensors",
+          "revision": "9b30695ba342f56131d1131f9788b0fd9cb9dfd4",
+          "sha256": "1315a08947e5d6d7c53ea4fc59f272e0d54efd7f2da35999b7d873a7cf4fa89b",
+          "destination_dir": "/workspace/ComfyUI/models/loras"
+        },
+        {
+          "repo_id": "Comfy-Org/flux2-dev",
+          "filename": "split_files/vae/flux2-vae.safetensors",
+          "revision": "ed33133cd56476eac818c0943b6f9419b3e4a3a1",
+          "sha256": "d64f3a68e1cc4f9f4e29b6e0da38a0204fe9a49f2d4053f0ec1fa1ca02f9c4b5",
+          "destination_dir": "/workspace/ComfyUI/models/vae"
+        },
+        {
+          "repo_id": "gravedigga/loras",
+          "filename": "zit_upscaler.safetensors",
+          "revision": "82ac01152033628ed6d86714d70aa61270a41dcc",
+          "sha256": "009671cec5a384db31052b52e344e5989b0c51a5ad4d25a8c2c629f658754d13",
+          "destination_dir": "/workspace/ComfyUI/models/upscale_models"
+        }
+      ],
+      "custom_nodes": [
+        {
+          "name": "RES4LYF",
+          "git_url": "https://github.com/ClownsharkBatwing/RES4LYF.git",
+          "installer_pin": "e716cd1cb2c5cff90131bf4914b75b75a0489d48"
+        },
+        {
+          "name": "ComfyUI-Impact-Pack",
+          "git_url": "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git",
+          "installer_pin": "429d0159ad429e64d2b3916e6e7be9c22d025c3c"
+        },
+        {
+          "name": "ComfyUI_FaceAnalysis",
+          "git_url": "https://github.com/cubiq/ComfyUI_FaceAnalysis.git",
+          "installer_pin": "8846653446a6b13582da11793faf950325a398e0"
+        },
+        {
+          "name": "ComfyUI-KJNodes",
+          "git_url": "https://github.com/kijai/ComfyUI-KJNodes.git",
+          "installer_pin": "8692bc8ef8beaaeee80fd52ba80477dc9e61547b"
+        }
+      ]
+    },
+    "passport_tensor": {
+      "_note": "Spec 2026-09-29 §4.1: module 03 (03_generating_your_character/image_generation_models.bat) as the package ships it. Revisions/sha256 read live 2026-09-29 from huggingface.co resolve/main X-Repo-Commit/X-Linked-ETag; zit_upscaler and sam_vit_b equal the sha256 the module 10/09 installers state for the same URLs; realistic_snapshot_lora and the Gourieff face_yolov8m.pt copy have no installer-stated sha256 (module 09's Bingsu copy, 717923c1..., is a different file). zit_upscaler header: SwinIR/HAT family, two x2 pixel-shuffle stages = x4, so 1536x2048 base -> 6144x8192 final. Custom nodes: module 03's installer clones default branches; pinned to the SHAs modules 09/10's installers pin. rgthree omitted: no rgthree node in the API graph (D16/D18/D9). Pickles admitted via the manifest hatch (spec §6) on disposable pods only. Pod budget (l40s stage passport_tensor) rebalanced inside the $2.00 ceiling, not measured: readiness 1200 s + 12 jobs x 330 s per job + 5 min teardown = 91 min; 91/60 x $1.30/h = $1.97 (job 1 also pays the ~21 GB cold load; a job timeout stops the run ungraded).",
+      "models": [
+        {"repo_id": "Comfy-Org/z_image_turbo", "filename": "split_files/diffusion_models/z_image_turbo_bf16.safetensors", "revision": "08d04455279082882deaabc8d0d09fc914c071e1", "sha256": "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6", "destination_dir": "/workspace/ComfyUI/models/diffusion_models"},
+        {"repo_id": "Comfy-Org/z_image_turbo", "filename": "split_files/text_encoders/qwen_3_4b.safetensors", "revision": "08d04455279082882deaabc8d0d09fc914c071e1", "sha256": "6c671498573ac2f7a5501502ccce8d2b08ea6ca2f661c458e708f36b36edfc5a", "destination_dir": "/workspace/ComfyUI/models/text_encoders"},
+        {"repo_id": "Comfy-Org/z_image_turbo", "filename": "split_files/vae/ae.safetensors", "revision": "08d04455279082882deaabc8d0d09fc914c071e1", "sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38", "destination_dir": "/workspace/ComfyUI/models/vae"},
+        {"repo_id": "gravedigga/loras", "filename": "realistic_snapshot_lora.safetensors", "revision": "82ac01152033628ed6d86714d70aa61270a41dcc", "sha256": "182d7f92475b8d7f792203127738d31270403e86e007fdc7792d324a3406e556", "destination_dir": "/workspace/ComfyUI/models/loras"},
+        {"repo_id": "gravedigga/loras", "filename": "zit_upscaler.safetensors", "revision": "82ac01152033628ed6d86714d70aa61270a41dcc", "sha256": "009671cec5a384db31052b52e344e5989b0c51a5ad4d25a8c2c629f658754d13", "destination_dir": "/workspace/ComfyUI/models/upscale_models"},
+        {"repo_id": "datasets/Gourieff/ReActor", "filename": "models/sams/sam_vit_b_01ec64.pth", "revision": "3b74a6611c59b7c01d1a05d353a56935c700ff44", "sha256": "ec2df62732614e57411cdcf32a23ffdf28910380d03139ee0f4fcbe91eb8c912", "destination_dir": "/workspace/ComfyUI/models/sams", "pickle_ack": "module 03 SAMLoader weight; pickle on a disposable pod per spec 2026-09-29 §6 (decision 3)"},
+        {"repo_id": "datasets/Gourieff/ReActor", "filename": "models/detection/bbox/face_yolov8m.pt", "revision": "3b74a6611c59b7c01d1a05d353a56935c700ff44", "sha256": "e3893a92c5c1907136b6cc75404094db767c1e0cfefe1b43e87dad72af2e4c9f", "destination_dir": "/workspace/ComfyUI/models/ultralytics/bbox", "pickle_ack": "module 03 UltralyticsDetectorProvider weight; pickle on a disposable pod per spec 2026-09-29 §6 (decision 3)"}
+      ],
+      "custom_nodes": [
+        {"name": "RES4LYF", "git_url": "https://github.com/ClownsharkBatwing/RES4LYF.git", "installer_pin": "e716cd1cb2c5cff90131bf4914b75b75a0489d48"},
+        {"name": "ComfyUI-Impact-Pack", "git_url": "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git", "installer_pin": "429d0159ad429e64d2b3916e6e7be9c22d025c3c"},
+        {"name": "ComfyUI-Impact-Subpack", "git_url": "https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git", "installer_pin": "50c7b71a6a224734cc9b21963c6d1926816a97f1"}
+      ]
+    },
     "anchor": {
       "models": [
         {"repo_id": "Comfy-Org/z_image_turbo", "filename": "split_files/diffusion_models/z_image_turbo_bf16.safetensors", "revision": "08d04455279082882deaabc8d0d09fc914c071e1", "sha256": "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6", "destination_dir": "/workspace/ComfyUI/models/diffusion_models"},
@@ -153,6 +443,16 @@
         {"name": "ComfyUI-KJNodes", "git_url": "https://github.com/kijai/ComfyUI-KJNodes.git", "installer_pin": "8692bc8ef8beaaeee80fd52ba80477dc9e61547b"}
       ]
     },
+    "dataset_multiref": {
+      "_note": "P2 (MANDATE.md stage 2): klein 3-ref dataset source (klein4b_multiref_api.json) -- FLUX.2 klein 4B Base (Apache-2.0), a different file from pins.dataset/anchor_edit's flux-2-klein-4b.safetensors EDIT model. qwen_3_4b/flux2-vae rows are byte-identical to the pins.dataset block above (same repo, same filename, same digest, live-verified 2026-09-15). flux-2-klein-base-4b.safetensors has no prior pin anywhere in this repo (grepped clean) -- its revision/sha256 below were fetched live from https://huggingface.co/api/models/Comfy-Org/vae-text-encorder-for-flux-klein-4b/tree/main?recursive=true&expand=true (Comfy-Org/flux2-klein-4B redirects here, same alias TENSOR-REPLICATION.md's open-risk-5 resolution already documents), the exact method this file's own 'Model and node pins' section used for every other pin below; not invented. The fourth row (`Phips/4xNomosWebPhoto_RealPLKSR`) is copied byte-identical from the `pins.dataset` block above (same repo, filename, revision, digest, destination_dir) -- the committed `klein4b_multiref_api.json` file itself is UNTOUCHED and carries no upscale nodes at all; `figment_train.py`'s `_klein_multiref_dataset_workflow` grafts the upscale tail (`ImageUpscaleWithModel` + `ImageScaleBy 0.5`) between its `VAEDecode` and `SaveImage` nodes AT BUILD TIME, every time a dataset plan is built, never baked into the checked-in workflow file. This mirrors `tensor_dataset_v2_api.json`'s own resolution-boost tail in spirit (same upscale model, same 0.5 scale-back) so the dataset identity gate's `face_px_min: 600` has a fighting chance against this graph's native 1024x1280 render (UPSCALE TAIL ruling, adopt) -- though `tensor_dataset_v2_api.json`'s own tail sits ahead of that graph's refine `KSampler` (denoise 0.23), feeding it a higher-resolution latent, not directly before its `SaveImage`; the klein-multiref graph has no such refine pass, so its grafted tail goes straight to `SaveImage`. No custom node is required -- `ImageUpscaleWithModel`/`UpscaleModelLoader`/`ImageScaleBy` are core ComfyUI nodes, same as every other stage's upscale tail in this file. `verify_pins.py` re-verifies all four live.",
+      "models": [
+        {"repo_id": "Comfy-Org/vae-text-encorder-for-flux-klein-4b", "filename": "split_files/diffusion_models/flux-2-klein-base-4b.safetensors", "revision": "7702295aa65bf7c2aba9200a515f98e991f0097a", "sha256": "9c5fed22b76baea749d88fc2abe3ad53245e7b21a0d353a762665eea00043b92", "destination_dir": "/workspace/ComfyUI/models/diffusion_models"},
+        {"repo_id": "Comfy-Org/vae-text-encorder-for-flux-klein-4b", "filename": "split_files/text_encoders/qwen_3_4b.safetensors", "revision": "8556e4d870cda7c53c7942b190bfeea5be9bd411", "sha256": "6c671498573ac2f7a5501502ccce8d2b08ea6ca2f661c458e708f36b36edfc5a", "destination_dir": "/workspace/ComfyUI/models/text_encoders"},
+        {"repo_id": "Comfy-Org/vae-text-encorder-for-flux-klein-4b", "filename": "split_files/vae/flux2-vae.safetensors", "revision": "a9e4ca87c16db4c4e1a16406a9ddb300ab0ae246", "sha256": "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3", "destination_dir": "/workspace/ComfyUI/models/vae"},
+        {"repo_id": "Phips/4xNomosWebPhoto_RealPLKSR", "filename": "4xNomosWebPhoto_RealPLKSR.safetensors", "revision": "ee1791235ab82e639bf6fde5581a2440771a14c0", "sha256": "9be0228f98156a100d6636d99b373ed2785b999723f9adc4cca504329ab157f2", "destination_dir": "/workspace/ComfyUI/models/upscale_models"}
+      ],
+      "custom_nodes": []
+    },
     "skin_loras": {
       "qwen-edit-skin": {
         "model": {"repo_id": "tlennon-ie/qwen-edit-skin", "filename": "qwen-edit-skin.safetensors", "revision": "60fb653d46045074449f45068d91ce27f11eb1ca", "sha256": "e4efd5ee1e5555eb438c214aa0ee6009f0215f13dbe817128615909871eed4b1", "destination_dir": "/workspace/ComfyUI/models/loras"},
@@ -175,6 +475,102 @@
       ],
       "custom_nodes": [
         {"git_url": "https://github.com/ClownsharkBatwing/RES4LYF", "git_ref": "e716cd1cb2c5cff90131bf4914b75b75a0489d48"}
+      ]
+    },
+    "gen_tensor": {
+      "_note": "Module09 exact installer hashes and public immutable metadata. Disabled style excluded. Two style/NMKD mirror licences and RES4LYF classification unresolved; no production clearance. rgthree/KJ editor plumbing collapsed; core LoraLoader chain retains model/clip strengths.",
+      "diagnostic_non_commercial": true,
+      "models": [
+        {
+          "repo_id": "Comfy-Org/Krea-2",
+          "filename": "diffusion_models/krea2_turbo_fp8_scaled.safetensors",
+          "revision": "eb1eddd3983a54678545a9b2c178c5853b30f7be",
+          "sha256": "eb4dd8c612cfd10f64f25b057e6e6bbcb5737c94a7372177e456dbf7579502f1",
+          "destination_dir": "/workspace/ComfyUI/models/diffusion_models",
+          "licence": "krea-2-community-license"
+        },
+        {
+          "repo_id": "Comfy-Org/Krea-2",
+          "filename": "text_encoders/qwen3vl_4b_fp8_scaled.safetensors",
+          "revision": "eb1eddd3983a54678545a9b2c178c5853b30f7be",
+          "sha256": "54bd5144df0bbc25dd6ccadfcb826b521445a1b06ae5a42570bdd2974ca87094",
+          "destination_dir": "/workspace/ComfyUI/models/text_encoders",
+          "licence": "krea-2-community-license"
+        },
+        {
+          "repo_id": "Comfy-Org/Krea-2",
+          "filename": "vae/qwen_image_vae.safetensors",
+          "revision": "eb1eddd3983a54678545a9b2c178c5853b30f7be",
+          "sha256": "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f",
+          "destination_dir": "/workspace/ComfyUI/models/vae",
+          "licence": "krea-2-community-license"
+        },
+        {
+          "repo_id": "gravedigga/loras",
+          "filename": "pawg_krea2.safetensors",
+          "revision": "9b30695ba342f56131d1131f9788b0fd9cb9dfd4",
+          "sha256": "6df1ae992e4ac7ae2e5576b01074f31cc6ba20c442711d9b87e920996c24c30d",
+          "destination_dir": "/workspace/ComfyUI/models/loras",
+          "licence": "unknown",
+          "licence_status": "unresolved"
+        },
+        {
+          "repo_id": "gravedigga/loras",
+          "filename": "RealisticSnapshotKrea2.safetensors",
+          "revision": "9b30695ba342f56131d1131f9788b0fd9cb9dfd4",
+          "sha256": "dfd67eb881bec4caeb9409e5b7c127adcb9fb724e6007e1e77165af51e6f908d",
+          "destination_dir": "/workspace/ComfyUI/models/loras",
+          "licence": "unknown",
+          "licence_status": "unresolved"
+        },
+        {
+          "repo_id": "gravedigga/loras",
+          "filename": "4xNMKDSuperscale_4xNMKDSuperscale.pt",
+          "revision": "9b30695ba342f56131d1131f9788b0fd9cb9dfd4",
+          "sha256": "1d1b0078fe71446e0469d8d4df59e96baa80d83cda600d68237d655830821bcc",
+          "destination_dir": "/workspace/ComfyUI/models/upscale_models",
+          "licence": "unknown",
+          "licence_status": "unresolved",
+          "pickle_ack": "Approved module09 diagnostic-only exact-file exception: 4xNMKDSuperscale_4xNMKDSuperscale.pt; immutable installer SHA verified."
+        },
+        {
+          "repo_id": "Bingsu/adetailer",
+          "filename": "face_yolov8m.pt",
+          "revision": "53cc19de382014514d9d4038601d261a7faa9b7b",
+          "sha256": "717923c19b3f4bbf5250b728f1fa6b2cb72a33aed1d236ea9caf0e21ad943e5f",
+          "destination_dir": "/workspace/ComfyUI/models/ultralytics/bbox",
+          "licence": "apache-2.0",
+          "pickle_ack": "Approved module09 diagnostic-only exact-file exception: face_yolov8m.pt; immutable installer SHA verified."
+        },
+        {
+          "repo_id": "datasets/Gourieff/ReActor",
+          "filename": "models/sams/sam_vit_b_01ec64.pth",
+          "revision": "788477a1c8088e664f10a74b95ce65dcdd3c56dc",
+          "sha256": "ec2df62732614e57411cdcf32a23ffdf28910380d03139ee0f4fcbe91eb8c912",
+          "destination_dir": "/workspace/ComfyUI/models/sams",
+          "licence": "mit",
+          "pickle_ack": "Approved module09 diagnostic-only exact-file exception: sam_vit_b_01ec64.pth; immutable installer SHA verified."
+        }
+      ],
+      "custom_nodes": [
+        {
+          "name": "ComfyUI-Impact-Pack",
+          "git_url": "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git",
+          "git_ref": "429d0159ad429e64d2b3916e6e7be9c22d025c3c",
+          "licence": "GPL-3.0"
+        },
+        {
+          "name": "ComfyUI-Impact-Subpack",
+          "git_url": "https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git",
+          "git_ref": "50c7b71a6a224734cc9b21963c6d1926816a97f1",
+          "licence": "AGPL-3.0"
+        },
+        {
+          "name": "RES4LYF",
+          "git_url": "https://github.com/ClownsharkBatwing/RES4LYF.git",
+          "git_ref": "e716cd1cb2c5cff90131bf4914b75b75a0489d48",
+          "licence": "NOASSERTION"
+        }
       ]
     },
     "gen": {
@@ -211,7 +607,9 @@
       ],
       "custom_nodes": [],
       "licence": "apache-2.0",
-      "licence_verified": "2026-09-15 (M4): api/models/Qwen/Qwen3-VL-8B-Instruct tags include license:apache-2.0 -- matches; sha256/revision HEAD-verified live against huggingface.co/Qwen/Qwen3-VL-8B-Instruct/resolve/0c351dd01ed87e9c1b53cbc748cba10e6187ff3b/<filename> (x-repo-commit/x-linked-etag) for all 4 shards. Small companion files (config/tokenizer/index, ~15MB total) are fetched live at this SAME pinned revision by start-qwen3vl-caption.sh.template -- same precedent as start-training-aitoolkit.sh.template's own Qwen3-VL-4B-Instruct/Qwen-Image companion prewarm -- and are deliberately not pinned here: HF's x-linked-etag for a non-LFS file is a 40-char git blob SHA-1, not a content sha256, so it cannot be verified through verify_model_pin's sha256 comparison the way every other pin in this file is."
+      "licence_verified": "2026-09-15 (M4): api/models/Qwen/Qwen3-VL-8B-Instruct tags include license:apache-2.0 -- matches; sha256/revision HEAD-verified live against huggingface.co/Qwen/Qwen3-VL-8B-Instruct/resolve/0c351dd01ed87e9c1b53cbc748cba10e6187ff3b/<filename> (x-repo-commit/x-linked-etag) for all 4 shards. Small companion files (config/tokenizer/index, ~15MB total) are fetched live at this SAME pinned revision by start-qwen3vl-caption.sh.template -- same precedent as start-training-aitoolkit.sh.template's own Qwen3-VL-4B-Instruct/Qwen-Image companion prewarm -- and are deliberately not pinned here: HF's x-linked-etag for a non-LFS file is a 40-char git blob SHA-1, not a content sha256, so it cannot be verified through verify_model_pin's sha256 comparison the way every other pin in this file is.",
+      "pip": ["transformers==4.57.1", "accelerate==1.10.1"],
+      "_pip_note": "versions chosen offline 2026-09-16 as the transformers line that added Qwen3-VL support and a compatible accelerate; unverified against PyPI from this machine -- if the pod's pip refuses them, the log now says so"
     },
     "style_loras": {
       "inline-skin": {

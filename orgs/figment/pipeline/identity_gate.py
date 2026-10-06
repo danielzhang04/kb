@@ -120,6 +120,14 @@ class IdentityGateError(RuntimeError):
     """The gate could not be evaluated, or a model failed integrity verification."""
 
 
+# LOW (opus review, 2026-09-15): the only framing names any planner in this repo ever
+# writes onto a cell (`figment_train.py`'s dataset/tester/gen job builders) -- a
+# `by_framing` key outside this set can never match a real cell's `framing`, so it is
+# either a typo or a stale ruling and must fail closed at load time rather than sit
+# there silently matching nothing.
+KNOWN_FRAMINGS = frozenset({"close", "half", "full"})
+
+
 # ---------------------------------------------------------------------------
 # Sibling-module loading -- same ad-hoc-by-path pattern every module here uses (no
 # package __init__.py exists in this tree).
@@ -166,18 +174,63 @@ def load_thresholds(
     from that persona's OWN `identity.floor.min_face_px.value` (falling back to
     `gate.yaml`'s own `face_px_min` when the persona declares none) -- the one
     persona-specific number this module ever reads, and it is read generically from
-    whatever persona document is passed in, never hardcoded to one creator."""
+    whatever persona document is passed in, never hardcoded to one creator.
+
+    Operator ruling 2026-09-15 ("Per-framing face floor: half-body dataset cells gate
+    at 300 px (after the 2x upscale tail), close-framed cells stay at 600 px; judge
+    axes unchanged"): a persona may additionally declare
+    `identity.floor.min_face_px.by_framing`, a `{framing: px}` mapping overlaid onto
+    `thresholds["face_px_min_by_framing"]` the same generic way `value` already
+    overlays `face_px_min` -- never hardcoded to one creator or one framing name.
+    `identity_floor_gate` picks the matching entry for a cell's own `framing`, falling
+    back to the plain `face_px_min` floor for any framing not listed (and for cells
+    that carry no framing at all -- tester/gen stages, or an older dataset plan).
+    Fails closed at LOAD time, not gate time: every declared override must be a
+    positive number no larger than the persona's own default floor, or this raises
+    `IdentityGateError` -- a mistyped override should never silently loosen the gate
+    beyond what the persona's own `value` already permits."""
     document = yaml.safe_load(Path(gate_config_path).read_text(encoding="utf-8"))
     if not isinstance(document, dict):
         raise IdentityGateError(f"{gate_config_path} does not contain a mapping")
     thresholds = dict(document)
     if persona is not None:
         try:
-            min_face_px = persona["identity"]["floor"]["min_face_px"]["value"]
+            min_face_px_block = persona["identity"]["floor"]["min_face_px"]
         except (KeyError, TypeError):
-            min_face_px = None
+            min_face_px_block = None
+        min_face_px = min_face_px_block.get("value") if isinstance(min_face_px_block, dict) else None
         if isinstance(min_face_px, (int, float)):
             thresholds["face_px_min"] = float(min_face_px)
+        by_framing = min_face_px_block.get("by_framing") if isinstance(min_face_px_block, dict) else None
+        if by_framing is not None:
+            if not isinstance(by_framing, dict) or not by_framing:
+                raise IdentityGateError(
+                    "identity.floor.min_face_px.by_framing must be a non-empty mapping "
+                    "of framing name to a positive pixel floor"
+                )
+            default_floor = thresholds.get("face_px_min")
+            resolved: dict[str, float] = {}
+            for framing, value in by_framing.items():
+                if framing not in KNOWN_FRAMINGS:
+                    raise IdentityGateError(
+                        "identity.floor.min_face_px.by_framing"
+                        f"[{framing!r}] is not a known framing -- allowed: "
+                        f"{sorted(KNOWN_FRAMINGS)}"
+                    )
+                if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
+                    raise IdentityGateError(
+                        "identity.floor.min_face_px.by_framing"
+                        f"[{framing!r}] must be a positive number, got {value!r}"
+                    )
+                if default_floor is not None and value > default_floor:
+                    raise IdentityGateError(
+                        "identity.floor.min_face_px.by_framing"
+                        f"[{framing!r}]={value} exceeds the persona's own default "
+                        f"face_px_min floor ({default_floor}) -- a per-framing override "
+                        "may only narrow the floor, never raise it above the default"
+                    )
+                resolved[framing] = float(value)
+            thresholds["face_px_min_by_framing"] = resolved
     return thresholds
 
 
@@ -265,6 +318,18 @@ def identity_floor_gate(scores: dict[str, Any], thresholds: dict[str, Any]) -> d
     All three metrics are still computed onto every `score_cell` row (informational,
     shown on the grading board) and `gate()` itself is untouched -- this function is
     additive, not a replacement.
+
+    Operator ruling 2026-09-15 (per-framing face floor): `scores["framing"]`, when
+    present, selects a narrower `face_px_min` from `thresholds["face_px_min_by_framing"]`
+    (`load_thresholds`'s own overlay of the persona's `identity.floor.min_face_px.
+    by_framing`) -- e.g. a half-body cell gates at 300px instead of the 600px default.
+    `framing` is never inferred from the image or the output filename; it must reach
+    this function on the row exactly as the plan's own job record declared it (see
+    `score_cells_for_stage`). A cell with no framing, or a framing absent from the
+    override mapping, always falls back to the plain `face_px_min` floor -- the same
+    behaviour every caller had before this ruling. The floor actually applied is
+    recorded on the returned dict as `face_px_min_applied` so `gate.json` shows which
+    one gated a given cell, whether or not a by-framing override exists at all.
     """
     reasons: list[str] = []
 
@@ -280,8 +345,30 @@ def identity_floor_gate(scores: dict[str, Any], thresholds: dict[str, Any]) -> d
             reasons.append(f"{metric} {value:.4g} is below the required floor {limit:.4g}")
 
     _floor("identity_own", "identity_own_min", scores.get("identity_own"))
-    _floor("face_px", "face_px_min", scores.get("face_px"))
-    return {"pass": not reasons, "reasons": reasons}
+
+    framing = scores.get("framing")
+    by_framing = thresholds.get("face_px_min_by_framing")
+    face_px_min_applied = thresholds.get("face_px_min")
+    if framing and isinstance(by_framing, dict) and framing in by_framing:
+        face_px_min_applied = by_framing[framing]
+    # LOW (opus review, 2026-09-15): `gate.yaml`'s own `face_px_min: 600` parses as a
+    # YAML int, not a float -- normalize so `face_px_min_applied` on the returned dict
+    # (surfaced verbatim on `gate.json`) is always a float, never sometimes-int
+    # sometimes-float depending on which branch set it.
+    if face_px_min_applied is not None:
+        face_px_min_applied = float(face_px_min_applied)
+
+    face_px = scores.get("face_px")
+    if face_px is None:
+        reasons.append("unavailable: face_px")
+    elif face_px_min_applied is None:
+        reasons.append("unavailable: face_px_min")
+    elif face_px < face_px_min_applied:
+        reasons.append(
+            f"face_px {face_px:.4g} is below the required floor {face_px_min_applied:.4g}"
+        )
+
+    return {"pass": not reasons, "reasons": reasons, "face_px_min_applied": face_px_min_applied}
 
 
 # REVIEW-2026-09-07 finding #3: `vlm_judge.py`'s `DEFAULT_WORKERS` was lowered to 2
@@ -336,6 +423,8 @@ def run_two_stage_gate(
     workers: int = DEFAULT_GATE_WORKERS,
     model: str | None = None,
     judge_backend: str = "claude",
+    reference_free: bool = False,
+    tensor_review: bool = False,
 ) -> dict[str, Any]:
     """The one fail-closed two-stage gate composition EVERY caller of this module uses
     to gate a set of images against a persona's identity references -- extracted so
@@ -357,9 +446,20 @@ def run_two_stage_gate(
     `model`, when given, is forwarded to the stage-2 judge call
     (`vlm_judge.judge_images_for_stage`'s own `model=` kwarg); left unset, that
     function's own default model is used unchanged -- `build_grade`'s callers never
-    pass this, so their behaviour is identical to before this function existed."""
+    pass this, so their behaviour is identical to before this function existed.
+
+    `reference_free` (tensor passport stage) takes no anchors, judges only cells with a
+    detected face, reference-free, and sorts with `passport_verdict`. Every row then
+    carries `group` and the summary carries `groups`; an outage holds every cell
+    `unscorable`. Nothing is culled -- every row stays in the document."""
     if judge_backend not in JUDGE_BACKENDS:
         raise IdentityGateError(f"judge_backend must be one of {JUDGE_BACKENDS}")
+    if tensor_review and judge_backend == "codex-diagnostic":
+        raise IdentityGateError("codex-diagnostic is not supported for tensor review; use claude or local-research")
+    if tensor_review and (reference_free or not anchors):
+        raise IdentityGateError("tensor downstream review requires passport anchors")
+    if reference_free and anchors:
+        raise IdentityGateError("reference-free gating takes no identity anchors")
     anchors_by_stem = {path.stem: path for path in anchors}
     # REVIEW-2026-09-07 finding #5: judge rows are keyed by image_id = path.stem, but
     # `_resolve_images` de-duplicates by PATH, not stem -- a shared stem across two
@@ -388,7 +488,30 @@ def run_two_stage_gate(
         rows = score_cells_for_stage(images, anchors_by_stem, own_anchor=own_anchor)
         stage1_list = [identity_floor_gate(row, thresholds) for row in rows]
 
-        if skip_judge:
+        if tensor_review:
+            faced = [image for image, row in zip(images, rows) if row.get("face_px") is not None]
+            if faced and not skip_judge and judge_backend == "claude":
+                judge_kwargs = {"cache_dir": Path(out_dir) / "judge-cache", "workers": workers, "trait_axes": True}
+                if model is not None:
+                    judge_kwargs["model"] = model
+                judge_by_id = {row["image_id"]: row for row in _vlm_judge_module().judge_images_for_stage(faced, anchors[:1], **judge_kwargs)}
+            verdicts = [tensor_verdict(row, judge_by_id.get(row["image_id"]), thresholds, judge_thresholds) for row in rows]
+        elif reference_free:
+            faced = [image for image, row in zip(images, rows) if row.get("face_px") is not None]
+            if faced and not skip_judge and judge_backend == "claude":
+                judge_kwargs = {"cache_dir": Path(out_dir) / "judge-cache", "workers": workers,
+                                "reference_free": True}
+                if model is not None:
+                    judge_kwargs["model"] = model
+                judge_by_id = {
+                    row["image_id"]: row
+                    for row in _vlm_judge_module().judge_images_for_stage(faced, [], **judge_kwargs)
+                }
+            verdicts = [
+                passport_verdict(row, judge_by_id.get(row["image_id"]), thresholds, judge_thresholds)
+                for row in rows
+            ]
+        elif skip_judge:
             # Never even LOAD the judge module under --skip-judge (offline/test use
             # only) -- a stage-1-passing cell still fails overall, exactly the same
             # "unavailable: judge" verdict `two_stage_gate` would give a cell whose
@@ -442,6 +565,11 @@ def run_two_stage_gate(
         verdicts = [
             {"pass": False, "reasons": [reason], "stage1": None, "stage2": None} for _ in rows
         ]
+        if reference_free or tensor_review:
+            for verdict in verdicts:
+                verdict["group"] = "unscorable"
+                if tensor_review:
+                    verdict.update(age_hold=True, age_reasons=["unavailable: age estimates (gate outage)"])
 
     result_rows = []
     for row, verdict in zip(rows, verdicts):
@@ -451,6 +579,11 @@ def run_two_stage_gate(
         merged["stage1"] = verdict.get("stage1")
         merged["stage2"] = verdict.get("stage2")
         merged["judge"] = judge_by_id.get(row["image_id"])
+        if "group" in verdict:
+            merged["group"] = verdict["group"]
+        if "age_hold" in verdict:
+            merged["age_hold"] = verdict["age_hold"]
+            merged["age_reasons"] = verdict["age_reasons"]
         if judge_backend == "codex-diagnostic":
             merged["codex_diagnostic"] = codex_by_id.get(row["image_id"])
         result_rows.append(merged)
@@ -471,6 +604,11 @@ def run_two_stage_gate(
     }
     if judge_backend in ("codex-diagnostic", "local-research"):
         document["judge_backend"] = judge_backend
+    if reference_free or tensor_review:
+        groups: dict[str, int] = {}
+        for row in result_rows:
+            groups[row.get("group", "failed")] = groups.get(row.get("group", "failed"), 0) + 1
+        document["summary"]["groups"] = groups
     return document
 
 
@@ -504,6 +642,114 @@ def two_stage_gate(
         "stage1": stage1,
         "stage2": stage2,
     }
+
+
+def tensor_verdict(
+    scores: dict[str, Any], judge_row: dict[str, Any] | None,
+    thresholds: dict[str, Any], judge_thresholds: dict[str, Any],
+) -> dict[str, Any]:
+    """Reference-based tensor sorting, never a keep/cull decision.
+
+    Age holds remain explicit even when a missing face makes the display group
+    unscorable. Display-only traits cannot affect this verdict.
+    """
+    def finite(value):
+        try:
+            return type(value) in (int, float) and math.isfinite(value)
+        except OverflowError:
+            return False
+
+    age_reasons = []
+    floor = thresholds.get("age_floor_years")
+    if not finite(floor):
+        age_reasons.append("unavailable: age_floor_years")
+    for name, value in (("vit age", scores.get("age_value")), ("judge age", (judge_row or {}).get("apparent_age_candidate"))):
+        if not finite(value) or not 0 <= value <= 120:
+            age_reasons.append(f"unavailable: {name}")
+        elif finite(floor) and value < floor:
+            age_reasons.append(f"{name} {value:.4g} is under the age floor {floor:.4g}")
+    clean_scores = dict(scores)
+    for metric in ("identity_own", "face_px"):
+        if not finite(clean_scores.get(metric)):
+            clean_scores[metric] = None
+    clean_judge = dict(judge_row) if judge_row is not None else None
+    if clean_judge is not None:
+        for metric in ("same_person", "age_delta", "skin_realism", "gloss", "artifacts"):
+            if not finite(clean_judge.get(metric)):
+                clean_judge[metric] = None
+    stage1 = identity_floor_gate(clean_scores, thresholds)
+    judge_reasons = []
+    for metric, key, floor_metric in (
+        ("same_person", "same_person_min", True), ("age_delta", "age_delta_max", False),
+        ("skin_realism", "skin_realism_min", True), ("gloss", "gloss_max", False),
+        ("artifacts", "artifacts_max", False),
+    ):
+        value, limit = (clean_judge or {}).get(metric), judge_thresholds.get(key)
+        if not finite(value):
+            judge_reasons.append(f"unavailable: {metric}")
+        elif not finite(limit):
+            judge_reasons.append(f"unavailable: {key}")
+        else:
+            measured = abs(value) if metric == "age_delta" else value
+            if (measured < limit) if floor_metric else (measured > limit):
+                judge_reasons.append(f"{metric} {value:.4g} fails required {'floor' if floor_metric else 'ceiling'} {limit:.4g}")
+    stage2 = {"pass": not judge_reasons, "reasons": judge_reasons}
+    reasons = list(dict.fromkeys(age_reasons + stage1["reasons"] + stage2["reasons"]))
+    face_missing = not finite(scores.get("face_px"))
+    if face_missing:
+        reasons.insert(0, "unavailable: face_px (no measurable face)")
+    group = ("unscorable" if face_missing else "age" if age_reasons else
+             "unscorable" if any(reason.startswith("unavailable:") for reason in reasons) else
+             "failed" if reasons else "passed")
+    return {"pass": group == "passed", "group": group, "reasons": reasons,
+            "age_hold": bool(age_reasons), "age_reasons": age_reasons,
+            "stage1": stage1, "stage2": stage2}
+
+
+def passport_verdict(
+    scores: dict[str, Any], judge_row: dict[str, Any] | None,
+    thresholds: dict[str, Any], judge_thresholds: dict[str, Any],
+) -> dict[str, Any]:
+    """Reference-free verdict for the tensor passport stage (spec 2026-09-29 §7, phase 1):
+    no identity reference exists before the operator's pick, so identity/same_person/
+    age_delta are never computed. Sorts a cell into a board group -- unscorable, age,
+    failed or passed -- and never culls: every cell still needs an operator ruling."""
+    def verdict(group: str, reasons: list[str]) -> dict[str, Any]:
+        return {"pass": group == "passed", "group": group, "reasons": reasons,
+                "stage1": None, "stage2": None}
+
+    face_px = scores.get("face_px")
+    if face_px is None:
+        return verdict("unscorable", ["unavailable: face_px (no face detected)"])
+    reasons: list[str] = []
+    floor = thresholds.get("age_floor_years")
+    if floor is None:
+        reasons.append("unavailable: age_floor_years")
+    judge_age = (judge_row or {}).get("apparent_age_candidate")
+    for label, value in (("vit age", scores.get("age_value")), ("judge age", judge_age)):
+        # NaN compares False against the floor, so a non-finite age is unavailable, not adult.
+        if value is None or not math.isfinite(value):
+            reasons.append(f"unavailable: {label}")
+        elif floor is not None and value < floor:
+            reasons.append(f"{label} {value:.4g} is under the age floor {floor:.4g}")
+    if reasons:
+        return verdict("age", reasons)
+    face_min = thresholds.get("face_px_min")
+    if face_min is None:
+        reasons.append("unavailable: face_px_min")
+    elif face_px < face_min:
+        reasons.append(f"face_px {face_px:.4g} is below the required floor {face_min:.4g}")
+    for metric, key, is_floor in (("skin_realism", "skin_realism_min", True),
+                                  ("gloss", "gloss_max", False),
+                                  ("artifacts", "artifacts_max", False)):
+        value, limit = judge_row.get(metric), judge_thresholds.get(key)
+        if value is None or limit is None:
+            reasons.append(f"unavailable: {metric if value is None else key}")
+        elif is_floor and value < limit:
+            reasons.append(f"{metric} {value:.4g} is below the required floor {limit:.4g}")
+        elif not is_floor and value > limit:
+            reasons.append(f"{metric} {value:.4g} exceeds the allowed ceiling {limit:.4g}")
+    return verdict("failed" if reasons else "passed", reasons)
 
 
 # ---------------------------------------------------------------------------
@@ -1135,6 +1381,13 @@ def score_cells_for_stage(
                 metric: f"{type(exc).__name__}: {exc}" for metric in GATE_METRICS
             }}
         row["image_id"] = item.get("image_id", row["image_id"])
+        # Operator ruling 2026-09-15 (per-framing face floor): `framing` travels with
+        # the row exactly as the caller's own image record declared it (the plan's job
+        # record, never inferred from the image or the output filename) so
+        # `identity_floor_gate` can pick the right face_px_min floor downstream. `None`
+        # for any image record that declares no framing at all (tester/gen stages, or
+        # an older dataset plan) -- that is the existing, unchanged default-floor path.
+        row["framing"] = item.get("framing")
         rows.append(row)
     return rows
 
@@ -1289,6 +1542,11 @@ def calibrate(
     models = models or _default_models()
     persona_dir = Path(persona["_persona_path"]).resolve().parent if persona.get("_persona_path") else None
     references = persona["identity"]["references"]
+    if not references:
+        raise IdentityGateError(
+            "persona has no identity references yet -- calibration needs them "
+            "(a pre-passport persona is gated reference-free, never calibrated)"
+        )
     anchors = {
         Path(reference).stem: (persona_dir / reference).resolve() if persona_dir else Path(reference)
         for reference in references

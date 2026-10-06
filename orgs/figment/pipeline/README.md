@@ -1,4 +1,60 @@
+## Tensor module08 native video (offline implementation)
+
+`figment_train.py plan --creator creator-003 --stage video --video-request <request.json> --out <fresh-dir> --skip-pin-verify` binds one driving clip to its accepted module07 frame0 head swap. The `figment/tensor-video-request@1` object contains `creator`, boolean `fixture`, `clip: {path, sha256}`, `extraction_receipt: {path, sha256}`, `edit: {plan, image_id}`, the exact attributed `prompt: {text, sha256, decided_by, decided_at}`, and `intake: {one_person, simple_motion, adult, clothed, fixture, decided_by, decided_at}`. The four intake decisions must be true and attribution must retain fixture status. Metadata probing cannot certify those visual decisions.
+
+Supported driving media is currently verified constant 16fps with at least81 decoded frames, within the existing30s/720-frame bounds. Other fps and VFR inputs refuse rather than guessing resampling. Trusted frame0 validation re-decodes the clip, compares exact RGB pixels, binds staged image bytes, and records decoder hashes/version. It does not grant identity or edit approval. Nonfixture module07 head swaps now use this adapter; old synthetic-only declarations remain explicitly unverified until video intake performs the real decode.
+
+The source graph produces one native H264/yuv420p MP4:81frames,16fps,seed123. Dimensions follow the actual0.5MP resize and floor-to32 source rule. The closed harness output contract retains node49, prompt id, submitted graph hash and movie bytes. The MP4's real embedded `comment.prompt` must match the submitted graph; optional UI workflow metadata is separate. Locally decoded review PNGs are labelled as such, and reused evidence re-decodes all81 frames to prevent a replaced PNG plus edited receipt from claiming movie provenance.
+
+The board includes playback and11 sampled grading cells. Existing per-image gates and the existing video sample/complete-sequence/playback ruling writer both remain required. `pipeline --plan <video-plan>/plan.json` stops at `GATE video-playback` until that eye gate is satisfied. A fixture acceptance/deliverable stays non-promotable; production accepted-video validation rejects it.
+
+**Live admission remains phase6 code work.** Launch currently refuses even with verified model pins. Current review subjects also derive `runtime_admitted: false`; nonfixture video acceptance and production delivery refuse until that adapter exists. A versioned admission adapter must first consume a separately approved nonfixture smoke (`dry_run=false`), exact current runtime/pins/manifest graph, verified termination, installed node/schema proof and actual native metadata survival. No bypass boolean or synthetic receipt substitutes for that projection. Offline tests, public pin evidence and harness dry-runs do not authorize a funded run.
+
+## Tensor module07 edit (offline fixture proof)
+
+`figment_train.py plan --creator creator-003 --stage edit --edit-request <request.json> --out <fresh-dir> --skip-pin-verify` produces a standalone edit plan without dataset or checkpoint prerequisites. `--skip-pin-verify` is for offline planning only; live launch always verifies approved model pins and gated access. Synthetic requests cannot launch.
+
+The `figment/tensor-edit-request@1` object contains `creator`, `job_type` (`still-touch-up` or `start-frame-head-swap`), explicit boolean `fixture`, `base: {path, sha256}`, `identity: {kind: passport|approved-gen, source_plan, image_id}`, and `prompt: {text, sha256, decided_by, decided_at}`. `source_plan` names the original plan.json; prompt SHA256 covers exact UTF-8 text and the timestamp must include a timezone. Relative paths resolve beside the request. Unknown fields, duplicate JSON keys, unsafe links/traversal, unsupported images and colliding upload basenames are refused.
+
+Node76 is BASE/image1; node169 is IDENTITY/image2. Source UI titles suggest the reverse: effective reference links and the approved spec determine these roles. The input preview and grading board link show both images and the exact prompt. Registered-passport authority revalidates the original anchor promotion, selected output, ruling and current registered bytes, while allowing later training changes. New edits use current grading thresholds. Accepted standalone edits ignore unused dataset/tester settings; request, passport, output, graph, model pins and relevant pod configuration remain bound.
+
+Start-frame requests additionally require `frame_source: {clip: {path, sha256}, extraction_receipt: {path, sha256}, frame_index: 0}`. The receipt uses the existing frame-extraction schema and must bind the exact clip and first-frame bytes. Nonfixture requests additionally re-decode frame0 using the module08 media adapter above. A touch-up approval cannot authorize a driving-clip start frame. Module07 fixture results establish wiring and review flow, not image quality. Klein9B live access/preflight and a separately approved semantic smoke remain pending.
+
 # figment pipeline — operator entry point
+
+## Tensor phase 2 (2026-10-05, offline implementation)
+
+The `tensor` profile now plans the module-10 dataset and module-11 training/tester path.
+It produces exactly 15 face and 15 body jobs, once each, in three 10-job manifests named
+`<creator>-tensor-dataset-m10-01.yaml` through `-03.yaml`. Node836 receives the selected
+passport; node837 receives a separately approved faceless, clothed body image. Source and
+staged passport bytes are pinned at planning and rechecked before launch, grading and review.
+The source prompt rows and linked prefixes replace the old look-prefix/repair-tail recipe.
+
+Tensor training fixes 3000 steps, save 250, one dataset replicate, Qwen captions, DOP off and
+no textual trigger. Checkpoint filenames use the creator id; the tester compares the eleven
+250..2750 intermediates and the final 3000 checkpoint using one approved scene prompt,
+1448x2176, seed 1595, four steps, cfg 1 and res_2s/beta. Checkpoint selection remains an eye gate.
+The historical `clean` path below retains its own recipes and artifact names.
+
+Dataset `apply-rulings` plans captions and reports pending execution without launching a pod.
+It saves `train/caption-plan.json`; after a separately approved caption run, repeating the same
+command verifies its receipt and captions before creating the final approved training set.
+Fixture-marked body/prompt inputs refuse live stage execution; harness `--dry-run` remains
+available. See [the runbook](../RUNBOOK.md#tensor-phase-2-offline-inputs-and-caption-resume)
+for the input schema and commands.
+
+All tensor dataset/tester cells remain visible in passed, age, unscorable or failed groups.
+Missing-face cells can also require an age ruling. Lips, brows, skin_pattern, hair and jaw are
+0-100 passport-match displays, with unavailable values explicit; thresholds are not active.
+The calibration inventory found 95 historical v1 rows without these trait scores or labels;
+source-bound rescoring, labels, fitting and held-out validation remain pending.
+
+This work proves fixture planning and parity, not new live model quality. Klein9B remains
+gated: the installer supplies its digest and public metadata supplies the revision, but the
+current unauthenticated pin-verifier HEAD receives 401. Operator terms/access setup and a
+reviewed gated-file verification path are prerequisites to a separately approved live run;
+`--skip-pin-verify` is for offline tests only. See [recipe evidence](train/TENSOR-TRAINING.md).
 
 One persona (`persona.yaml`) plus a fixed set of reference anchors runs through eight stages
 under a fail-closed identity/quality gate, driven by one script:
@@ -249,6 +305,14 @@ across 6 evidence sets — full distributions in
 Combined `judge_gate` at these thresholds (`gate.yaml`): anchors 3/3, track1-dataset 22/31,
 lora-tester 0/8, qwen-anchor-edits 4/6, passport-candidates 0/12, expansion-03 23/35.
 
+Operator ruling 2026-09-15: half-framed dataset cells (half-body coverage, needed by
+MANDATE stage 3) gate `face_px_min` at **300px** instead of the 600px default — declared
+per-persona under `identity.floor.min_face_px.by_framing` and overlaid by
+`identity_gate.load_thresholds` into `face_px_min_by_framing`; `identity_floor_gate`
+picks the floor from each cell's own `framing` (carried from the plan's job record, never
+inferred from the image), records which one applied as `face_px_min_applied` on the gate
+row, and falls back to the plain 600px floor for any close-framed or unframed cell.
+
 ## Stage: detail (F2)
 
 `detail` is a `STAGES`/`GRADEABLE_STAGES` entry that always re-detailts a specific `gen`
@@ -392,12 +456,16 @@ side mode, so this open surface is exercised by default, not opt-in — read GUA
 
 - Daily: `governance/budget.yaml` `daily_usd_limit: 10.00` (subscription-billed steps, e.g.
   `vlm_judge`, log $0.00 against this).
-- Arc: `ARC_CAP_USD = "60.00"` in `figment_train.py` (raised from `"50.00"` by operator
-  ruling 2026-09-15), checked against every `figment-*.tsv` ledger row before a live `run`.
+- Arc: `DEFAULT_ARC_CAP_USD = 75.0` in `pod/runpod_run.py` is the one source (operator ruling 2026-09-29; `--arc-cap-usd`/`KB_ARC_CAP_USD` override), summing only `figment-*.tsv` files dated on or after `ARC_START_DAY` (2026-09-29); earlier rows are history. `figment_train.py` freezes it into each plan's argv (`_arc_cap_usd()`).
 - Per-stage ceilings (`--max-usd`; `train/TENSOR-TRAINING.md`'s cost table): train-smoke
   $2.28, tester $2.82 (F5: `max_minutes` raised 115 -> 130 to cover the 12-job ladder a
   3000-step/save_every-250 checkpoint schedule now tests), gen $3.58; dataset shard
   $2.71/pod, ~$8.13 for 3 shards, dependency smoke $1.41 (`expand/TENSOR-REPLICATION.md`).
+  `training.dataset_source: "klein-multiref"` (P2, MANDATE.md stage 2) plans the
+  `dataset` stage as 2 shards (face, body; `pins.pod_classes.l40s.stages.dataset_multiref`)
+  instead: **$2.3833/shard, $4.7667 total** — see `train/TENSOR-TRAINING.md`'s P2 section
+  for the per-cell time estimate and its source. The default `"qwen-edit"` (unchanged)
+  keeps the 3-shard-plus-fullbody shape and ceilings above.
   Bake-off ablation $2.65, Path-B diagnostic $3.70 (STATE.md 2026-09-06). **train is not a
   fixed number** — `_apply_train_budget` derives the ceiling from steps x the per-step rate
   (plus `runpod_run.minimum_runtime_minutes`'s floor), so it moves with the plan's own
@@ -408,7 +476,7 @@ side mode, so this open surface is exercised by default, not opt-in — read GUA
   daily limit on its own**, even on a day with zero prior Figment spend — DOP's ~3.6x
   per-step rate (9.0s vs 2.5s, r21) times 3000 steps is the real cost of training-to-3000
   screened-by-tester rather than defaulting to a shorter run (F5 ruling, r25 causes #4/#6);
-  train's OWN ceiling clears the $60.00 arc cap by itself against any realistic already-spent
+  train's OWN ceiling clears the $75.00 arc cap by itself against any realistic already-spent
   total (M3: read `spent`/`remaining` live off the resolved ledger at plan time --
   `configured_ledger_dir`'s precedence -- never a fixed figure quoted here) but a live
   `run --stage train` still needs its own calendar day with no other Figment spend, checked
@@ -416,7 +484,7 @@ side mode, so this open surface is exercised by default, not opt-in — read GUA
   day" constraint the arc cap and per-stage ceilings above already impose on `gen`.
   **The FULL `--stage all` chain can still fail to clear the arc** if enough has already been
   spent: summed ceilings at these numbers (anchor $4.90 + dataset $10.47 + smoke $2.28 +
-  train $15.73 + tester $2.82 = $36.20) can exceed what remains of the $60.00 cap —
+  train $15.73 + tester $2.82 = $36.20) can exceed what remains of the $75.00 cap —
   `enforce_arc_cap` only ever compares ONE run's ceiling at RUN time, so a chain like this used
   to be
   accepted for planning and only fail mid-chain, after anchor+dataset already spent (M2).
@@ -455,6 +523,21 @@ guarantee, and the `HF_TOKEN` secret-reference mechanism are documented once, in
 | **09-04 day total** | — | — | $6.32 (STATE 23:55); $6.3161 summed live (`ledgers/cost/figment-2026-09-04.tsv`) | consistent |
 | 09-06 | Track-2 anchor stage, 12 passport + 6 edits | — | $0.61 (STATE) | operator: "absolutely not even close" — passport path SHELVED |
 | 09-07 | bake-off m1, 18-cell ablation | jm67txnsqfj662 | $1.99 + $0.23 = $2.22 (STATE 00:40) | arm B (no skin LoRA) best, facenet 0.87-0.93; skin LoRA HURTS identity |
+| 09-15 23:00-00:29 | dataset: klein-multiref, 30 cells, 2048x2560 | 8j29mc7vhpii6v + 3ot6ph140rvp8n | $0.80 + $0.82 = $1.62 | gate 0/30 — identity_own median 0.61 vs floor 0.7907; root cause was the composer's text description overriding the reference latents (fixed, not re-run live). Run root `creator-001/live-20260915b` |
+| 09-16 01:13-04:50 | dataset: qwen-edit, replicates=2, 60 cells | 8 pods | ~$2.9 (1 retry via `--retry-failed`, shard-04, $0.15, never rendered) | gate 18/60 — identity_own median 0.898; all 16 close-framing and all 10 full-framing misses were the face-px floor, not identity. Run root `live-20260916` |
+| 09-16 05:11-07:46 | dataset: qwen-edit (9 face rows tightened), 60 cells | 8 pods | ~$3.1 | gate **32/60** (close 21/30, half 10/20, full 1/10) — 570-1103px is the range over all 30 close cells; close PASSERS were 624-977px (n=21). THE TRAINING SET. Run root `live-20260916b` |
+| 09-16 | qwen3-VL caption (4th pod / 6th attempt: `.failed-1`/`.failed-2` never-created $0, `xdbs4haupr95or` $0.142, `8bi3qae4icrz3t` $0.105, `d84dzamf8gccbu` $0.084, success `symlq3jynb83a8` $0.123 — caption leg total $0.455) | symlq3jynb83a8 | $0.455 (caption leg total) | 32 captions in <2 min, `captions.json` 18KB, dataset assembled + approval lineage written — first live success |
+| 09-16 | smoke train, 50-step checkpoint + final | bwdhqfvt72a0d9 | $0.27 | complete |
+| 09-16 | train, 3000 steps (ceiling $15.73) | — | $0 | REFUSED at plan-time budget preflight ($6.20 already spent today + $15.73 > $10.00 daily limit) — recorded as `refused`, no attempt consumed; waiting on operator's `governance/budget.yaml` raise (>= 22) |
+| 09-17 | train, 3000 steps (ceiling $15.73), after operator raised daily limit to 20 | g82uvbgep3ov9q | $2.90 actual | complete — 12 checkpoints (250…2750 + final, 228 MB each). Run root `live-20260916b` |
+| 09-17 | tester, 12-checkpoint ladder | mqhofpqmdvn12x | $0.43 | gate **2/12 pass**: step 2000 (identity_own 0.895, face_px 689, judge same_person 88) and final/3000 (0.900, 663, 74) — first creator-001 ladder to clear the full gate (prior best 0.78, 1250-step train-first). `--checkpoint-step 2000` chosen (equal identity to final, stronger judge); `chosen_checkpoint_step: 2000` recorded (commit ee6ce232) |
+| 09-17 | gen | — | $0 | REFUSED at plan-time budget preflight — arc ($58.04 + $4.01 > $60) and daily ($16.16 + $4.01 > $20) both tripped on a stale ledger (see Open defects: the coordination-checkout `figment-2026-09-17.tsv` lost its settled train row only — the tester's row is present, re-appended on its own settle — to an unrelated ops-branch sync at 19:36); true arc ≈ $47.7 of $60 |
+| 09-21 | gen, 3 attempts | 4 pods | $5.30, zero output | ALL FAILED before rendering — `MediaPipeFaceMask` `regions` DynamicCombo encoding bug (hit twice), a DNS poll drop, and an upload hang during a Windows host suspend (alone $4.58, root-caused and fixed 2026-09-22, see Open defects) |
+| 09-22/23 | gen, default recipe (look-clause, refine 0.35, detailer 0.15) | `x0lwu992xprg95` | $0.38 | gate **0/12** — identity_own median ~0.89 fine, but 9/12 fail `face_px` (475–592 vs 600, "waist up" framing) and the 3 that pass fail judge `same_person` (45–68 vs 70.2). Run root `creator-001/live-20260916b/downstream/gen` |
+| 09-22 | gen, A/B `gen_prompt_style: "trigger-scene"` | — | $0.41 | gate **0/12**, WORSE — judge `same_person` 30–60, judge `age_delta` 4–10; confirms "prompt and LoRA must agree" (10sorlabs). Run root `ab-20260922-trigger-scene-2` |
+| 09-23 | gen, `look-clause-close` prompts, refine denoise 0, detailer denoise 0.20 | — | $0.61 | gate **3/12 PASS** — first gen stills ever to clear the full gate. Judge `same_person` median 72 (35–78), identity_own median ~0.87, face_px 548–719. Same checkpoint's tester single-pass (no refine/detail) scores judge 88 — the refine/detail passes cost ~25–40 judge points. Run root `run1-20260923-close-norefine` |
+| 09-23 | detail, first live run (`d0.15`/`d0.27` A/B on run1's kept stills) | `w20n3wtn30cceg` (ReadinessTimeout dead host, $0.87), `n93u1vkssd448s` | $0.23 real run | gate **1/6 pass** — `d0.15` passes at judge same_person 78; `d0.27` variants score 55–62 with `skin_realism` 18–28. Run root `detail1-20260923` |
+| 09-23 | video, first live Wan 2.2 TI2V run | `x925o3140m34lv` | $0.18 | gate **0/11**, "no face detected" on every sampled frame — mechanically clean (81 frames @1280×704, `candidate.mp4` + `reel.mp4` built) but the still rendered landscape, the camera tilts the face toward the top ~25–30% of frame height (motion instruction not honoured), the reel crop to 1080×1920 compounds it, and MTCNN misses the resulting small/off-center face. Run root `video1-20260923` |
 
 Sources: `orgs/figment/STATE.md` 2026-09-03 23:50 through 2026-09-07 00:40, cross-checked
 against `ledgers/cost/figment-2026-09-0{3,4,6,7}.tsv` where a row is identifiable. See Open
@@ -523,6 +606,82 @@ defects below for where these two sources disagree past 09-04.
   `calibrate/runs/grid-01-README.md`), so the fixture was left as-is rather than bumped —
   a magic-number patch on dead code would just re-drift the next time the harness rule
   changes, with nothing live to catch it.
+- **`--retry-failed`'s transport-error allow-list is a small, literal substring match**
+  (`RETRY_ELIGIBLE_ERROR_SUBSTRINGS`, P4 2026-09-16) — a real transport/placement blip whose
+  `run.json["error"]` doesn't happen to contain one of those exact substrings still refuses
+  and needs a reviewed widening, not another live retry to discover the gap.
+- ~~**A stalled ComfyUI upload POST could block for hours despite a computed per-part
+  timeout**~~ — RESOLVED 2026-09-22, corrected: a live `gen` run (`orgs/figment/runs/creator-001/
+  live-20260916b`, pod `u86413a8wjzsni`, 2026-09-21) blocked ~3h53m on one chunk POST
+  (computed timeout ~76s) because `requests`' `timeout` bounds connect + each read but not a
+  stalled body send; the initial 2026-09-22 fix (worker thread + hard `join(timeout)` +
+  `session.close()`) shipped believing the `Watchdog` "needed no change" — an opus review the
+  same day found the TRUE trigger: the pod actually ran 252 minutes against a 185-minute
+  ceiling and the `Watchdog` never logged, because a Windows host suspend does not advance a
+  relative `Event.wait`/`Thread.join`, so both the upload's own join and the `Watchdog`'s
+  ceiling silently stretched together. Fixed for real: both now wait in short slices and check
+  a wall-clock deadline alongside the monotonic one (`_sliced_deadline_wait`), so a suspend is
+  caught on the very next slice regardless of which relative clock got fooled; `session.close()`
+  alone also turned out not to unblock an in-flight send (`PoolManager.clear()` only closes idle
+  connections) — the deadline now captures and directly `shutdown()`s the stuck socket. The pod
+  also carries its own independent dead-man switch as a backstop for a host that never comes
+  back at all — RunPod injects a pod-scoped `RUNPOD_API_KEY` and preinstalls `runpodctl` by
+  default, so it tries `runpodctl remove`/`stop pod` (and the newer `pod delete`/`pod stop`
+  spelling) before ever falling back to a bare `shutdown -h now`. See GUARDRAILS.md #6.
+- ~~**qwen3vl caption pod: first live attempt failed at upload preflight on a zero-byte
+  sentinel**~~ — RESOLVED 2026-09-16 (`_images.ready`, live run `creator-001/live-20260916b`):
+  sentinel now carries real JSON content; the caption start-script template is now also
+  staged beside the manifest, a second preflight gap the same fix's regression test
+  surfaced.
+- ~~**qwen3vl caption pod: second live attempt bootstrapped, uploaded, then failed 14s
+  into its python block with the reason stranded on the pod**~~ — RESOLVED 2026-09-16
+  (`creator-001/live-20260916b`, template installed no python deps for its
+  `transformers`/`accelerate` imports and logged only to `_caption.log`, a filename
+  `pod/runpod_run.py`'s diagnostic fetch never looks for): pinned
+  `transformers==4.57.1`/`accelerate==1.10.1` install before the python block, log renamed
+  to `_training.log` with a `_caption.log` symlink kept, a `_training.heartbeat` toucher,
+  and a traceback-to-log wrapper.
+- ~~**qwen3vl caption pod: third live attempt installed the pinned deps fine, then failed
+  loading the model**~~ — RESOLVED 2026-09-16 (`creator-001/live-20260916b`, second caption
+  pod `8bi3qae4icrz3t`, $0.15): module 11's `float8` is ai-toolkit's own quantize-time
+  setting, not a `from_pretrained(dtype=...)` value; passing `torch.float8_e4m3fn` there hit
+  `TypeError: couldn't find storage object Float8_e4m3fnStorage`. The template's dtype map
+  now loads `bfloat16` for both `"float8"` and `"bfloat16"` (8B model in bf16 is ~16 GB, fits
+  the L40S's 48 GB). Fourth attempt (pod `symlq3jynb83a8`, $0.12) proved the full chain live:
+  32 captions in <2 min, `captions.json` 18 KB, dataset assembled, approval lineage written.
+- **`identity.floor.min_face_px.by_framing` has no `full` entry** — `live-20260916`'s 10
+  full-framing dataset cells all failed only the plain 600px default floor (identity itself
+  was fine); operator ruling on a `full` floor value is open, same as the existing `half:
+  300` ruling (2026-09-15).
+- **The ops coordination checkout must not be synced/overwritten while figment pods are
+  live** — the harness settles cost rows into that same working file
+  (`ledgers/cost/figment-<date>.tsv`), and a sync from another session mid-run can clobber a
+  provisional row before it's replaced by the settled one. Live-hit 2026-09-17: a 19:36
+  ops-branch sync (commit `fa6803ad`) overwrote the day's ledger with only the train's
+  provisional $15.73 row; only the settled $2.90 TRAIN row was lost — the tester's row is
+  present (it was re-appended on its own settle, not lost), leaving the file under-reporting
+  true spend
+  by ~$10.3 and causing `gen`'s plan-time budget preflight to refuse on stale numbers. The
+  boss/operator restores the row (this is a shared coordination file a docs worker may not
+  write); no code fix identified yet — this is a process/scheduling gap between the ops sync
+  cadence and any session with figment pods in flight.
+- **Fixed 2026-09-21**: `MediaPipeFaceMask`'s `regions` DynamicCombo was encoded as a nested
+  `{"regions": "all"}` dict in every workflow template, which live-failed gen attempt 3
+  (pod `y3mz2hqqbnf4ci`) with `execute() missing 1 required positional argument: 'regions'`;
+  the API form is the bare option-key string `"all"`/`"custom"`. See
+  `research/r23-mediapipe-node-spike.md` (live-refuted section) for the ComfyUI source cite.
+- **`gen`'s default recipe scores 0/12 live** (2026-09-22/23, `live-20260916b/downstream/gen`):
+  every checkpoint image renders "waist up" at 475–592 px against the 600 `face_px` floor, and
+  the handful of images that do clear `face_px` fail the judge's `same_person` floor. A fixed
+  recipe (refine denoise 0, detailer denoise ≤0.20, `gen_prompt_style: "look-clause-close"`)
+  clears 3/12 live (run1) but is not yet the default — see `STATE.md` "Next" item 1.
+- **`video` aspect/motion/gate defects, open** (2026-09-23, video1): the review-candidate still
+  renders landscape (1280×704) even though the reel target is portrait; the motion instruction
+  ("stands still, turns head") is not honoured, so the camera tilts and the face drifts toward
+  the top ~25–30% of frame height; the reel's 1080×1920 crop compounds the framing; and MTCNN
+  (the gate's face detector) misses the face on all 11/11 sampled frames as a result. Video's
+  mechanical chain (manifest → render → assemble → reel → extract → grade) is proven; these are
+  content/gate defects on top of it, not wiring bugs. See `STATE.md` "Next" item 3.
 
 ## How to iterate
 
@@ -535,7 +694,7 @@ defects below for where these two sources disagree past 09-04.
 - **Add a stage.** Widen `STAGES`/`GRADEABLE_STAGES` in `figment_train.py` and wire a manifest
   builder for it — a code change; `GRADEABLE_STAGES`'s own comment names the three functions
   (`build_grade`, `apply_rulings`, `command_gate`) that must all agree. `detail` (F2) is the
-  worked example: `STAGE_PIN_PROFILES["detail"]`, a `build_plan` branch sourcing an upstream
+  worked example: the `detail` entry of each recipe profile in `tensor-pins.yaml` `profiles` (`_stage_pin_groups`), a `build_plan` branch sourcing an upstream
   stage's approved images, an `_install_stage_config`/`run_planned_stage` freshness re-check,
   and a `pipeline` (F1) entry that plans it automatically once its upstream ruling exists.
   `video` (F6a) is the second: same shape, plus an existing compiler imported rather than
@@ -543,3 +702,36 @@ defects below for where these two sources disagree past 09-04.
   `_grading_images` branch choosing which cells the board shows.
 - **Swap a model pin.** Edit `train/tensor-pins.yaml`; `verify_pins.py --stage <name>` checks it
   live before you spend a plan run on a stale digest.
+- **Change the dataset stage's source.** Set `training.dataset_source: "klein-multiref"`
+  (default `"qwen-edit"`, unchanged) in a persona's `training.yaml`/inline `training` block —
+  `build_plan --stage dataset` then plans `_dataset_manifests_klein_multiref` (2 shards, klein
+  4B Base + `ReferenceLatent` x3) instead of the qwen-edit two-stage replica. No code change;
+  `train/TENSOR-TRAINING.md`'s P2 section has the full settings table.
+
+## Offline tensor stills and scene intake (modules09/16)
+
+Tensor gen accepts a canonical fixture scene request after the existing tester checkpoint selection:
+
+```powershell
+python figment_train.py plan --creator creator-003 --stage gen --stills-request scene-evidence/request.json --out local-stills --skip-pin-verify
+```
+
+For isolated synthetic registries, add `--personas-root <directory>`. The default registry is unchanged. Requests use `figment/tensor-stills-request@1`, fixture=true, the original passport source-plan/image-id selection, and scenes with an explicit scene_index plus local draft/approval paths and SHA256 digests. Drafts/approvals come from prompt_intake's fixture API with the driver's canonical passport adapter; live extraction is unavailable. Ordinary planning never calls a model.
+
+Scenes batch by framing. Full/medium/wide save base/upscaled/enhanced; close-up saves base/enhanced and skips the source upscale/refine chain. Every saved variant is graded and ruled independently, with its role and approved scene text on the board. Scene photos stay local. Only the accepted checkpoint is staged for inference. An explicitly kept variant may become edit input through the existing approved-gen authority.
+
+Optional `identity.look.face` supplies gen-only approved face words. Absent/empty values remain an intake gap; no descriptors are inferred. The original eight look slots still govern their existing consumers. Gen freshness binds the new face words; adding them does not invalidate an earlier accepted checkpoint.
+
+These fixture plans refuse live launch. Unknown style/upscaler/RES4LYF licences, actual runtime compatibility, production Read confinement/extraction and quality remain unresolved. Public immutable model metadata and dry-run manifests do not prove model execution.
+
+## Offline runtime evidence inspection (phase6 first slice)
+
+`figment_train.py runtime-admission inspect --request <request.json> --evidence-root <directory>` reads bounded local metadata and emits one JSON `figment/tensor-runtime-inspection@1` report to stdout. Exit status is always2 (authority unavailable), including internally consistent fixtures. No creator argument is required. It writes no report/approval file and never starts a model, subprocess, approval verifier or network client. There is no validate/admit/launch subcommand.
+
+The exact request schema is `figment/tensor-runtime-inspection-request@1`, with only schema, stage="video", recipe_profile="tensor", fixture (Boolean), evidence_root (exact caller-root POSIX spelling), current_scope_sha256, and sources. The caller fixes the confinement root; the document cannot select another. Sources has exactly manifest, run, installed, object_info, submitted_graph, history, native_metadata, recovery and ledger; each binding has a relative JSON path, byte count and lowercase SHA256. These are closed inspection projections (see tensor_runtime_admission.py and its synthetic fixture test), not canonical harness receipts or authenticated captures. Approval references and selectors are not accepted. `current_scope()` computes the fixed current export/pin/checker/transport-code projection; request data cannot supply current code or pins.
+
+Caps: request1MiB; each evidence JSON4MiB except object_info/history8MiB; all evidence snapshots24MiB; all actual reads including final freshness/current-source rereads64MiB. Current code/export/pin metadata is capped2MiB/file and8MiB total. JSON depth32/items100000, installed models128, custom nodes64, declared classes256 and placements16. Installed model and native movie records are metadata only: no weight/media record path is followed; reads are restricted to declared JSON/current code metadata. Reparse/traversal paths, duplicate JSON keys, nonfinite numbers, unknown keys and changed bindings refuse.
+
+`evidence_consistent` means local declarations agree with each other and the fixed current video graph/pins. Required class names, declared input names/output-slot counts, graph widgets/links, exact supported output contract, attempt/prompt/movie/termination/cost declarations are compared. It does NOT mean real media was decoded, installed schemas executed, or approval/capture/termination was authenticated. The report always carries runtime_admitted=false, production_ready=false and authority_status="authority-unavailable". All existing live launch and production video acceptance guards remain unchanged; trusted capture/approval/one-shot/result adapters and actual smoke remain separate gated work.
+
+Inspection confinement qualification: request and evidence operands must be explicit `.json` metadata files before opening; model/media records contain no followable file path. A hostile file renamed `.json` cannot be identified without bounded reading/parsing, so this is not a claim that arbitrary adversarial bytes are never read. Stable reparse paths and ordinary mutations are rejected; component checks and rereads are not OS-enforced confinement against an actively swapping hostile filesystem writer. A future authenticated adapter needs separately reviewed stronger confinement/capture authority. None is enabled by this inspection slice.

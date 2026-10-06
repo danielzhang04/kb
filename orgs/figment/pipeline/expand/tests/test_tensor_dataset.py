@@ -11,9 +11,11 @@ own BANNED_PHRASES mirror rather than a third copy, the same way
 """
 from __future__ import annotations
 
+import atexit
 import importlib.util
 import json
 import re
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -90,12 +92,60 @@ TEMPLATES = EXPAND / "templates" / "tensor-dataset-prompts.yaml"
 # `test_framing_policy_skin_clause_and_no_unused_subpack` /
 # `test_fullbody_jobs_route_through_the_face_repair_composite_node`, both already driven
 # through a live `build_plan` call.
+#
+# P2 (MANDATE.md stage 2): creator-001's REAL, checked-in `training.yaml` now sets
+# `dataset_source: klein-multiref` (the live chain runs the new source) -- but THIS file
+# is the qwen-edit module-10-replica regression suite specifically, per its own docstring
+# above. Rather than add a second persona directory under the real `personas/` tree, or
+# retire this file, mirror creator-001's real persona/training config into a tmp root
+# (same `tempfile.mkdtemp()` convention `_DATASET_PLAN_DIR` below already uses) with
+# ONE key overridden back to `"qwen-edit"` after the copy -- loaded through the exact
+# same loader (`figment_train.build_plan` -> `training_config.load_persona_with_training`),
+# no new machinery. The mirror preserves the real `orgs/figment/{pipeline,personas}`
+# sibling layout (not just the persona directory alone) because `register.spec.path`
+# ("../../pipeline/look-spec-v2.md") deliberately escapes the persona directory
+# (persona.py's own `must_stay_within=False`) and must still resolve.
+# LOW (adversarial review): copy only what `load_persona_with_training` actually reads
+# for creator-001 -- persona.yaml/training.yaml/identity-spec.md/anchors/ -- never the
+# whole creator-001 directory (`batches/`, `calibration/`: ~560 KB of images this
+# loader never opens). Cleanup is registered with `atexit` rather than left to the OS
+# temp-dir reaper, since this tmp root is built once at collection time (module scope),
+# not inside a fixture that could own a `yield`-based teardown.
+def _creator001_qwen_edit_personas_root() -> Path:
+    root = Path(tempfile.mkdtemp(prefix="figment-tensor-dataset-qwen-edit-root-"))
+    atexit.register(shutil.rmtree, root, ignore_errors=True)
+    source = REAL_PERSONAS / "creator-001"
+    personas_root = root / "personas"
+    target = personas_root / "creator-001"
+    target.mkdir(parents=True)
+    for name in ("persona.yaml", "training.yaml", "identity-spec.md"):
+        shutil.copy2(source / name, target / name)
+    shutil.copytree(source / "anchors", target / "anchors")
+    pipeline_root = root / "pipeline"
+    pipeline_root.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(PIPELINE / "look-spec-v2.md", pipeline_root / "look-spec-v2.md")
+
+    training_path = target / "training.yaml"
+    document = json.loads(training_path.read_text(encoding="utf-8"))
+    document["training"]["dataset_source"] = "qwen-edit"
+    # P2 task 3 (2026-09-16): the real, checked-in training.yaml now also sets
+    # `dataset_replicates: 2` (creator-001's live rollout) -- this qwen-edit
+    # module-10-replica regression suite was written and its SHARDS/job-count
+    # assertions tuned against the base (1x) 3 half/close + 1 fullbody shape, so
+    # override the replicate count back to 1 here rather than rewrite every
+    # assertion below for a doubled, differently-sharded job list.
+    document["training"]["dataset_replicates"] = 1
+    training_path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    return personas_root
+
+
+_QWEN_EDIT_PERSONAS_ROOT = _creator001_qwen_edit_personas_root()
 _DATASET_PLAN_DIR = Path(tempfile.mkdtemp(prefix="figment-tensor-dataset-plan-"))
 # M2: manifest-replication check, not a budget check -- the live shared ledger's
 # remaining arc margin can dip below dataset's own ceiling depending on other workers'
 # spend on this machine, so accept_budget is required deterministically.
 _DATASET_PLAN = figment_train.build_plan(
-    "creator-001", "dataset", _DATASET_PLAN_DIR, personas_root=REAL_PERSONAS,
+    "creator-001", "dataset", _DATASET_PLAN_DIR, personas_root=_QWEN_EDIT_PERSONAS_ROOT,
     skip_pin_verify=True, accept_budget=True,
 )
 SHARDS = tuple(
@@ -178,6 +228,21 @@ def jobs(manifests):
 
 def subs(job):
     return {(s["node_id"], s["field"]): s["value"] for s in job["substitutions"]}
+
+
+# ---------------------------------------------------------------------------
+# LOW (adversarial review): the qwen-edit mirror copies only what the loader needs
+# ---------------------------------------------------------------------------
+
+
+def test_creator001_qwen_edit_personas_root_copies_only_the_loader_inputs():
+    copied = _QWEN_EDIT_PERSONAS_ROOT / "creator-001"
+    assert (copied / "persona.yaml").is_file()
+    assert (copied / "training.yaml").is_file()
+    assert (copied / "identity-spec.md").is_file()
+    assert (copied / "anchors").is_dir()
+    assert not (copied / "batches").exists()
+    assert not (copied / "calibration").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -550,6 +615,7 @@ def test_framing_policy_skin_clause_and_no_unused_subpack(command, tmp_path):
     # composed look clause) -- verbatim, regardless of what look words precede it.
     skin_texture_clause = "fine vellus hair, and natural micro-texture, no retouching"
     pins = json.loads((PIPELINE / "train" / "tensor-pins.yaml").read_text("utf-8"))
+    pins["pins"].pop("passport_tensor")  # module 03 passport group carries the Subpack by design
     assert "Impact-Subpack" not in json.dumps(pins)
     personas = tmp_path / "personas"
     persona_path = _synthetic_persona(personas, creator_id="creator-002")
@@ -603,3 +669,24 @@ def test_dataset_fullbody_pin_stage_covers_its_own_readiness_budget(tmp_path):
     stage = pins["pod_classes"]["l40s"]["stages"]["dataset_fullbody"]
     budget = stage["readiness_timeout_seconds"] + stage["job_timeout_seconds"] * 5 + 300
     assert budget <= stage["max_minutes"] * 60
+
+
+TIGHT_FRAMING_PHRASES = (
+    "headshot",
+    "close-up",
+    "looking up at her face",
+)
+
+
+def test_every_face_row_carries_a_tight_framing_clause(templates):
+    """Live 2026-09-16 (run live-20260916, 60 cells): face rows worded as a plain
+    "photograph … view of her face" rendered chest-up at ~400-510 px and failed the
+    600 px `face_px` floor with identity_own 0.82-0.94, while rows worded "headshot" /
+    "close-up" / "low-angle shot, looking up at her face" rendered at 750-970 px and
+    passed. Module 10's face branch is face-dominant by construction (its input is a
+    1680² face crop), so tight framing IS the recipe -- pin it on every face row."""
+    rows = templates["face"]["rows"]
+    assert len(rows) == 15
+    loose = [row for row in rows
+             if not any(phrase in row.lower() for phrase in TIGHT_FRAMING_PHRASES)]
+    assert loose == [], loose

@@ -35,9 +35,11 @@ def sha(raw):
     return hashlib.sha256(raw).hexdigest()
 
 
-def make_fixture(tmp_path, *, inline=MISSING, sidecar=MISSING, references=3):
+def make_fixture(tmp_path, *, inline=MISSING, sidecar=MISSING, references=3, creator="creator-001"):
+    if inline is MISSING and sidecar is MISSING and creator == "creator-001":
+        inline = {"recipe_profile": "clean"}  # creator-001 must name its profile explicitly
     root = tmp_path / "repo" / "orgs" / "figment"
-    home = root / "personas" / "creator-001"
+    home = root / "personas" / creator
     (home / "anchors").mkdir(parents=True)
     (root / "pipeline").mkdir()
     refs = [home / "anchors" / f"g{i:02d}.bin" for i in range(references)]
@@ -49,7 +51,7 @@ def make_fixture(tmp_path, *, inline=MISSING, sidecar=MISSING, references=3):
     register.write_bytes(b"Synthetic register specification\n")
     floor = {"status": "uncalibrated", "value": None, "calibration_set_sha": None, "locked_by_gate": None}
     data = {
-        "id": "creator-001", "disclosure": {"is_ai_generated": True},
+        "id": creator, "disclosure": {"is_ai_generated": True},
         "identity": {"references": [f"anchors/{p.name}" for p in refs],
                      "history": ["not-followed/historical.bin"],
                      "spec": {"path": "identity-spec.md", "sha256": sha(identity.read_bytes())},

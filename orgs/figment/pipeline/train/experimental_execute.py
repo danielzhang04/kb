@@ -29,9 +29,7 @@ HERE = Path(__file__).resolve().parent
 PIPELINE = HERE.parent
 ROOT = HERE.parents[3]
 PRIVATE_ROOT = ROOT / "_private"
-OPS_LEDGER_DIR = Path("C:/Users/danie/kb/_private/codex-worktrees/figment-analysis-ops-2026-09-07/ledgers/cost")
 DAILY_BUDGET_PATH = ROOT / "governance" / "budget.yaml"
-ARC_CAP_USD = 50.0
 ARC_LEDGER_GLOB = "figment-*.tsv"
 EXPERIMENTAL_PATH = HERE / "experimental_train.py"
 FIGMENT_TRAIN_PATH = PIPELINE / "figment_train.py"
@@ -181,9 +179,28 @@ def _money(value: Any, label: str) -> str:
     return f"{decimal:.6f}"
 
 
+def _governance_daily_limit(budget_path: Path) -> str:
+    """governance/budget.yaml's daily_usd_limit (BOM-tolerant), as the operator set it."""
+    try:
+        text = budget_path.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ExperimentalExecuteError("cannot read governance daily_usd_limit") from exc
+    match = re.search(r"^daily_usd_limit:[ \t]*([^\s#]+)", text, re.MULTILINE)
+    if match is None:
+        raise ExperimentalExecuteError("governance budget has no daily_usd_limit")
+    return _money(match.group(1), "governance daily_usd_limit")
+
+
 def _accounting_context(runner_module: Any) -> dict[str, str]:
-    """Snapshot the configured Ops ledger used by the unchanged harness call."""
-    ledger_root = _safe_root(OPS_LEDGER_DIR, "canonical Figment Ops ledger root")
+    """Snapshot the ledger and caps the unchanged harness call will enforce: the runner's
+    own configured_ledger_dir / configured_arc_cap_usd (final review F4) -- never a
+    private second ledger root or cap."""
+    try:
+        configured_ledger = runner_module.configured_ledger_dir()
+        configured_cap = runner_module.configured_arc_cap_usd()
+    except Exception as exc:
+        raise ExperimentalExecuteError(f"cannot resolve the runner's ledger/arc cap: {type(exc).__name__}") from exc
+    ledger_root = _safe_root(configured_ledger, "configured Figment ledger root")
     budget_root = _safe_root(DAILY_BUDGET_PATH.parent, "studio daily budget root")
     budget_path = _safe_file(budget_root, DAILY_BUDGET_PATH, "studio daily budget")
     paths = sorted(path for path in ledger_root.glob("*.tsv") if path.is_file())
@@ -200,14 +217,14 @@ def _accounting_context(runner_module: Any) -> dict[str, str]:
             budget_path=budget_path, ledger_dir=ledger_root,
         )
         arc_cap, arc_spent = runner_module.arc_budget_state(
-            arc_cap_usd=ARC_CAP_USD, ledger_dir=ledger_root, ledger_glob=ARC_LEDGER_GLOB,
+            arc_cap_usd=configured_cap, ledger_dir=ledger_root, ledger_glob=ARC_LEDGER_GLOB,
         )
     except Exception as exc:
         raise ExperimentalExecuteError(f"cannot compute current Figment accounting context: {type(exc).__name__}") from exc
-    if _money(daily_limit, "daily limit") != _money(10.0, "expected daily limit"):
-        raise ExperimentalExecuteError("studio daily budget context is not the strict $10.00 limit")
-    if _money(arc_cap, "arc cap") != _money(ARC_CAP_USD, "configured arc cap"):
-        raise ExperimentalExecuteError("canonical Figment Ops arc cap is not $50.00")
+    if _money(daily_limit, "daily limit") != _governance_daily_limit(budget_path):
+        raise ExperimentalExecuteError("studio daily budget context is not governance/budget.yaml's daily_usd_limit")
+    if _money(arc_cap, "arc cap") != _money(configured_cap, "configured arc cap"):
+        raise ExperimentalExecuteError("Figment arc cap is not the runner's configured_arc_cap_usd")
     return {
         "ledger_dir": str(ledger_root),
         "daily_budget_path": str(budget_path),

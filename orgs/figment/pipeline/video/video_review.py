@@ -298,6 +298,15 @@ def _subject(
     assembly_relative: Path, extraction_relative: Path,
 ) -> tuple[dict[str, Any], Path]:
     manifest, manifest_path, manifest_entry = _read_json(root, candidate_relative, "candidate manifest")
+    if manifest.get("schema") == "figment/tensor-video-manifest@1":
+        tensor = _module("_video_review_tensor_native", HERE.parent / "tensor_video.py")
+        try:
+            subject = tensor.review_subject(root, candidate_relative, run_relative,
+                                            assembly_relative, extraction_relative)
+        except (OSError, ValueError, KeyError) as exc:
+            raise VideoReviewError(f"tensor native video evidence refused: {exc}") from exc
+        _bounded(subject, "tensor native video review subject")
+        return subject, _review_directory(manifest_path, manifest["candidate_id"])
     try:
         job, budget, candidate = assembly._manifest(manifest)
     except assembly.FrameAssembleError as exc:
@@ -708,6 +717,13 @@ def _evaluation(root: Path, destination: Path, subject: dict[str, Any]) -> tuple
     return value, entry
 
 
+def _assert_tensor_runtime_admission(subject: dict[str, Any]) -> None:
+    if (subject.get("schema") == "figment/tensor-native-review-subject@1"
+            and subject.get("fixture") is not True
+            and subject.get("runtime_admitted") is not True):
+        raise VideoReviewError("tensor video production acceptance requires the phase6 runtime admission adapter")
+
+
 def _decision_context(
     root: Path, candidate_manifest: Path, run_receipt: Path,
     assembly_receipt: Path, extraction_receipt: Path, rulings: Path,
@@ -716,6 +732,8 @@ def _decision_context(
     _, evaluation_entry = _evaluation(root, destination, subject)
     ruling_value, _, ruling_entry = _read_json(root, rulings, "video rulings")
     normalized = _normalize_rulings(ruling_value, subject)
+    if normalized["decision"] == "accept":
+        _assert_tensor_runtime_admission(subject)
     stamp = _stamp_samples(subject, normalized)
     _assert_decision_allowed(normalized, stamp)
     return {
@@ -894,7 +912,7 @@ def _terminal_record(context: dict[str, Any], review_directory: str, attempt_ent
         attempt={"id": normalized["attempt_id"], "record": attempt_entry},
         rulings_sha256=_canonical(normalized, "normalized video rulings"),
         attribution={"decided_by": normalized["decided_by"], "decided_at": normalized["decided_at"]},
-        movie=subject["assembly"]["movie"], approved_still=subject["approved_gen"]["frame"],
+        movie=subject["assembly"]["movie"], approved_still=_source_still(subject),
     )
 
 
@@ -1072,7 +1090,7 @@ def _accepted_snapshot(root: Path, accepted_video_path: Path) -> dict[str, Any]:
     _same(attempt["inputs"], _subject_inputs(subject), "attempt producer inputs")
     _same(accepted["inputs"], _subject_inputs(subject), "accepted producer inputs")
     _same(accepted["movie"], subject["assembly"]["movie"], "accepted movie")
-    _same(accepted["approved_still"], subject["approved_gen"]["frame"], "accepted source still")
+    _same(accepted["approved_still"], _source_still(subject), "accepted source still")
     _same(accepted["attribution"], attempt["attribution"], "accepted attribution")
 
     claim, _, claim_entry = _read_json(root, destination.relative_to(root) / CLAIM_NAME, "video terminal claim")
@@ -1088,7 +1106,11 @@ def _accepted_snapshot(root: Path, accepted_video_path: Path) -> dict[str, Any]:
     }
 
 
-def validate_accepted_video(root: Path, accepted_video_path: Path) -> dict[str, Any]:
+def _source_still(subject):
+    return subject["approved_edit"]["frame"] if "approved_edit" in subject else subject["approved_gen"]["frame"]
+
+
+def validate_accepted_video(root: Path, accepted_video_path: Path, *, allow_fixture: bool = False) -> dict[str, Any]:
     try:
         root = frames._root(root)
     except frames.FrameExtractError as exc:
@@ -1103,11 +1125,14 @@ def validate_accepted_video(root: Path, accepted_video_path: Path) -> dict[str, 
     for key in ("accepted", "accepted_entry", "attempt", "attempt_entry", "claim", "claim_entry", "evaluation_entry"):
         _same(final[key], first[key], f"video review {key.replace('_', ' ')}")
     subject = final["subject"]
+    _assert_tensor_runtime_admission(subject)
+    if subject.get("fixture") is True and not allow_fixture:
+        raise VideoReviewError("fixture video acceptance cannot authorize production delivery")
     return {
         "creator_id": subject["persona"]["projection"]["id"],
         "candidate_id": subject["candidate"]["id"],
         "movie": subject["assembly"]["movie"],
-        "approved_still": subject["approved_gen"]["frame"],
+        "approved_still": _source_still(subject),
         "candidate_manifest": subject["candidate"]["manifest"],
         "accepted_lineage": final["accepted_entry"],
     }

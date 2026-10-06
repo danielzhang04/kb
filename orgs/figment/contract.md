@@ -17,7 +17,8 @@ grade, or permission mode.
 ## queues-for-me (T2 — a card, an estimate, and my approval before it runs)
 
 - **Any live pod run.** The card states the manifest, the cell count, `--max-usd`, `--max-minutes`,
-  and the running arc total against the $50 cap
+  and the running creator-003 arc total against the $75 cap (operator ruling
+  2026-09-29; count ledger files dated on or after 2026-09-29)
 - Any change to spend-controlling code (`runpod_run.py` ledger, guard, lease or teardown paths)
 - Any change to identity-scoring code (`identity_check.py`, the pass scorers, the video frame QA)
 - Promoting a new external node or model into a manifest — with its pinned commit or file revision
@@ -54,7 +55,7 @@ grade, or permission mode.
 
 - Verification fails twice on the same item
 - A pod's termination could not be verified, or a `POD STILL RUNNING` banner appears
-- The daily budget or the $50 arc cap would be breached, or a ledger row disagrees with `run.json`
+- The daily budget or the $75 creator-003 arc cap would be breached, or a ledger row disagrees with `run.json`
 - Any ambiguous-age or clothing-render failure that a QA gate did not catch before delivery
 - A platform challenge, a token expiry, or a recommendation-eligibility signal dropping
 - Any request to handle a secret as an object, or any governance rule violated

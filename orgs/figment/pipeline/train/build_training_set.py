@@ -101,6 +101,14 @@ QWEN3VL_CAPTION_MODEL_ID = "Qwen/Qwen3-VL-8B-Instruct"
 QWEN3VL_CAPTION_SETTINGS = {
     "dtype": "float8", "max_resolution": 512, "max_new_tokens": 128,
 }
+# LIVE FAILURE 2026-09-16 (third caption pod, $0.15): a genuine caption at
+# max_new_tokens=128 came back ~560 chars and was rejected by a 500-char body
+# cap -- 128 tokens of English can run to ~900 chars, so 500 contradicted the
+# pinned setting above. Raised to 1200 (still a hard failure past the bound,
+# never a silent truncation); used by `_collect_cells_qwen3vl` below and
+# rendered into the pod script's own mirror check as `{{caption_max_body_chars}}`
+# (figment_train.py `_caption_manifest`).
+CAPTIONS_MAX_BODY_CHARS = 1200
 # Same shape figment_train.py's own trigger validation uses (training_config.py
 # SAFE_TRIGGER) -- a caption-formatting helper here should refuse the same malformed
 # triggers the training config itself would refuse, not accept a wider set.
@@ -286,6 +294,7 @@ def _collect_cells_qwen3vl(
     trigger: str,
     caption_word: str,
     job_runner: JobRunner | None,
+    recipe_profile: str = "clean",
 ) -> list[tuple[Path, str]]:
     """Collect the approved image list exactly like `class` mode (same
     `--source-dir`/`--images-from`/`--exclude` contract), then replace the bare
@@ -298,7 +307,10 @@ def _collect_cells_qwen3vl(
             "a pod itself (GUARDRAILS: build_training_set.py runs locally, never on a "
             "pod); pass the real dispatcher in a live run, or a fake one in tests"
         )
-    _validate_trigger(trigger)
+    if recipe_profile == "clean":
+        _validate_trigger(trigger)
+    elif recipe_profile != "tensor":
+        raise DatasetBuildError("unknown recipe_profile")
     _validate_caption_word(caption_word)
     if source_dir is not None:
         images = [image for image, _ in _collect_cells_class(source_dir, caption_word)]
@@ -321,26 +333,28 @@ def _collect_cells_qwen3vl(
             raise DatasetBuildError(f"job_runner returned an empty caption for {image}")
         stripped = body.strip()
         # m10/MINOR 9 (REVIEW): refuse a caption body containing a newline/control
-        # character or longer than 500 chars -- never trust a pod's raw text output
-        # into a caption file (and, downstream, into a training/gen prompt) without
-        # this floor, whatever job_runner produced it (the live pod dispatcher or a
-        # test fake alike). DEL (U+007F) and the Unicode line/paragraph separators
-        # (U+2028, U+2029) are control-adjacent line breaks `ord(ch) < 32` alone
-        # misses -- both can split a prompt across lines exactly like a raw \n would.
-        if len(stripped) > 500 or any(
+        # character or longer than CAPTIONS_MAX_BODY_CHARS -- never trust a pod's raw
+        # text output into a caption file (and, downstream, into a training/gen
+        # prompt) without this floor, whatever job_runner produced it (the live pod
+        # dispatcher or a test fake alike). DEL (U+007F) and the Unicode
+        # line/paragraph separators (U+2028, U+2029) are control-adjacent line breaks
+        # `ord(ch) < 32` alone misses -- both can split a prompt across lines exactly
+        # like a raw \n would.
+        if len(stripped) > CAPTIONS_MAX_BODY_CHARS or any(
             ord(ch) < 32 or ord(ch) == 127 or ch in (" ", " ")
             for ch in stripped
         ):
             raise DatasetBuildError(
-                f"job_runner returned an invalid caption body for {image} (over 500 "
-                "chars or contains a newline/control character)"
+                f"job_runner returned an invalid caption body for {image} (over "
+                f"{CAPTIONS_MAX_BODY_CHARS} chars or contains a newline/control character)"
             )
         # E1: the same shared `training_config.persona_trigger_clause` pairing
         # figment_train.py's own `_persona_trigger_clause` composes tester/gen prompts
         # from -- a descriptive caption stays identity-associated whether or not DOP's
         # trigger_word injection is on (see the qwen3vl docstring above).
         training_config = _load_training_config_module()
-        captions.append(f"{training_config.persona_trigger_clause(trigger, caption_word)}, {stripped}")
+        captions.append(stripped if recipe_profile == "tensor" else
+                        f"{training_config.persona_trigger_clause(trigger, caption_word)}, {stripped}")
     return list(zip(images, captions))
 
 
@@ -355,6 +369,7 @@ def build_training_set(
     exclude: list[str] | None = None,
     trigger: str | None = None,
     job_runner: JobRunner | None = None,
+    recipe_profile: str = "clean",
 ) -> dict[str, Any]:
     if caption_mode not in CAPTION_MODES:
         raise DatasetBuildError(f"unknown caption_mode: {caption_mode!r}")
@@ -377,6 +392,7 @@ def build_training_set(
         cells = _collect_cells_qwen3vl(
             source_dir, images_from, exclude,
             trigger=trigger, caption_word=caption_word, job_runner=job_runner,
+            recipe_profile=recipe_profile,
         )
     else:  # class
         if approved_cells is not None:

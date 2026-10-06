@@ -160,12 +160,40 @@ def test_actual_recipe_and_harness_dry_run_accept_generated_manifest(tmp_path):
     assert receipt["not_promotable"] is True
 
 
-def _isolated_accounting(tmp_path: Path, monkeypatch) -> None:
+def _isolated_accounting(tmp_path: Path, monkeypatch, *, daily_limit: str = "10.00") -> Path:
+    """Final review F4: the executor resolves its ledger through the runner's
+    configured_ledger_dir (KB_LEDGER_DIR) and its cap through configured_arc_cap_usd."""
     ledger = tmp_path / "ops-ledger"; ledger.mkdir()
     (ledger / "figment-2026-09-08.tsv").write_text("model\tstep\tusd\nfixture\tprepare\t1.000000\n", encoding="utf-8")
-    budget = tmp_path / "budget.yaml"; budget.write_text("daily_usd_limit: 10.00\n", encoding="utf-8")
-    monkeypatch.setattr(executor, "OPS_LEDGER_DIR", ledger)
+    budget = tmp_path / "budget.yaml"; budget.write_text(f"daily_usd_limit: {daily_limit}\n", encoding="utf-8")
+    monkeypatch.setenv("KB_LEDGER_DIR", str(ledger))
+    monkeypatch.delenv("KB_ARC_CAP_USD", raising=False)
     monkeypatch.setattr(executor, "DAILY_BUDGET_PATH", budget)
+    return ledger
+
+
+def test_accounting_context_uses_the_runners_ledger_dir_and_arc_cap(tmp_path, monkeypatch):
+    ledger = _isolated_accounting(tmp_path, monkeypatch, daily_limit="20.00")
+    monkeypatch.setenv("KB_ARC_CAP_USD", "40")
+    runner = executor._runner_module()
+    accounting = executor._accounting_context(runner)
+    assert accounting["ledger_dir"] == str(runner.configured_ledger_dir().resolve()) == str(ledger.resolve())
+    assert accounting["arc_cap_usd"] == "40.000000"
+    assert accounting["daily_usd_limit"] == "20.000000"
+    monkeypatch.delenv("KB_ARC_CAP_USD")
+    assert executor._accounting_context(runner)["arc_cap_usd"] == f"{runner.DEFAULT_ARC_CAP_USD:.6f}"
+    assert not hasattr(executor, "OPS_LEDGER_DIR")
+
+
+def test_daily_limit_is_read_from_governance_budget_not_pinned(tmp_path, monkeypatch):
+    bom = tmp_path / "bom.yaml"
+    bom.write_bytes(b"\xef\xbb\xbf# comment\ndaily_usd_limit: 20.00\n")
+    assert executor._governance_daily_limit(bom) == "20.000000"
+    _isolated_accounting(tmp_path, monkeypatch, daily_limit="20.00")
+    runner = executor._runner_module()
+    monkeypatch.setattr(runner, "daily_budget_state", lambda **_kw: (10.0, 0.0))
+    with pytest.raises(executor.ExperimentalExecuteError, match="daily_usd_limit"):
+        executor._accounting_context(runner)
 
 
 def _write_admission(plan_path: Path, plan: dict, manifest: dict, output: Path) -> None:

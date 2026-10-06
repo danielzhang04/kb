@@ -69,12 +69,32 @@ tiled_encode, tiled_decode`) — relevant if the pipeline chains into inpainting
                     "detector_variant": "short", "num_faces": 1,
                     "min_confidence": 0.5, "missing_frame_fallback": "empty"}},
   "4": {"class_type": "MediaPipeFaceMask",
-        "inputs": {"face_landmarks": ["3", 0], "regions": {"regions": "all"}}},
+        "inputs": {"face_landmarks": ["3", 0], "regions": "all"}},
   "5": {"class_type": "MaskToSEGS",
         "inputs": {"mask": ["4", 0], "combined": false, "crop_factor": 3.0,
                     "bbox_fill": false, "drop_size": 10, "contour_fill": false}}
 }
 ```
-Note: `MediaPipeFaceMask.regions` is a `DynamicCombo` widget — its API payload shape is
-`{"regions": "all"}` (or `{"regions": "custom", "<feature>": true/false, ...}`), matching
-`execute()` reading `connections["connections"]` / `regions["regions"]` (`nodes_mediapipe.py:369,475`).
+Note (corrected 2026-09-21 — see below): `MediaPipeFaceMask.regions` is a `DynamicCombo`
+widget — in API/prompt format the live input is the bare option-key STRING, `"all"` or
+`"custom"` (plus flattened `"regions.<feature>": true/false` keys alongside it for
+`"custom"`), never a nested `{"regions": "all"}` dict.
+
+## Live-refuted 2026-09-21 — the original snippet above was wrong
+Gen attempt 3 (pod `y3mz2hqqbnf4ci`) failed with `node_id=36 node_type=MediaPipeFaceMask
+exception_type=TypeError exception_message=MediaPipeFaceMask.execute() missing 1
+required positional argument: 'regions'`. Root cause, verified against the pinned
+`v0.34.0` ComfyUI source: `regions` is an `io.DynamicCombo.Input("regions",
+options=[Option("all", []), Option("custom", [Boolean inputs…])])`
+(`comfy_extras/nodes_mediapipe.py:442-495`). `_expand_schema_for_dynamic` looks up
+`live_inputs["regions"]` as the OPTION KEY, and `build_nested_inputs` is what constructs
+the `{"regions": "all"}` dict `execute()` reads via `regions["regions"]`
+(`comfy_api/latest/_io.py:1254-1270`, `1879-1910`) — that nesting happens server-side
+from the flat live value, it is not the shape the API payload should send. Our
+workflows sent the already-nested form directly as the live input, so no option key
+matched, `_expand_schema_for_dynamic` dropped the input, and `execute()` was called
+without it. Fixed in `pipeline/train/workflows/krea2_gen_api.json` (node 36) and
+`krea2_detail_only_api.json` (node 12): `"regions": "all"`. Every workflow template in
+this repo only uses the `"all"` option; if a future graph needs `"custom"`, the API form
+is `"regions": "custom"` plus flattened `"regions.<feature>": true/false` keys, not a
+nested dict.

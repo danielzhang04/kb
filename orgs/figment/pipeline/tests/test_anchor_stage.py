@@ -123,6 +123,7 @@ def _synthetic_persona(
         "caption_mode": "provided",
         "pod_class": "l40s",
         "price_ceiling_usd_per_hour": 1.30,
+        "recipe_profile": "clean",
     }
     path = target / "persona.yaml"
     path.write_text(json.dumps(source, indent=2) + "\n", encoding="utf-8")
@@ -330,6 +331,9 @@ def test_build_plan_verifies_pins_by_default_and_can_be_skipped(command, tmp_pat
     personas = tmp_path / "personas"
     _synthetic_persona(personas, creator_id="creator-002")
     verify_pins = command._verify_pins_module()
+    # This verifier performs only model HEADs; reject any accidental real request.
+    monkeypatch.setattr(verify_pins._OPENER, "open",
+                        lambda *a, **k: pytest.fail("pin unit test contacted the network"))
 
     def _wrong_digest(url, **kwargs):
         return 302, {"x-linked-etag": '"' + "0" * 64 + '"'}
@@ -410,7 +414,18 @@ def test_edit_manifest_node_800_carries_the_same_identity_register_as_node_174(
 # ---------------------------------------------------------------------------
 
 
-def test_apply_anchor_rulings_promotes_exactly_one_pick(command, tmp_path):
+@pytest.fixture
+def offline_anchor_grading(command, monkeypatch):
+    """Promotion tests exercise authority/rulings, not model inference on blank PNGs."""
+    monkeypatch.setattr(command._score_cells_module(), "score", lambda *a, **k: None)
+    monkeypatch.setattr(command, "_run_identity_gate", lambda plan, anchors, images, *a, **k: {
+        "schema": "figment/gate@1", "rows": [
+            {"image_id": row["image_id"], "pass": False,
+             "reasons": ["unavailable: synthetic fixture has no face"]} for row in images],
+    })
+
+
+def test_apply_anchor_rulings_promotes_exactly_one_pick(command, tmp_path, offline_anchor_grading):
     personas = tmp_path / "personas"
     _synthetic_persona(personas, creator_id="creator-002")
     out = tmp_path / "plan"
@@ -437,7 +452,7 @@ def test_apply_anchor_rulings_promotes_exactly_one_pick(command, tmp_path):
     assert (personas / "creator-002" / "anchors" / f"{chosen['image_id']}.png").is_file()
 
 
-def test_apply_anchor_rulings_refuses_a_keep_when_gate_row_has_no_pass_key(command, tmp_path):
+def test_apply_anchor_rulings_refuses_a_keep_when_gate_row_has_no_pass_key(command, tmp_path, offline_anchor_grading):
     """Finding 1 (REVIEW-2026-09-07 #1, figment_train.py apply_rulings): a gate row
     missing its `pass` key (hand-edited, truncated write, older schema) must not
     default to a silent PASS -- the kept row still needs an explicit `gate_override`,
@@ -467,7 +482,7 @@ def test_apply_anchor_rulings_refuses_a_keep_when_gate_row_has_no_pass_key(comma
         command.apply_rulings("creator-002", "anchor", out / "plan.json", filled)
 
 
-def test_apply_anchor_rulings_refuses_two_keeps(command, tmp_path):
+def test_apply_anchor_rulings_refuses_two_keeps(command, tmp_path, offline_anchor_grading):
     personas = tmp_path / "personas"
     _synthetic_persona(personas, creator_id="creator-002")
     out = tmp_path / "plan"
@@ -521,3 +536,77 @@ def test_run_stage_all_skips_completed_and_already_graded_stages(command, tmp_pa
     joined = [" ".join(a) for a in launched]
     assert not any("dataset" in a for a in joined)
     assert not any("tester" in a for a in joined)
+
+
+def test_clean_profile_pin_groups_equal_the_old_stage_table(command):
+    pins = load_json(PIPELINE / "train" / "tensor-pins.yaml")
+    clean = {"recipe_profile": "clean"}
+    assert not hasattr(command, "STAGE_PIN_PROFILES")
+    assert command._stage_pin_groups(pins, clean, "anchor") == ["anchor", "anchor_edit"]
+    for stage, groups in (("dataset", ["dataset"]), ("smoke", ["train"]), ("train", ["train"]),
+                          ("tester", ["tester"]), ("gen", ["gen"]), ("detail", ["detail"]),
+                          ("video", [])):
+        assert command._stage_pin_groups(pins, clean, stage) == groups
+
+
+def test_tensor_profile_refuses_stages_not_built_yet_even_without_pin_verify(command, tmp_path):
+    personas = tmp_path / "personas"
+    _synthetic_persona(personas, creator_id="creator-002")
+    _set_training(personas / "creator-002", recipe_profile="tensor", steps=3000,
+                  save_every=250, caption_mode="qwen3vl", dop_enabled=False,
+                  dataset_source="qwen-edit", dataset_replicates=1, trigger=None)
+    with pytest.raises(command.FigmentTrainError, match="not built for recipe profile 'tensor'"):
+        command.build_plan("creator-002", "gen", tmp_path / "p", personas_root=personas,
+                           skip_pin_verify=True, ledger_dir=tmp_path / "ledger")
+
+
+def test_passport_tensor_pins_follow_module_03_installer():
+    pins = load_json(PIPELINE / "train" / "tensor-pins.yaml")
+    group = pins["pins"]["passport_tensor"]
+    by_name = {Path(m["filename"]).name: m for m in group["models"]}
+    assert set(by_name) == {
+        "z_image_turbo_bf16.safetensors", "qwen_3_4b.safetensors", "ae.safetensors",
+        "realistic_snapshot_lora.safetensors", "zit_upscaler.safetensors",
+        "sam_vit_b_01ec64.pth", "face_yolov8m.pt",
+    }
+    assert by_name["zit_upscaler.safetensors"]["sha256"] == "009671cec5a384db31052b52e344e5989b0c51a5ad4d25a8c2c629f658754d13"
+    assert by_name["sam_vit_b_01ec64.pth"]["sha256"] == "ec2df62732614e57411cdcf32a23ffdf28910380d03139ee0f4fcbe91eb8c912"
+    assert {n for n, m in by_name.items() if m.get("pickle_ack")} == {"sam_vit_b_01ec64.pth", "face_yolov8m.pt"}
+    assert by_name["face_yolov8m.pt"]["destination_dir"] == "/workspace/ComfyUI/models/ultralytics/bbox"
+    assert by_name["sam_vit_b_01ec64.pth"]["destination_dir"] == "/workspace/ComfyUI/models/sams"
+    for model in group["models"]:
+        assert len(model["revision"]) == 40 and len(model["sha256"]) == 64, model
+    assert {n["name"]: n["installer_pin"] for n in group["custom_nodes"]} == {
+        "RES4LYF": "e716cd1cb2c5cff90131bf4914b75b75a0489d48",
+        "ComfyUI-Impact-Pack": "429d0159ad429e64d2b3916e6e7be9c22d025c3c",
+        "ComfyUI-Impact-Subpack": "50c7b71a6a224734cc9b21963c6d1926816a97f1",
+    }
+    stage = pins["pod_classes"]["l40s"]["stages"]["passport_tensor"]
+    # Rebalanced inside the $2.00 ceiling (final review F1): 20 + 12*330/60 + 5 = 91 min; 91/60*1.30 = $1.97.
+    assert (stage["max_minutes"], stage["readiness_timeout_seconds"], stage["job_timeout_seconds"]) == (91, 1200, 330)
+    assert stage["max_minutes"] == stage["readiness_timeout_seconds"] / 60 + 12 * stage["job_timeout_seconds"] / 60 + 5
+    assert round(stage["max_minutes"] / 60 * 1.30, 2) == 1.97 <= 2.00
+    assert "330 s per job" in group["_note"]
+    assert pins["profiles"]["tensor"]["anchor"] == ["passport_tensor"]
+
+
+def test_pickle_weights_appear_only_in_the_passport_tensor_pin_group():
+    """Final review F6b: pickles are admitted only where module 03 ships them."""
+    pins = load_json(PIPELINE / "train" / "tensor-pins.yaml")
+    found = []
+
+    def walk(value, path):
+        if isinstance(value, dict):
+            name = value.get("filename") or value.get("local") or ""
+            if value.get("pickle_ack") or (isinstance(name, str)
+                                          and name.lower().endswith((".pt", ".pth", ".ckpt", ".bin", ".pkl", ".pickle"))):
+                found.append((path, name))
+            for key, item in value.items():
+                walk(item, (*path, key))
+        elif isinstance(value, list):
+            for index, item in enumerate(value):
+                walk(item, (*path, index))
+
+    walk(pins, ())
+    assert sorted(name.rsplit("/", 1)[-1] for _path, name in found) == ["face_yolov8m.pt", "sam_vit_b_01ec64.pth"]
+    assert {path[:2] for path, _name in found} == {("pins", "passport_tensor")}

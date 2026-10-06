@@ -285,7 +285,8 @@ def _validate_floor_entry(entry: Any, field: str) -> None:
 
 def _validate_identity_look(value: Any, field: str) -> None:
     look = _require_dict(value, field)
-    unknown = sorted(set(look) - set(LOOK_KEYS))
+    # Module16's optional gen-only face descriptor is not an eighth-slot replacement.
+    unknown = sorted(set(look) - set(LOOK_KEYS) - {"face"})
     if unknown:
         _fail(f"persona.{field} has unknown key(s): {unknown}")
     missing = [key for key in LOOK_KEYS if key not in look]
@@ -300,6 +301,12 @@ def _validate_identity_look(value: Any, field: str) -> None:
                     f"persona.{field}.{key} contains a look-spec-v2.md §4a banned "
                     f"phrase {banned!r}: {text!r}"
                 )
+    if "face" in look:
+        if not isinstance(look["face"], str):
+            _fail(f"persona.{field}.face must be text; empty means an intake review gap")
+        for banned in BANNED_LOOK_PHRASES:
+            if banned in look["face"].lower():
+                _fail(f"persona.{field}.face contains a banned phrase {banned!r}")
     if any(character.isdigit() for character in look["age_stage"]):
         _fail(
             f"persona.{field}.age_stage must state age as a life stage, never a numeral: "
@@ -359,8 +366,8 @@ def validate_persona(
 
     identity = _require_dict(data["identity"], "identity")
     references = _require_list(identity.get("references"), "identity.references")
-    if not references:
-        _fail("persona.identity.references must not be empty")
+    if not references and identity.get("history"):
+        _fail("persona.identity.references must not be empty once an anchor has been promoted")
     if reads is not None and len(references) > 64:
         _fail("persona.identity.references exceeds the observed list limit")
     if reads is not None:

@@ -130,6 +130,86 @@ def test_load_thresholds_falls_back_when_persona_declares_no_floor(gate_module):
     assert thresholds["face_px_min"] == gate_module.load_thresholds()["face_px_min"]
 
 
+# --- operator ruling 2026-09-15: per-framing face_px_min override -----------------
+# "Per-framing face floor: half-body dataset cells gate at 300 px (after the 2x
+# upscale tail), close-framed cells stay at 600 px; judge axes unchanged." A persona
+# may declare `identity.floor.min_face_px.by_framing` (a `{framing: px}` mapping)
+# overlaid onto `face_px_min` the same way `value` already is.
+
+
+def test_load_thresholds_overlays_persona_by_framing_min_face_px(gate_module):
+    persona = {
+        "identity": {"floor": {"min_face_px": {"value": 600, "by_framing": {"half": 300}}}},
+    }
+    thresholds = gate_module.load_thresholds(persona)
+    assert thresholds["face_px_min"] == 600.0
+    assert thresholds["face_px_min_by_framing"] == {"half": 300.0}
+
+
+def test_load_thresholds_by_framing_absent_when_persona_declares_none(gate_module):
+    persona = {"identity": {"floor": {"min_face_px": {"value": 600}}}}
+    thresholds = gate_module.load_thresholds(persona)
+    assert "face_px_min_by_framing" not in thresholds
+
+
+def test_load_thresholds_rejects_by_framing_value_above_the_default_floor(gate_module):
+    persona = {
+        "identity": {"floor": {"min_face_px": {"value": 600, "by_framing": {"half": 900}}}},
+    }
+    with pytest.raises(gate_module.IdentityGateError, match="half"):
+        gate_module.load_thresholds(persona)
+
+
+def test_load_thresholds_rejects_a_non_positive_by_framing_value(gate_module):
+    persona = {
+        "identity": {"floor": {"min_face_px": {"value": 600, "by_framing": {"half": 0}}}},
+    }
+    with pytest.raises(gate_module.IdentityGateError, match="half"):
+        gate_module.load_thresholds(persona)
+
+
+# --- LOW (opus review, 2026-09-15): by_framing must reject anything that could never
+# match a real cell's `framing`, or that is not a usable pixel floor -----------------
+
+
+def test_load_thresholds_rejects_an_unknown_by_framing_key(gate_module):
+    """`by_framing`'s keys must be one of the framings a planner actually writes onto a
+    cell (`identity_gate.KNOWN_FRAMINGS`) -- a typo like "haf" would otherwise sit
+    there silently matching nothing, ever."""
+    persona = {
+        "identity": {"floor": {"min_face_px": {"value": 600, "by_framing": {"haf": 300}}}},
+    }
+    with pytest.raises(gate_module.IdentityGateError, match="haf"):
+        gate_module.load_thresholds(persona)
+
+
+def test_load_thresholds_rejects_a_non_dict_by_framing(gate_module):
+    persona = {
+        "identity": {"floor": {"min_face_px": {"value": 600, "by_framing": "half"}}},
+    }
+    with pytest.raises(gate_module.IdentityGateError, match="by_framing"):
+        gate_module.load_thresholds(persona)
+
+
+def test_load_thresholds_rejects_an_empty_dict_by_framing(gate_module):
+    persona = {
+        "identity": {"floor": {"min_face_px": {"value": 600, "by_framing": {}}}},
+    }
+    with pytest.raises(gate_module.IdentityGateError, match="by_framing"):
+        gate_module.load_thresholds(persona)
+
+
+def test_load_thresholds_rejects_a_bool_by_framing_value(gate_module):
+    """`True`/`False` are `int` subclasses in Python -- `isinstance(True, (int, float))`
+    is true, so a bare numeric-type check would silently accept a bool floor. Must
+    still fail closed."""
+    persona = {
+        "identity": {"floor": {"min_face_px": {"value": 600, "by_framing": {"half": True}}}},
+    }
+    with pytest.raises(gate_module.IdentityGateError, match="half"):
+        gate_module.load_thresholds(persona)
+
+
 def test_load_judge_thresholds_reads_gate_yaml_judge_block(gate_module):
     thresholds = gate_module.load_judge_thresholds()
     for key in gate_module._vlm_judge_module().JUDGE_THRESHOLD_KEYS:
@@ -161,7 +241,12 @@ GOOD_JUDGE_ROW = {
 
 def test_identity_floor_gate_passes_on_identity_and_face_px_alone(gate_module):
     result = gate_module.identity_floor_gate(GOOD_STAGE1_SCORES, STAGE1_THRESHOLDS)
-    assert result == {"pass": True, "reasons": []}
+    # 2026-09-15 ruling: identity_floor_gate now also reports which face_px_min floor
+    # applied (`face_px_min_applied`) -- here the plain default, since STAGE1_THRESHOLDS
+    # carries no by-framing override.
+    assert result == {
+        "pass": True, "reasons": [], "face_px_min_applied": STAGE1_THRESHOLDS["face_px_min"],
+    }
 
 
 def test_identity_floor_gate_ignores_age_gloss_niqe(gate_module):
@@ -169,7 +254,9 @@ def test_identity_floor_gate_ignores_age_gloss_niqe(gate_module):
     # still pass stage 1 alone -- those three metrics no longer have hard-fail duty.
     scores = dict(GOOD_STAGE1_SCORES, age_delta=99.0, gloss=1.0, niqe=999.0)
     result = gate_module.identity_floor_gate(scores, STAGE1_THRESHOLDS)
-    assert result == {"pass": True, "reasons": []}
+    assert result == {
+        "pass": True, "reasons": [], "face_px_min_applied": STAGE1_THRESHOLDS["face_px_min"],
+    }
 
 
 def test_identity_floor_gate_fails_closed_when_identity_own_missing(gate_module):
@@ -189,6 +276,62 @@ def test_identity_floor_gate_fails_closed_when_face_px_missing(gate_module):
 def test_identity_floor_gate_fails_identity_below_floor(gate_module):
     result = gate_module.identity_floor_gate(dict(GOOD_STAGE1_SCORES, identity_own=0.1), STAGE1_THRESHOLDS)
     assert result["pass"] is False
+
+
+# --- operator ruling 2026-09-15: per-framing face_px_min in identity_floor_gate ---
+
+STAGE1_THRESHOLDS_BY_FRAMING = dict(
+    STAGE1_THRESHOLDS, face_px_min=600, face_px_min_by_framing={"half": 300},
+)
+
+
+def test_identity_floor_gate_half_framing_cell_passes_below_the_default_floor(gate_module):
+    """A half-body cell at 350px face_px is below the 600 default floor but above the
+    300 half-framing floor -- it must PASS."""
+    scores = dict(GOOD_STAGE1_SCORES, face_px=350, framing="half")
+    result = gate_module.identity_floor_gate(scores, STAGE1_THRESHOLDS_BY_FRAMING)
+    assert result["pass"] is True
+    assert result["face_px_min_applied"] == 300
+
+
+def test_identity_floor_gate_close_framing_cell_still_uses_the_default_floor(gate_module):
+    """The SAME 350px face_px must still FAIL a close-framed cell -- the 300 floor is
+    scoped to `half` framing only, never the default."""
+    scores = dict(GOOD_STAGE1_SCORES, face_px=350, framing="close")
+    result = gate_module.identity_floor_gate(scores, STAGE1_THRESHOLDS_BY_FRAMING)
+    assert result["pass"] is False
+    assert result["face_px_min_applied"] == 600
+    assert any("face_px" in reason for reason in result["reasons"])
+
+
+def test_identity_floor_gate_no_framing_uses_the_default_floor(gate_module):
+    """A cell that never carries a framing (tester/gen stages, or an older dataset
+    plan) must use the default face_px_min -- never inferred, never a silent pass."""
+    scores = dict(GOOD_STAGE1_SCORES, face_px=350)
+    result = gate_module.identity_floor_gate(scores, STAGE1_THRESHOLDS_BY_FRAMING)
+    assert result["pass"] is False
+    assert result["face_px_min_applied"] == 600
+
+
+def test_identity_floor_gate_records_face_px_min_applied_without_by_framing(gate_module):
+    """When thresholds carry no `face_px_min_by_framing` at all (every existing plan
+    today), the row still records which floor applied -- the default one."""
+    result = gate_module.identity_floor_gate(GOOD_STAGE1_SCORES, STAGE1_THRESHOLDS)
+    assert result["pass"] is True
+    assert result["face_px_min_applied"] == STAGE1_THRESHOLDS["face_px_min"]
+
+
+def test_identity_floor_gate_face_px_min_applied_is_always_a_float(gate_module):
+    """LOW (opus review, 2026-09-15): `gate.yaml`'s own `face_px_min: 600` parses as a
+    YAML int -- `face_px_min_applied` (surfaced verbatim on `gate.json`) must be
+    normalized to float regardless of whether the plain default or a by-framing
+    override applied."""
+    result = gate_module.identity_floor_gate(GOOD_STAGE1_SCORES, STAGE1_THRESHOLDS)
+    assert isinstance(result["face_px_min_applied"], float)
+
+    by_framing_scores = dict(GOOD_STAGE1_SCORES, face_px=350, framing="half")
+    result = gate_module.identity_floor_gate(by_framing_scores, STAGE1_THRESHOLDS_BY_FRAMING)
+    assert isinstance(result["face_px_min_applied"], float)
 
 
 def test_two_stage_gate_short_circuits_stage2_when_stage1_fails(gate_module, monkeypatch):
@@ -374,6 +517,29 @@ def test_score_cells_for_stage_precomputes_anchor_data_once(gate_module, tmp_pat
     # anchor embedded/aged once up front, then once per candidate image (2 candidates)
     assert calls["embed"] == 1 + 2
     assert calls["age"] == 1 + 2
+
+
+def test_score_cells_for_stage_propagates_framing_from_the_image_record(gate_module, tmp_path):
+    """`framing` comes from the plan's own job record (via the `images` list a caller
+    passes in), never inferred from the image itself -- it must survive onto the row
+    unchanged so `identity_floor_gate` can pick the right face_px_min floor."""
+    image = _png(tmp_path, "candidate.png")
+    anchor = _png(tmp_path, "g01.png")
+    models = FakeModels(
+        detections={"candidate": _fake_detection()},
+        embeddings={"candidate": [1.0, 0.0], "g01": [1.0, 0.0]},
+        ages={"candidate": 22.0, "g01": 21.0},
+    )
+    images = [
+        {"image_id": "mr-b01", "path": str(image), "framing": "half"},
+        {"image_id": "mr-f01", "path": str(image), "framing": "close"},
+        {"image_id": "no-framing", "path": str(image)},
+    ]
+    rows = gate_module.score_cells_for_stage(images, {"g01": anchor}, own_anchor="g01", models=models)
+    by_id = {row["image_id"]: row for row in rows}
+    assert by_id["mr-b01"]["framing"] == "half"
+    assert by_id["mr-f01"]["framing"] == "close"
+    assert by_id["no-framing"]["framing"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -1143,3 +1309,80 @@ def test_summarize_can_consume_run_gates_output_on_a_fixture(gate_module, tmp_pa
     assert by_arm["a"]["pass_count"] == 1
     assert by_arm["b"]["pass_count"] == 1
     assert by_arm["c"]["n"] == 0
+
+
+PASSPORT_JUDGE_THRESHOLDS = {"same_person_min": 70.2, "age_delta_max": 1.5, "skin_realism_min": 31.5,
+                             "gloss_max": 67.5, "artifacts_max": 45.0}
+PASSPORT_THRESHOLDS = {"age_floor_years": 20, "face_px_min": 600.0}
+PASSPORT_JUDGE = {"apparent_age_candidate": 24, "skin_realism": 60, "gloss": 20, "artifacts": 10}
+
+
+@pytest.mark.parametrize(("scores", "judge", "thresholds", "group"), [
+    ({"face_px": None, "age_value": 25.0}, PASSPORT_JUDGE, PASSPORT_THRESHOLDS, "unscorable"),
+    ({"face_px": 800, "age_value": 25.0}, {**PASSPORT_JUDGE, "apparent_age_candidate": 19}, PASSPORT_THRESHOLDS, "age"),
+    ({"face_px": 800, "age_value": 18.0}, PASSPORT_JUDGE, PASSPORT_THRESHOLDS, "age"),
+    ({"face_px": 800, "age_value": None}, PASSPORT_JUDGE, PASSPORT_THRESHOLDS, "age"),
+    ({"face_px": 800, "age_value": 25.0}, None, PASSPORT_THRESHOLDS, "age"),
+    ({"face_px": 800, "age_value": 25.0}, PASSPORT_JUDGE, {"face_px_min": 600.0}, "age"),
+    ({"face_px": 500, "age_value": 25.0}, PASSPORT_JUDGE, PASSPORT_THRESHOLDS, "failed"),
+    ({"face_px": 800, "age_value": 25.0}, {**PASSPORT_JUDGE, "skin_realism": 20}, PASSPORT_THRESHOLDS, "failed"),
+    ({"face_px": 800, "age_value": 25.0}, {**PASSPORT_JUDGE, "artifacts": 80}, PASSPORT_THRESHOLDS, "failed"),
+    ({"face_px": 800, "age_value": 25.0}, PASSPORT_JUDGE, PASSPORT_THRESHOLDS, "passed"),
+])
+def test_passport_verdict_groups_without_ever_culling(gate_module, scores, judge, thresholds, group):
+    verdict = gate_module.passport_verdict(scores, judge, thresholds, PASSPORT_JUDGE_THRESHOLDS)
+    assert verdict["group"] == group
+    assert verdict["pass"] is (group == "passed")
+    assert (verdict["reasons"] == []) is (group == "passed")
+
+
+def test_reference_free_gate_judges_only_faced_cells_with_no_references(gate_module, tmp_path, monkeypatch):
+    images = [{"image_id": "p01", "path": str(tmp_path / "p01.png")},
+              {"image_id": "p02", "path": str(tmp_path / "p02.png")}]
+    monkeypatch.setattr(gate_module, "score_cells_for_stage", lambda imgs, anchors, own_anchor: [
+        {"image_id": "p01", "face_px": 900, "age_value": 26.0},
+        {"image_id": "p02", "face_px": None, "age_value": None},
+    ])
+    calls = []
+
+    class FakeJudge:
+        @staticmethod
+        def judge_images_for_stage(to_judge, references, **kwargs):
+            calls.append(([i["image_id"] for i in to_judge], list(references), kwargs["reference_free"]))
+            return [{"image_id": "p01", **PASSPORT_JUDGE, "same_person": None}]
+
+        judge_gate = None
+
+    monkeypatch.setattr(gate_module, "_vlm_judge_module", lambda: FakeJudge)
+    document = gate_module.run_two_stage_gate(lambda: {}, [], images, tmp_path, reference_free=True)
+    assert calls == [(["p01"], [], True)]
+    assert [row["group"] for row in document["rows"]] == ["passed", "unscorable"]
+    assert document["summary"]["groups"] == {"passed": 1, "unscorable": 1}
+    with pytest.raises(gate_module.IdentityGateError, match="no identity anchors"):
+        gate_module.run_two_stage_gate(lambda: {}, [tmp_path / "a.png"], images, tmp_path, reference_free=True)
+
+
+def test_calibrate_refuses_a_persona_with_no_references(gate_module):
+    with pytest.raises(gate_module.IdentityGateError, match="no identity references"):
+        gate_module.calibrate({"identity": {"references": []}}, {}, models=object())
+
+
+def test_reference_free_gate_outage_holds_every_cell_unscorable(gate_module, tmp_path):
+    images = [{"image_id": "p01", "path": str(tmp_path / "p01.png")}]
+
+    def broken_persona():
+        raise OSError("persona unreadable")
+
+    document = gate_module.run_two_stage_gate(broken_persona, [], images, tmp_path, reference_free=True)
+    assert [row["group"] for row in document["rows"]] == ["unscorable"]
+    assert document["summary"]["groups"] == {"unscorable": 1}
+
+
+@pytest.mark.parametrize("scores,judge", [
+    ({"face_px": 800, "age_value": float("nan")}, PASSPORT_JUDGE),
+    ({"face_px": 800, "age_value": 25.0}, {**PASSPORT_JUDGE, "apparent_age_candidate": float("nan")}),
+])
+def test_passport_verdict_holds_a_non_finite_age_for_age(gate_module, scores, judge):
+    verdict = gate_module.passport_verdict(scores, judge, PASSPORT_THRESHOLDS, PASSPORT_JUDGE_THRESHOLDS)
+    assert verdict["group"] == "age" and verdict["pass"] is False
+    assert any(reason.startswith("unavailable:") for reason in verdict["reasons"])

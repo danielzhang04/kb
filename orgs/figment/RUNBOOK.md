@@ -1,4 +1,95 @@
+## Module08 offline native video
+
+Supply the strict `figment/tensor-video-request@1` described in pipeline/README.md, then plan with `pipeline/figment_train.py plan --stage video --creator <id> --video-request <request.json> --out <fresh-dir> --skip-pin-verify`. The clip must currently be CFR16 with81 or more frames and have an accepted module07 head swap of its exact decoded frame0. Intake decisions are attributed and fixture-specific. No checkpoint or implicit gen still replaces that edit approval.
+
+Harness `--dry-run` proves manifest structure only. Actual native evidence requires a bounded MP4, exact node/prompt/graph receipt, matching embedded prompt graph,81frames/16fps and source-derived dimensions. Grade the11 decoded samples using normal stage-video commands; inspect the board's native playback. The existing `video/video_review.py` prepare/apply commands consume the candidate manifest, run receipt, and `video/evidence/native/native-evidence.json` as both assembly and extraction arguments, under the video plan root. They require first/middle/last, complete-sequence and playback rulings; the pipeline will not claim `complete:video` from image rulings alone.
+
+Synthetic video acceptance remains non-production. Production launch is deliberately unavailable pending **phase6 admission-adapter implementation**, not just missing media: revalidate an approved real smoke's nonfixture/dry_run=false status, runtime/pins/graph, installed schema, termination and actual metadata proof. That adapter and a separately approved funded run remain outstanding; do not reinterpret offline proof as admission.
+
+## Module07 standalone edit
+
+Plan with `pipeline/figment_train.py plan --stage edit --creator <id> --edit-request <request.json> --out <fresh-dir>`. Use `--skip-pin-verify` only for offline fixture planning. See pipeline/README.md for the strict request schema. Review `edit-inputs.html`: BASE is image1/node76 and IDENTITY is image2/node169. The identity comes from the original registered-passport approval or a current approved gen still; a trained checkpoint is unnecessary for passport edits.
+
+Grade and apply rulings using the existing `--stage edit` commands. Repeating identical current edit rulings is idempotent; changed inputs invalidate them. `pipeline --plan <edit-plan>/plan.json` resumes that standalone stage and reports `complete:edit`, without claiming video completion. Its deliverable retains job type, input hash, image hash, approval and fixture provenance. Synthetic plans never launch; live start-frame authority, gated model access and actual swap quality remain explicit prerequisites.
+
 # figment — operator runbook
+
+## Tensor phase 2: offline inputs and caption resume
+
+This section describes the current `tensor` profile. The longer creator-001 procedures below
+are historical `clean` workflows. Phase2 adds offline dataset/train/tester planning; it does
+not establish live execution evidence or authorize spending.
+
+The persona's training sidecar accepts these stage-specific metadata objects (schematic:
+replace hash/time placeholders with verified values). `path` is absolute or relative to the
+persona directory. Text hashes are SHA256 of the exact UTF-8 text, without an added newline.
+Keep `fixture: true` on synthetic test inputs; stage launch rejects those plans.
+
+```yaml
+training:
+  recipe_profile: tensor
+  trigger: null
+  steps: 3000
+  save_every: 250
+  dataset_source: qwen-edit
+  dataset_replicates: 1
+  caption_mode: qwen3vl
+  dop_enabled: false
+  tensor_body:
+    path: fixtures/body.png
+    sha256: <image-sha256>
+    description: an ordinary adult build in an opaque grey outfit
+    description_sha256: <exact-description-utf8-sha256>
+    faceless: true
+    clothed: true
+    decided_by: offline-fixture
+    decided_at: <ISO-8601>
+    fixture: true
+  tensor_tester_prompt:
+    text: An adult woman in an opaque grey outfit, photographed indoors.
+    sha256: <exact-prompt-utf8-sha256>
+    decided_by: offline-fixture
+    decided_at: <ISO-8601>
+    fixture: true
+```
+
+Dataset planning requires the body object and a selected passport; tester planning requires
+the prompt object. Neither standalone stage demands the other's input. Production metadata
+must record the actual operator decision and source bytes. The passport and body upload
+basenames must differ even when compared without case.
+
+```powershell
+# Local fixture planning only; use an isolated fixture persona with the metadata above.
+py -3 orgs/figment/pipeline/figment_train.py plan --creator <creator> --stage dataset --out <dataset-root> --skip-pin-verify
+# Repeat for m10-02 and m10-03 (three manifests, ten jobs each).
+py -3 orgs/figment/pipeline/pod/runpod_run.py run --manifest <dataset-root>/expand/runs/<creator>-tensor-dataset-m10-01.yaml --out <dry-run-root>/m10-01 --dry-run
+# Tester requires the full twelve-checkpoint ladder and approved scene prompt.
+py -3 orgs/figment/pipeline/figment_train.py plan --creator <creator> --stage tester --out <tester-root> --skip-pin-verify
+```
+
+After dataset outputs have been graded and ruled, the usual `apply-rulings --stage dataset`
+command writes `train/caption-plan.json` plus caption manifest/uploads. Without a verified
+caption run receipt it returns ?separate approved execution required; no pod launched?.
+The final approval and `_dataset.ready` remain absent. Inspect that plan's frozen run argv;
+executing it is a separate approved live action, never a side effect of curation. Offline
+integration tests supply synthetic caption outputs/receipts instead.
+
+Repeat the identical dataset `apply-rulings` command after captions exist: it validates input
+hashes, frozen manifest, staged images, run/ledger receipt and exact caption inventory, then
+finalizes the dataset without a trigger prefix. Changed inputs require a fresh reviewed plan.
+For a failed caption run, `--retry-caption-after-fix "<specific fix>"` uses the existing bounded
+archive/replan mechanism and still launches nothing; verified teardown remains required.
+
+Review all thirty cells, including failed/unscorable ones. An unavailable or low age estimate
+requires explicit age release/cull even in the unscorable group. Five trait axes display only;
+calibration and threshold activation remain pending. Pick a checkpoint by eye from all twelve;
+the final checkpoint is not automatically preferred.
+
+Before any actual tensor dataset run, resolve gated Klein9B access and pin verification.
+The current public HEAD verifier returns 401 for the gated weight even though an installer
+SHA and public repository revision are recorded. Terms acceptance alone does not fix that
+verifier; never use `--skip-pin-verify` to bypass production checks. Obtain the separate live
+run approval only after these prerequisites and current input approvals are satisfied.
 
 The single operator document for the `pipeline` command. Start at
 `orgs/figment/pipeline/README.md` for the pipeline's own map (stages, the gate, pins,
@@ -60,7 +151,7 @@ would exceed the arc cap, `over_daily_limit` flagging any single run over
 
 ```text
 BUDGET PREFLIGHT
-  arc:   spent=$<live> + planned=$<sum of this plan's ceilings> vs cap=$<ARC_CAP_USD> (remaining=$<live>) -- REFUSED or clears
+  arc:   spent=$<live> + planned=$<sum of this plan's ceilings> vs cap=$<arc cap> (remaining=$<live>) -- REFUSED or clears
   daily: limit=$10.00 (today spent=$<live>, not summed against the plan -- each run is checked against the limit alone)
   stage      manifest                                                 ceiling_usd  over_daily_limit
   anchor     <manifest>                                                      4.90
@@ -189,6 +280,24 @@ choosing one for `detail`/`video` — the bake-off already found one style LoRA
 formality. `pipeline`'s own automatic `gen` planning also accepts `--style-lora`/
 `--style-lora-strength` when it plans `gen` for you (after tester is ruled).
 
+## `--gen-prompt-style` A/B
+
+`gen` also accepts `--gen-prompt-style {look-clause,trigger-scene,look-clause-close}` as
+the same kind of per-plan flag, not a persona fork: the default `look-clause` reproduces
+today's prompt (trigger + the full `identity.look` clause + scene) byte-for-byte,
+`trigger-scene` drops every look feature word and reuses the tester's own proven
+adult-framing/clothing/skin sentence plus a close-framed scene, and `look-clause-close`
+keeps the full look clause but swaps in that same close-framed scene set — plan all
+three and compare `same_person`/`face_px` in the gate table before choosing one, the
+same way the `--style-lora` A/B above does. `gen` also accepts
+`--gen-refine-denoise`/`--gen-detailer-denoise` (0.0–1.0, default 0.35/0.15) as the same
+kind of per-plan override for the refine (node 15) and detailer (node 33) passes in
+`_gen_workflow`; 0.0 removes that pass from the emitted workflow entirely rather than
+just lowering its denoise. Live evidence (2026-09-22/23): the tester's single 4-step
+pass scores judge `same_person` 88 on the accepted step-2000 checkpoint, while the same
+checkpoint's full gen chain (upscale → refine → detail) scores 45–68 — these two flags
+isolate how much of that gap is the post-processing rather than the prompt.
+
 ## The deliverable
 
 Once `detail` is ruled, `pipeline` writes `<run-root>/deliverable/`:
@@ -209,15 +318,30 @@ digests, it is left alone rather than rebuilt on every `pipeline` call.
 
 ## Budget rules
 
-- **Arc cap: $60.00** for the creator-001 arc (`ARC_CAP_USD` in `figment_train.py`, raised
-  from $50.00 by operator ruling 2026-09-15), checked against every `ledgers/cost/
-  figment-*.tsv` row before a live `run`.
+- **Arc cap: $75.00** (`DEFAULT_ARC_CAP_USD` in `pod/runpod_run.py`, operator ruling
+  2026-09-29), counted from $0 over `ledgers/cost/figment-*.tsv` files dated on or after
+  2026-09-29, checked before a live `run`.
 - **Daily cap: $10.00** in this branch's governance (`governance/budget.yaml`
   `daily_usd_limit`) — raise it, or split stages across days, when a single stage's ceiling
   (train, at the current 3000-step/DOP profile: $15.73) exceeds it on its own.
 - **Every pod carries its own `--max-usd`/`--max-minutes`** (`max_placement_attempts: 1` —
   no automatic retry on a live run); `train`'s ceiling is derived from `steps × per-step
   rate`, never a fixed quoted figure — read it off your own `plan.json`.
+- **Pods self-terminate at `max_minutes + 10` even if the host sleeps** (2026-09-22): the
+  host is kept awake and the ceiling is suspend-proof for as long as it's running, but the
+  pod also carries its own independent dead-man switch as a backstop for a host that never
+  comes back at all. RunPod injects a pod-scoped `RUNPOD_API_KEY` and preinstalls `runpodctl`
+  by default, so its normal path (`runpodctl remove`/`stop pod`, then the newer `pod
+  delete`/`pod stop` spelling) actually stops GPU billing; a bare `shutdown -h now` is only
+  the last-resort fallback — see GUARDRAILS.md #6. Note: `runpodctl stop`/`remove` end GPU
+  billing only — the network volume keeps billing until a real host-side delete or a
+  `status` sweep catches it, so don't treat "GPU billing ended" as "done."
+- **The qwen3vl caption pod ($1.95 ceiling, `caption` stage profile) is NOT in the
+  plan-time preflight table.** `caption_mode: "qwen3vl"` only dispatches its pod later,
+  from inside `apply-rulings --stage dataset` (`_live_qwen3vl_job_runner`) — `plan` never
+  plans or budgets it up front the way it does anchor/dataset/train/tester/gen/detail.
+  Hold $1.95 back mentally against the arc cap before running `apply-rulings --stage
+  dataset` on a `caption_mode: "qwen3vl"` persona.
 - **Teardown is verified, not assumed**, on every exit path — success, failure, or error —
   via the RunPod API. If a harness invocation fails outside the normal flow, confirm the
   true pod state by hand before retrying:
@@ -245,8 +369,170 @@ Never hand-edit `plan.json`, `stage.json`, receipts, manifests, grading records,
 media to work around this — the fix is always patience-and-retry or a verified-absent pod,
 never a file edit.
 
+**The one exception this rule already builds in:** the qwen3vl caption manifest
+(`train/runs/<trigger>-tensor-caption.yaml`, written by `plan_qwen3vl_caption` inside
+`apply-rulings --stage dataset`) regenerates itself on the next `apply-rulings` retry as
+long as no `run.json` has been recorded for it yet — a caption pod that crashed before
+launch, or never got dispatched at all, does not leave a permanent block behind. Once a
+`run.json` for that manifest exists, it IS a recorded run and the ordinary refusal above
+applies — the manifest will not be silently regenerated out from under a completed
+receipt. **Second exception (2026-09-16, P5):** a `run.json` whose own eligibility
+matches `--retry-failed`'s rule below — including a RunPod capacity 500 at pod-create
+time, which never places a pod at all — also regenerates (the dead out dir renamed to
+`.failed-N` first), bounded by the same retry limit; anything else with a recorded
+`run.json` still refuses.
+
+**Third exception, operator-invoked only (2026-09-16):** a JOB-class caption failure
+(verified pod teardown, zero output, but the pod-side script itself failed — e.g.
+`HarnessError: training failed marker appeared`) never auto-regenerates, so once
+you've fixed the actual cause, rerun `apply-rulings --stage dataset` with
+`--retry-caption-after-fix "<what you fixed>"` to admit it explicitly. The
+regenerated manifest records the reason, the renamed prior out dir, the
+caption-template sha256, and the current git HEAD, and this retry still counts as a
+real retry, but against the flag's own wider cap (`MAX_RETRY_AFTER_FIX` = 4), not the
+tighter `MAX_RUN_RETRIES` (2) every unflagged retry shares.
+
+## Resume/recovery: `--retry-failed` for a verified transport/placement failure
+
+A `failed` planned run normally requires a fresh, reviewed plan — see "never a file edit"
+above. `pipeline`/`run --retry-failed` (2026-09-16, P4) is a narrow, second exception for
+exactly one shape of failure: a pod that placed, ran briefly, then lost the transport
+connection to the provider itself (a DNS blip, a dropped `ConnectionError`,
+`MaxRetryError`, `ReadTimeout`, or a placement failure) before it ever produced a job or
+uploaded an artifact — never a job or validation failure, which still needs a reviewed
+plan.
+
+`--retry-failed` re-launches a `failed` run ONLY when its own harness receipt
+(`<out>/run.json`, not `stage.json`) shows ALL of:
+
+- `termination_verified: true` for the receipt AND for every row in
+  `run.json["placement_attempts"]` — the pod's teardown, including any earlier
+  superseded placement, was itself confirmed;
+- zero verified job outputs — no `run.json["jobs"]` entries with files, no artifact bytes,
+  and no other file anywhere under its `out` dir beyond its own receipt/manifest/recovery
+  bookkeeping (recursive — a nested stray file disqualifies it exactly like a top-level
+  one);
+- every `recovery-*.json` journal left in the out dir (`pod/recovery.py`) shows
+  `state: "terminated"` and `absence_verified: true` — an `uncertain` or unterminated
+  journal refuses the retry even if the receipt itself looks clean;
+- an `error` string naming a transport/placement failure (substring match against
+  `NameResolutionError`, `ConnectionError`, `MaxRetryError`, `ReadTimeout`, `placement`,
+  `ReadinessTimeout` — a host that never started the container, live 2026-09-23);
+  **or (2026-09-16, P5)** `termination_verified: false` with `pod_id: null`,
+  `placement_attempts`/`jobs`/`artifacts` all empty, an `error` naming
+  `CreateCallError`, and a fresh live scan finding no pod named in the out dir's own
+  `recovery-*.json` journal(s) — a RunPod capacity 500 at create time never placed a
+  pod at all, so there was never anything to terminate;
+- fewer than 2 prior REAL retries already recorded for that exact manifest key
+  (`state["runs"][key]["attempts"]`) — the 3rd real failure always requires a fresh
+  plan; never-created capacity failures (above) don't count toward that 2, since
+  nothing was spent — they're bounded separately, at 8.
+
+When it retries, the prior attempt's `stage.json` record moves into that run's `attempts`
+list (never deleted, and tagged with `out_renamed` naming where it went) and its `out` dir
+is renamed to `<out>.failed-<n>` (also never deleted; the first free suffix is used on a
+naming collision) AFTER `stage.json` durably records `status: "retrying"` for that run but
+BEFORE the harness is invoked again, so the retry writes a clean `run.json`. If the process
+is interrupted anywhere between that `retrying` write and the actual relaunch, the next
+call — whether or not it passes `--retry-failed` — finds `status: "retrying"` and treats it
+exactly like `failed`: `--retry-failed` is still required, and eligibility is re-verified
+against the renamed prior attempt (finishing the rename first if it didn't complete) rather
+than assuming the earlier check still holds. The exact same harness invocation, ceilings,
+and budget/arc-cap checks apply — this is not a weaker run, only a permitted second launch
+for the same manifest. Without `--retry-failed` (the default), behavior is unchanged:
+`failed` always refuses, byte for byte.
+
+`pipeline --dry-run --retry-failed` previews the one retry it would attempt (status
+`dry-run:retry <key>`) without renaming anything or invoking the harness. If the failed
+run is not eligible (any of the checks above fails), dry-run falls back to its ordinary
+`dry-run:<stage>` preview — the live invocation is what raises the specific refusal
+reason.
+
+**Operator-invoked exception (2026-09-21): `--retry-after-fix "<what you fixed>"`.**
+`pipeline`/`run` gain the same admission `apply-rulings --retry-caption-after-fix`
+already gives the caption sub-job, extended to a planned stage run (dataset, gen,
+detail, video, ... including a downstream plan `pipeline` planned itself) — a
+JOB-class failure (verified pod teardown, zero output, but a pod-side error that
+doesn't name a transport/placement failure, e.g. `HarnessError: ComfyUI job ...
+failed`) never qualifies for `--retry-failed` on its own. `--retry-after-fix` admits it
+once you've actually fixed the underlying cause: it works even without `--retry-failed`
+set, is bounded by the wider `MAX_RETRY_AFTER_FIX` (4) real retries instead of the
+tighter `MAX_RUN_RETRIES` (2) (never-created capacity failures still bound separately
+at 8), and records `{"reason": ..., "git_head": ...}` on the retried attempt's own
+`attempts` entry. Every other check above (verified termination, zero output, journal
+verification, the retry-count caps) still applies unchanged — the flag only relaxes the
+final error-class match. `pipeline --dry-run --retry-after-fix "<reason>"` previews the
+retry it would admit as `dry-run:retry-after-fix <key>` (falling back to the ordinary
+`dry-run:retry <key>`/`dry-run:<stage>` preview when the reason isn't what actually
+admitted it); without the flag, behavior is byte-for-byte unchanged.
+
+**Transient DNS outages no longer kill a live run (2026-09-21).** This host drops local DNS for ~10-30 s at a time, and three runs died because one polling GET's `ConnectionError`/`NameResolutionError` was treated as fatal and the pod was torn down mid-run. The polling GETs made while a pod is alive — the readiness pod-status poll, the ComfyUI history poll, and the post-create placement pod-status poll — now retry through such an outage for up to `TRANSIENT_NETWORK_TOLERANCE_SECONDS` (180 s) per outage with 2/4/8/15 s backoff, logging a `transient network failure ... retrying in Ns` WARNING each time; the window resets after any successful poll. Nothing else changed: the readiness/job deadlines, `max_minutes` and the watchdog are re-checked before every retry and are never extended, and when the window (or the deadline) closes the same error propagates to the same exit path, so termination is still attempted and VERIFIED exactly as before. Create, terminate, termination-verification, ledger, upload and download calls are deliberately NOT retried this way — uploads/downloads keep their own integrity rules and teardown keeps its own 5-attempt loop. Operationally: a run log with these WARNINGs and no teardown is the fix working; a run that still dies on a name-resolution error means the outage outlasted 180 s, and that failure remains `--retry-failed`-eligible exactly as described above.
+
+## Resume/recovery: `--replan-downstream <stage> --reason "<...>"` for a dead downstream plan
+
+`pipeline` always reuses whatever `downstream/gen`/`downstream/detail`/`downstream/video`
+plan it finds (`_pipeline_downstream_root`) rather than planning a fresh one, so a template
+fix (e.g. a manifest field a prior template got wrong) can never reach a downstream plan that
+already exists on disk — and "never hand-edit `plan.json`" above still applies, so hand-fixing
+it in place is not the way out. `pipeline --replan-downstream {gen,detail,video} --reason
+"<what changed>"` (2026-09-21) is the one sanctioned alternative: it supersedes that plan and
+plans the named stage fresh from current templates, but ONLY when the existing plan has no run
+with recorded output, is not graded, and every run/attempt it ever named is either a verified-
+teardown zero-output failure (the same shape `--retry-failed` requires, `error`-class match
+skipped) or was never launched at all — a completed run, a graded stage, or an unverified
+teardown refuses, naming the reason. On success it appends `{stage, superseded_dir, reason,
+git_head, prior_plan_sha256, at_utc}` to the PRIMARY run root's own `stage.json` (a
+`downstream_supersessions` list) BEFORE renaming the directory to `downstream/<stage>.
+superseded-<N>` (first free `N`, refusing past 4) — crash-safe the same way a `--retry-failed`
+relaunch is: if interrupted between the record and the rename, the next call (same flags)
+finishes the rename rather than re-checking eligibility or writing a second record. `--dry-run`
+with the flag only previews (`dry-run:replan-downstream <stage>`) and touches nothing; without
+the flag, behavior is unchanged.
+
+## A budget/arc-cap refusal before launch
+
+A harness preflight refusal (daily budget, arc cap, or any other check the harness runs
+before it ever calls RunPod's create API) exits non-zero without creating the run's `out`
+dir at all — no `run.json`, no `recovery-*.json` journal, no pod, no spend. `run_planned_stage`
+records this shape as `status: "refused"` (never `failed`), carrying `returncode` and a
+`stderr_tail` (the harness's last "refused"/"REFUSED" line, or its last ~5 lines of stderr
+when no such line exists) for audit; a legacy `{"status": "failed", "returncode": N}` record
+whose out dir the same way never launched (predating this classification, e.g.
+creator-001/live-20260916b's train stage) is reclassified as `refused` on read. Unlike a
+`failed` run, a `refused` run needs no `--retry-failed` flag and no fresh plan: the very next
+`pipeline`/`run` invocation on the same plan treats it exactly like "not yet run" and simply
+launches again, folding the prior refusal(s) into a `refusals` list on whatever record comes
+next (another refusal, a `failed`, or the eventual `complete`) so the history survives. That
+list is bounded the same way never-created retries are: after `MAX_NEVER_CREATED_RETRIES` (8)
+consecutive refusals for the same manifest key, the next call raises and demands operator
+investigation rather than looping forever. `pipeline --dry-run` (with or without
+`--retry-failed`) previews a `refused` run exactly like any other not-yet-run stage
+(`dry-run:<stage>`) — it would simply run.
+
 ## Command-shape evidence
 
 Every command above was checked against `figment_train.py --help`, `pipeline --help`,
 `plan --help`, `run --help`, `grade --help`, `apply-rulings --help`,
 `train/verify_pins.py --help`, and `video/video_manifest.py --help` on 2026-09-15.
+
+## Module09/16 offline fixture workflow
+
+1. Use a registered passport with its original approval lineage and a currently accepted tester checkpoint. Produce explicit canonical fixture scene drafts and fixture decisions through `pipeline/prompt_intake.py`; keep scene photos, draft JSON and approval JSON in one local evidence directory. Supply face/hair/eyes/skin slots; missing face is a review gap.
+2. Build the closed `figment/tensor-stills-request@1` document: creator, fixture=true, passport source_plan/image_id, scenes[{scene_index,draft:{path,sha256},approval:{path,sha256}}]. Relative draft/image paths stay within that evidence directory. Plan with `figment_train.py plan --stage gen --stills-request ...`; no model extraction starts here. Optional --personas-root selects an isolated fixture registry.
+3. Inspect each intake preview and framing group. The existing harness --dry-run validates manifests; its simulated media is not gradeable. Offline integration uses separately labelled synthetic PNG receipts, not supposed model outputs.
+4. Grade every saved image role, then apply attributed keep/cull and any required independent age rulings. Exact repeated tensor-gen rulings revalidate current authority and return existing receipts. Changed rulings require a fresh review; no previous decision is silently overwritten.
+5. Downstream edit must name an exact kept image ID. Changed photo, approved prose, framing, face slot, passport, checkpoint, graph or image invalidates gen/downstream authority.
+
+Live extraction, filesystem confinement, actual module09 runtime compatibility and unresolved component licences remain blockers. No stage here grants paid-run authorization or calibration/quality proof.
+
+## Offline runtime evidence inspection (phase6 first slice)
+
+`figment_train.py runtime-admission inspect --request <request.json> --evidence-root <directory>` reads bounded local metadata and emits one JSON `figment/tensor-runtime-inspection@1` report to stdout. Exit status is always2 (authority unavailable), including internally consistent fixtures. No creator argument is required. It writes no report/approval file and never starts a model, subprocess, approval verifier or network client. There is no validate/admit/launch subcommand.
+
+The exact request schema is `figment/tensor-runtime-inspection-request@1`, with only schema, stage="video", recipe_profile="tensor", fixture (Boolean), evidence_root (exact caller-root POSIX spelling), current_scope_sha256, and sources. The caller fixes the confinement root; the document cannot select another. Sources has exactly manifest, run, installed, object_info, submitted_graph, history, native_metadata, recovery and ledger; each binding has a relative JSON path, byte count and lowercase SHA256. These are closed inspection projections (see tensor_runtime_admission.py and its synthetic fixture test), not canonical harness receipts or authenticated captures. Approval references and selectors are not accepted. `current_scope()` computes the fixed current export/pin/checker/transport-code projection; request data cannot supply current code or pins.
+
+Caps: request1MiB; each evidence JSON4MiB except object_info/history8MiB; all evidence snapshots24MiB; all actual reads including final freshness/current-source rereads64MiB. Current code/export/pin metadata is capped2MiB/file and8MiB total. JSON depth32/items100000, installed models128, custom nodes64, declared classes256 and placements16. Installed model and native movie records are metadata only: no weight/media record path is followed; reads are restricted to declared JSON/current code metadata. Reparse/traversal paths, duplicate JSON keys, nonfinite numbers, unknown keys and changed bindings refuse.
+
+`evidence_consistent` means local declarations agree with each other and the fixed current video graph/pins. Required class names, declared input names/output-slot counts, graph widgets/links, exact supported output contract, attempt/prompt/movie/termination/cost declarations are compared. It does NOT mean real media was decoded, installed schemas executed, or approval/capture/termination was authenticated. The report always carries runtime_admitted=false, production_ready=false and authority_status="authority-unavailable". All existing live launch and production video acceptance guards remain unchanged; trusted capture/approval/one-shot/result adapters and actual smoke remain separate gated work.
+
+Inspection confinement qualification: request and evidence operands must be explicit `.json` metadata files before opening; model/media records contain no followable file path. A hostile file renamed `.json` cannot be identified without bounded reading/parsing, so this is not a claim that arbitrary adversarial bytes are never read. Stable reparse paths and ordinary mutations are rejected; component checks and rereads are not OS-enforced confinement against an actively swapping hostile filesystem writer. A future authenticated adapter needs separately reviewed stronger confinement/capture authority. None is enabled by this inspection slice.

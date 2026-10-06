@@ -48,6 +48,10 @@ pipeline_command_test = load_module(
 )
 _install_fake_harness = pipeline_command_test._install_fake_harness
 
+# Same offline model boundary as the pipeline driver fixture, with real approval logic.
+offline_fixture_models = pipeline_command_test.offline_fixture_models
+
+
 TRIGGER = "creator003krea2"
 STEPS = 1250
 SAVE_EVERY = 250
@@ -298,7 +302,8 @@ def _write_import_training_config(path: Path, *, steps: int, save_every: int, **
     """A standalone `--import-training-config` sidecar, same one-key shape
     `training_config.load_persona_with_training`'s sidecar reads, naming the config an
     imported ladder was actually trained with (P4i)."""
-    payload = {"training": {"steps": steps, "save_every": save_every, **extra}}
+    payload = {"training": {"steps": steps, "save_every": save_every,
+                           "recipe_profile": "clean", **extra}}
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 

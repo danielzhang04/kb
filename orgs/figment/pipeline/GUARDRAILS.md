@@ -13,7 +13,9 @@ restart.
    real person's name in a generation prompt.
 
 2. **Unambiguously adult output.** Every generated persona must clearly read as an adult
-   woman. Cull anything ambiguous rather than keeping it. A declared or prompt-stated
+   woman. The operator makes that call by eye on every image: automated age checks
+   score and flag, and never cull on their own (operator ruling 2026-09-29). An image
+   the operator finds ambiguous is not kept. A declared or prompt-stated
    age does not cure a youthful appearance — destination platforms judge by eye, and
    this pipeline's paid tier is explicit content, which makes an ambiguous face an
    unrecoverable mistake rather than a cosmetic one.
@@ -33,7 +35,23 @@ restart.
 
 6. **Rented compute is terminated on every exit path** — success, failure, or error —
    and termination is VERIFIED via API, not assumed. A forgotten pod silently drains the
-   balance.
+   balance. This now explicitly includes a hung upload: every ComfyUI upload POST runs
+   under a hard wall-clock `join(timeout)` so a stalled body send fails closed as a
+   transient error instead of blocking the run (and the ceiling) indefinitely. It also
+   now covers a host that sleeps mid-run (2026-09-22): the host is kept awake for the
+   whole pod lifetime and the ceiling itself is suspend-proof (dual monotonic/wall-clock
+   check), and the pod carries its own independent dead-man switch that self-terminates
+   `max_minutes + 10` minutes past the ceiling even if the host never comes back.
+   RunPod DOES inject a pod-scoped `RUNPOD_API_KEY` and preinstalls `runpodctl` by
+   default (docs.runpod.io/pods/references/environment-variables; runpodctl overview),
+   so the dead-man switch's normal path is `runpodctl remove pod` -> `runpodctl stop
+   pod` -> the newer `runpodctl pod delete`/`pod stop` spelling, actually stopping GPU
+   billing; a bare `shutdown -h now` is only the last-resort fallback if `runpodctl` or
+   the key is somehow absent, and that presence is logged (never the key's value).
+   Note: `runpodctl remove`/`stop` (and the newer `pod delete`/`pod stop`) end GPU
+   billing but do NOT end storage billing on their own -- the network volume keeps
+   billing until the host does a real delete or a `status` sweep catches it, so
+   teardown verification (above) must not stop at "GPU billing ended."
 
 7. **The pickle-load ban (`pod/runpod_run.py` `models[]`) is narrower than "no pickle
    loads on the pod" reads.** It covers only `manifest["models"]` downloads

@@ -19,7 +19,7 @@
   "21": {"class_type": "SaveImage", "inputs": {"filename_prefix": "REPLACED PER JOB", "images": ["9", 0]}},
   "30": {"class_type": "LoadMediaPipeFaceLandmarker", "inputs": {"model_name": "mediapipe_face_fp32.safetensors"}},
   "35": {"class_type": "MediaPipeFaceLandmarker", "inputs": {"face_detection_model": ["30", 0], "image": ["16", 0], "detector_variant": "short", "num_faces": 1, "min_confidence": 0.4, "missing_frame_fallback": "empty"}},
-  "36": {"class_type": "MediaPipeFaceMask", "inputs": {"face_landmarks": ["35", 0], "regions": {"regions": "all"}}},
+  "36": {"class_type": "MediaPipeFaceMask", "inputs": {"face_landmarks": ["35", 0], "regions": "all"}},
   "31": {"class_type": "GrowMask", "inputs": {"mask": ["36", 0], "expand": 10, "tapered_corners": true}},
   "32": {"class_type": "MaskToSEGS", "inputs": {"mask": ["31", 0], "combined": false, "crop_factor": 3.0, "bbox_fill": false, "drop_size": 10, "contour_fill": false}},
   "33": {"class_type": "DetailerForEach", "inputs": {"image": ["16", 0], "segs": ["32", 0], "model": ["40", 0], "clip": ["4", 1], "vae": ["3", 0], "positive": ["5", 0], "negative": ["6", 0], "guide_size": 512, "guide_size_for": true, "max_size": 1024, "seed": 40, "steps": 4, "cfg": 1.0, "sampler_name": "euler", "scheduler": "normal", "denoise": 0.15, "feather": 5, "noise_mask": true, "force_inpaint": true, "wildcard": "", "cycle": 1, "inpaint_model": false, "noise_mask_feather": 100}},
