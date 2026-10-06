@@ -489,3 +489,7 @@ The signed commit authenticates committed card metadata even when fields are out
 ## 2026-10-06 - Preserve filesystem truth across staged reader ownership
 
 Matching path strings cannot prove actual entry spelling or absence of casefold siblings on Windows. Keep exact-case metadata checks inside a bounded retained reader, including final rescans, with legacy callers default-off. A later strict member may share an ancestor already owned by an unrestricted reader: retain both primary observation and strict restriction owner, and reject conflicting spelling or root boundaries. Tests must distinguish real filesystem collision coverage from controlled scanner seams. Before extending an observer, prove the fixture uses the intended real writers and supported provenance: imported checkpoints and hand-authored synthetic authority records are not interchangeable with an in-plan accepted-checkpoint chain.
+
+## 2026-10-06 - Diagnose cross-API metadata before relaxing identity checks
+
+A real .bat source file exposed Windows pathname-stat executable-bit inference that fd-stat does not share. Preserve the original failing test and compare every identity field, then scope portability normalization only to the proven cross-API0111 discrepancy; retain read/write/type bits and each API's complete original fingerprint for later drift checks. Test real extension-bearing files, independent other-field mutations and same-API executable-bit drift. A product portability defect is not a test-harness error; record that distinction alongside overlapping regression counts.
