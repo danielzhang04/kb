@@ -43,6 +43,7 @@ class ReadMember:
     max_bytes: int
     allow_json: bool = False
     optional: bool = False
+    allow_bytes: bool = False
 
 
 @dataclass(frozen=True)
@@ -73,6 +74,7 @@ class _FileRecord:
 _REPARSE = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
 _RESERVED = re.compile(r"(?:CON|PRN|AUX|NUL|CLOCK\$|CONIN\$|CONOUT\$|COM[1-9¹²³]|LPT[1-9¹²³])(?:\..*)?\Z", re.I)
 _CHUNK = 1024 * 1024
+_MAX_COLLECTED_BYTES = 32 * 1024 * 1024
 
 
 def _refuse(message: str) -> None:
@@ -212,12 +214,13 @@ class ObservedReads:
             if not any(_within(path, root) for root in self._roots):
                 _refuse("member outside roots")
             if (type(member.max_bytes) is not int or not 0 < member.max_bytes <= limits.max_file_bytes
-                    or type(member.allow_json) is not bool or type(member.optional) is not bool):
+                    or type(member.allow_json) is not bool or type(member.optional) is not bool
+                    or type(member.allow_bytes) is not bool):
                 _refuse("invalid per-member restriction")
             key = _key(path)
             if key in admitted:
                 _refuse("duplicate normalized member")
-            admitted[key] = ReadMember(path, member.max_bytes, member.allow_json, member.optional)
+            admitted[key] = ReadMember(path, member.max_bytes, member.allow_json, member.optional, member.allow_bytes)
             for ancestor in path.parents:
                 if any(_within(ancestor, root) for root in self._roots):
                     operands.setdefault(_key(ancestor), ancestor)
@@ -319,13 +322,16 @@ class ObservedReads:
         self._files[key] = record
         return record
 
-    def _stream(self, key: str, member: ReadMember, *, collect: bool = False) -> tuple[str, bytes | None]:
+    def _stream(self, key: str, member: ReadMember, *, collect: bool = False,
+                collection_limit: int | None = None) -> tuple[str, bytes | None]:
         record = self._inspect(key, member, required=True)
         if record is None:
             _refuse("required file absent")
         expected = record.fingerprint
-        if collect and expected.size > min(member.max_bytes, self._limits.max_json_bytes):
-            _refuse("JSON byte budget exceeded")
+        if collect:
+            cap = self._limits.max_json_bytes if collection_limit is None else collection_limit
+            if expected.size > min(member.max_bytes, cap):
+                _refuse("JSON byte budget exceeded" if collection_limit is None else "raw byte buffer budget exceeded")
         if expected.size > self._limits.max_stream_bytes - self._stream_bytes:
             _refuse("remaining stream budget insufficient")
         digest = hashlib.sha256()
@@ -380,6 +386,19 @@ class ObservedReads:
     def sha256(self, path: Path) -> str:
         key, member = self._member(path)
         return self._stream(key, member)[0]
+
+    @_public
+    def read_bytes(self, path: Path) -> bytes:
+        """Collect explicitly admitted bytes with the same retained hash/identity checks.
+
+        Raw access is independent of JSON permission and capped at 32 MiB even
+        for larger hashable members. Rechecks still stream and charge every byte.
+        """
+        key, member = self._member(path)
+        if not member.allow_bytes:
+            _refuse("member is not admitted for raw bytes")
+        _, raw = self._stream(key, member, collect=True, collection_limit=_MAX_COLLECTED_BYTES)
+        return raw
 
     @_public
     def read_json(self, path: Path) -> Any:

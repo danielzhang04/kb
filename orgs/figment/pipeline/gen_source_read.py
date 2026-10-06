@@ -408,11 +408,11 @@ class _Router:
             directories = tuple(lexical(directory) for directory in directories)
             fresh: dict = {}
             for member in members:
-                if type(member) is not obs.ReadMember:
-                    _refuse("member type")
+                if type(member) is not obs.ReadMember or type(member.allow_bytes) is not bool:
+                    _refuse("member type or raw-byte capability")
                 path = lexical(member.path)
                 member_key = key(path)
-                restriction = (member.max_bytes, member.allow_json, member.optional)
+                restriction = (member.max_bytes, member.allow_json, member.optional, member.allow_bytes)
                 prior = self._restrictions.get(member_key)
                 if prior is None and member_key in fresh:
                     prior = fresh[member_key][1]
@@ -479,6 +479,9 @@ class _Router:
 
     def read_json(self, path):
         return self._call("read_json", path, True)
+
+    def read_bytes(self, path):
+        return self._call("read_bytes", path, True)
 
     def begin_domain(self) -> None:
         self._enter()
