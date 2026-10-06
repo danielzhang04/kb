@@ -445,3 +445,51 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
 ## 2026-09-14 - shared handoff delivery
 
 Publish shared handoffs through current ops, not only a private worktree commit. Verify the file is discoverable from the shared checkout (`kb-worktrees/dashboard-ops/handoffs/`) and that STATE points to it; private checkouts are archival, never the load target.
+
+
+## 2026-10-05 - Derived artifacts need independent source checks
+
+### Context
+- A video review cache could be changed together with its editable hash receipt while the original movie stayed unchanged. All local checksums could then agree on the wrong frames.
+### Root Cause / Core Insight
+- Mutable derivative bytes and their mutable receipt are one authority, not independent proof. File-format labels likewise do not establish the actual decoder format.
+### The Pattern (transferable)
+- Next time review depends on cached media, I will rederive bounded pixels/metadata from the bound source at acceptance and compare them, then recheck the source hash. Signal: a caller can coherently edit a derivative and its receipt without changing the original source.
+- Next time a closed output contract declares a media type, I will validate the actual bounded decoded format, not only its extension and declared MIME type.
+
+## 2026-10-05 - Fixture intent is not execution isolation
+
+### Context
+- A legacy test passed `skip_judge=True` but still initialized local identity/advisory scorers on tiny synthetic images. The first regression run therefore was not model-free.
+### Root Cause / Core Insight
+- Skipping one paid/judge layer does not disable other local model consumers. Imported-by-path driver instances can also bypass a fixture patch applied to another module instance.
+### The Pattern (transferable)
+- Next time I claim a test is offline/model-free, I will trace every scorer/provider consumer and patch the exact module instances with fail-closed seams before running it. Signal: a fixture calls the real grading entrypoint while only stubbing one scorer.
+- Record initial evidence limits honestly, then rerun the corrected affected case rather than rewriting the initial run's meaning.
+
+## 2026-10-05 - Milestones do not require another user turn
+
+### Context
+- The boss protocol said to end after dispatch, while the user repeatedly asked to continue authorized work and objected to pauses.
+### Root Cause / Core Insight
+- A local orchestration habit was mistaken for an approval boundary; status milestones and missing optional fixture inputs were treated as reasons to return control.
+### The Pattern (transferable)
+- Next time the user authorizes continued work, I will keep coordinating through implementation, review and verification and ask only at a real unresolved dependency or approval boundary. Signal: the task can progress safely with already chosen fixtures and the user asks why work has paused.
+
+
+## 2026-10-05 - Metadata consistency is not authenticated runtime evidence
+
+When local declarations and hashes agree, report only consistency. Keep admission false until a trusted approval-to-attempt-to-capture/result chain exists. Canonical JSON comparison avoids Python treating true,1 and1.0 as interchangeable; test coherently rehashed type substitutions. Stable path/reparse checks and freshness rereads detect ordinary mutations but do not establish OS confinement against an actively swapping writer. State that boundary explicitly rather than presenting a metadata inspector as a production verifier.
+
+
+## 2026-10-06 - Bind the model to the real authority mechanism
+
+The signed commit authenticates committed card metadata even when fields are outside the I3 payload digest. Use precise wording and test new contract serialization against the existing approval_payload/work_order_of functions, including line endings and section extraction. A pure event-history analyzer can test topology, time and replay conflicts but cannot prove the opaque evidence it names or replace global transactional consumption. Keep late cleanup possible after launch expiry; never interpret that as revived dispatch authority.
+
+## 2026-10-06 - Preserve filesystem truth across staged reader ownership
+
+Matching path strings cannot prove actual entry spelling or absence of casefold siblings on Windows. Keep exact-case metadata checks inside a bounded retained reader, including final rescans, with legacy callers default-off. A later strict member may share an ancestor already owned by an unrestricted reader: retain both primary observation and strict restriction owner, and reject conflicting spelling or root boundaries. Tests must distinguish real filesystem collision coverage from controlled scanner seams. Before extending an observer, prove the fixture uses the intended real writers and supported provenance: imported checkpoints and hand-authored synthetic authority records are not interchangeable with an in-plan accepted-checkpoint chain.
+
+## 2026-10-06 - Diagnose cross-API metadata before relaxing identity checks
+
+A real .bat source file exposed Windows pathname-stat executable-bit inference that fd-stat does not share. Preserve the original failing test and compare every identity field, then scope portability normalization only to the proven cross-API0111 discrepancy; retain read/write/type bits and each API's complete original fingerprint for later drift checks. Test real extension-bearing files, independent other-field mutations and same-API executable-bit drift. A product portability defect is not a test-harness error; record that distinction alongside overlapping regression counts.
