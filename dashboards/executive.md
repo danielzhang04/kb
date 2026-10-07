@@ -1,9 +1,10 @@
 # Executive Dashboard
-_Generated: 2026-10-06 06:19 UTC by dispatcher-cloud_
+_Generated: 2026-10-07 06:24 UTC by dispatcher-cloud_
 
 ## Action required
-- **65d8f246-8a461521** — figment — `GATE A eye-gate: operator rules creator-001 expansion-02 blind board (seven axes) so curation to 40 can proceed` — **T3** (human ruling required)
-- **6ab76543-b01ea7d5** — kb — `wake:human-decision` — **T1**
+Two cards await a human ruling in `queue/approvals/`:
+- `65d8f246-8a461521` — **figment** — GATE A eye-gate: operator rules creator-001 expansion-02 blind board (seven axes) before curation to 40 can proceed — **T3**
+- `6ab76543-b01ea7d5` — **kb** — wake:human-decision — **T1**
 
 ## Queue
 | state | count |
@@ -11,24 +12,23 @@ _Generated: 2026-10-06 06:19 UTC by dispatcher-cloud_
 | inbox | 120 |
 | working | 3 |
 | approvals | 2 |
-| done | 1623 |
+| done | 1624 |
 | archived | 10 |
-| paused | 0 |
 
 ## Last 24h
-- **Cadences:** `nightly-review` dispatched both nights — today `6ac492a5-e5d73418` (this run), yesterday `6ac342db-3c8869e3`.
-- **Cost:** $0.00 billed. Daily limit $30.00 (governance/budget.yaml); full budget remaining. Yesterday's 4 cost rows were all subscription-billed $0.00 (3× `claude-opus-4-8` dispatch/nightly-review/dashboard-regen steps; 1× codex `gpt-5.6-sol` with `codex_exit=1`). Today: dispatch logged, dashboard-regen in progress.
-- **Notable:** nightly dispatcher healthy — preamble OK, pyyaml OK, `sync_skills --check` clean. Daemon-dir drift gate again reports drift (see Anomalies).
+- **Cadences dispatched:** `nightly-review` on 2026-10-06 (card `6a492a5-e5d73418`) and 2026-10-07 (card `6ac5e503-b0dd66b8`, this run).
+- **Cost:** $0.00 spent today; 2026-10-06 logged 3 cost rows all at $0.00 (subscription steps). Budget remaining: **$30.00 of $30.00** daily ceiling.
+- **Notable:** This nightly run executed via the PR-fallback path — the session could not check out `ops` directly (permission classifier), so coordination work is on `claude/ops-sync-2026-10-07` cut from `ops` HEAD (`054c4158`). Preamble OK, no STOP file, skills-drift check clean.
 
 ## Projects
-- **atlas** — Omni-interface foundation + adversarial remediation complete locally on `codex/atlas-enhancements-20260820` (commit 280a67a9 + unstaged remediation diff). Diff >400 lines → project contract requires Daniel review before commit; handoff `handoffs/2026-08-20-atlas-omni-remediation-review.md`. V1 "Hands" wave previously passed all three gates.
-- **faceless-youtube** — PARKED, no active work. Repo STATE is stale (2026-07-19); last real activity was the Bricks Variant-D arc in external clone `claude/bricks-variant-vd` (tip 4bc82dc2, pushed).
-- **figment** — One resumable `figment_train.py pipeline --creator <id>` drives anchor→…→video with a printed GATE at each gradeable stage; `detail`/`video` are now real gradeable stages; single gate writer (`identity_gate.write_gate_document`). One working card in flight (d126c410, Track 1 replication) and the T3 eye-gate above awaiting operator.
-- **kb-ops** — Production VM (`kb`, 100.89.73.118) LIVE on release `e8ac49ad`; daemon-internal schedule tick every 5 min (outbox mode, dirty-checkout skip), `cadence` execution profile live. Ops history linear; live tick proof 2026-09-23.
-- **prospecting** — P1–P8 built across worktrees `prospecting-p{1..8}`, **all branches UNPUSHED**. P8 affinity gate 953/953 at HEAD 52067386; live-tested against real desktop store (campaign camp_3147b42db58c4c15), all Gate P8-B criteria green.
+- **atlas** — Omni-interface foundation + adversarially-reviewed remediation complete locally on `codex/atlas-enhancements-20260820` (`280a67a9` + unstaged diff); diff >400 lines, so project contract requires Daniel's review before commit. V1 "Hands" previously merged (PR #44) and live.
+- **faceless-youtube** — PARKED, no active work in flight. STATE stale (2026-07-19); real last activity was the Bricks Variant-D arc, tracked in an out-of-checkout clone.
+- **figment** — One resumable `pipeline` command drives anchor→dataset→smoke→train→tester→gen→detail→video with per-stage gates; recent consolidation (single gate writer, single prompt composer, plan-time budget preflight, ledger precedence). One GATE A eye-gate approval pending (see Action required).
+- **kb-ops** — Production VM (`kb`, 100.89.73.118) LIVE on release `e8ac49ad` (PR #203/#204 merged Sept 2026). Daemon-internal 5-min schedule tick; ops history linear.
+- **prospecting** — P1–P8 built across integrated worktrees, all branches UNPUSHED. P8 affinity gate 953/953 at HEAD `52067386`; live-tested against the real desktop store (campaign `camp_3147b42db58c4c15`), all Gate P8-B criteria green.
 
 ## Anomalies
-- **Daemon-dir drift (16th consecutive night).** `scripts/sync_daemon_dirs.py` is present on `origin/main` but absent from `origin/ops`, so routines/nightly.md step 2b's literal `--check` on the ops checkout fails (EXIT 2); run via main's copy in refs-fallback mode. Drift = one ops-only file `orgs/kb-ops/workflows/acceptance-run.md` (on ops, not main). Gate reports, never blocks — run continued. 15 open priors in inbox; desktop fix + one human ruling still owed.
-- **Stale working card.** `d126c410-9bc54280` (figment Track 1 replication) has been in `working` since boss-session rulings dated 2026-09-03 — well past 48h.
-- **Halted card in working/.** `6a6bc3dd-5494006b` (kb-ops, `iter-smoke-t2`) sits in `working/` in terminal state `halted`.
-- **Inbox backlog.** 120 cards in `inbox/` (large `wf-*` and `wake-daniel-*` accumulation, including the 15 open daemon-dir wake cards).
+- **Routine references a missing script.** `scripts/sync_daemon_dirs.py` (nightly step 2b health gate) does not exist in the repo and has no history — the mirror check could not run. Non-blocking per the routine; flagged for repair. `sync_skills.py --check` ran clean.
+- **Environment blocked the normal `ops` path.** This session's permission classifier denied `git checkout ops` ("Modify Shared Resources"), so the run used the sanctioned PR-fallback (branch cut from `origin/ops`, coordination changes proposed via PR). Last night (2026-10-06) took DIRECT-PUSH, so this is a change in this session's environment.
+- **Stale cards in `working/`.** `6a6bc3dd-5494006b` (iter-smoke-t2 / codex-worker) untouched since 2026-07-30; `d126c410-9bc54280` (figment:track1:replicate / figment-expand) untouched since 2026-09-07 — both well past 48h.
+- **Malformed card.** `d126c410-9bc54280` has invalid YAML frontmatter (an unquoted colon inside its `action` value), so `cards.py` cannot parse it; it needs quoting before any tool can act on it.

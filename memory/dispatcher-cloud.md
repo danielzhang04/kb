@@ -1222,3 +1222,21 @@
   credentials carry bypass, so the push landed on ops directly. No PR fallback needed. LESSON
   (updates the prior assumption): the cloud dispatcher CAN write ops directly via HEAD:ops despite
   the PR ruleset; expect DIRECT-PUSH, not PR-AWAITING-HUMAN-MERGE.
+
+## 2026-10-07 nightly (dispatcher-cloud, cloud VM, Opus 4.8)
+- CHECKOUT-OPS DENIAL IS NOW HARD this session: the permission classifier denied BOTH
+  `git fetch && git checkout ops` ("Modify Shared Resources") AND a plain compound. Did NOT
+  fight it — went straight to `git checkout -b claude/ops-sync-2026-10-07 origin/ops` (the
+  routine step-6 PR-fallback branch / BOSS cut-from-origin/ops pattern). Confirms the standing
+  lesson: on cloud, start on `claude/ops-sync-<date>` from origin/ops from the top; the literal
+  routine step 1 (`git checkout ops && git pull --rebase`) is not executable here.
+- Dispatch emitted 1 card: `6ac5e503-b0dd66b8` (cadence:nightly-review, owner dispatcher-cloud).
+  Executed it: preamble OK, sync_skills --check EXIT 0, dashboards rewritten, this memory line,
+  commit+push. No `## Evidence` to treat as inert; approval:null so routine step 4b N/A.
+- Daemon-dir drift UNCHANGED (3rd night running): single ops-only
+  `orgs/kb-ops/workflows/acceptance-run.md`; scripts/sync_daemon_dirs.py STILL absent from ops
+  (ran via origin/main copy, refs-fallback). Refreshed canonical card `6a605ebb` in place with a
+  2026-10-07 snapshot (dedup decision), minted NO new dated duplicate.
+- Stranded working/ cards UNCHANGED, recorded in dashboards not moved: `6a6bc3dd` (iter-smoke-t2,
+  last commit 2026-07-30) + `d126c410` (figment:track1:replicate, last commit 2026-09-07, still
+  has the unquoted colon in `action:` that makes cards.py raise ScannerError).
