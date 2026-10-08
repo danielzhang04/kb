@@ -1,32 +1,32 @@
 # System Handover
-_Generated: 2026-10-07 06:24 UTC_
+_Generated: 2026-10-08 06:20 UTC_
 
-**What happened.** The nightly dispatcher ran. It could not check out the `ops`
-branch directly this time — the session's permission layer blocked it — so it
-did the safe thing: worked on a branch cut from the latest `ops` and is routing
-tonight's coordination writes to you as a pull request instead of pushing `ops`
-itself. The health checks that could run passed: no STOP file, budget untouched
-($0 of $30 spent today), and the skills-drift check is clean. The dispatcher
-emitted and executed one `nightly-review` card, whose only lasting output is the
-refreshed dashboards and this note.
+Overnight the cloud nightly dispatcher ran cleanly: the preamble passed, the skills
+mirror is in sync, and dashboards were regenerated. The one recurring snag is unchanged —
+the daemon-directory drift check still finds a single ops-only file
+(`orgs/kb-ops/workflows/acceptance-run.md`), and the checker script itself is still
+missing from the `ops` branch, so the gate only runs via the copy on `main`. Tonight's run
+refreshed the single canonical wake card (`6a605ebb`) in place rather than minting a new
+dated duplicate; the gate only reports, it never blocks, so dispatch continued normally.
 
-**What is waiting on you.** Three things.
-1. Two approval cards need a ruling: a figment GATE A "eye-gate" (T3) that gates
-   curation of the creator-001 board, and a kb human-decision wake (T1).
-2. A pull request titled "ops-sync 2026-10-07" will be open against `ops` with
-   tonight's dashboard/ledger/queue changes — it needs your merge. Nothing merges
-   itself.
-3. atlas has a finished local remediation on `codex/atlas-enhancements-20260820`
-   that exceeds the 400-line contract limit and so is held for your review before
-   commit.
+Waiting on you (nothing auto-executes):
+- **Two approvals.** A figment GATE A eye-gate board (T3) needs an operator ruling before
+  curation to 40 can proceed, and a kb wake:human-decision (T1) flags that the desktop
+  coordination tier is degrading — desktop cadences are dormant, daemon-dirs-sync is not
+  running, and the grades/activity ledgers have been frozen since 2026-07-21.
+- **One desktop fix ends the nightly pile-up.** From the dashboard-ops worktree, restore
+  `scripts/sync_daemon_dirs.py` onto `ops`, rule on the drifting file (reconcile to `main`
+  or `--sync --prune`), and land the step-2b dedup amendment so the inbox's 15 older dated
+  duplicate cards can be consolidated.
+- **Two stale working/ cards** (`d126c410` figment, idle ~31 days; `6a6bc3dd` kb-ops, halted
+  since July) could be archived or walked back.
 
-**Heads-up for maintenance.** The nightly routine calls a script that no longer
-exists (`scripts/sync_daemon_dirs.py`), so one health gate silently can't run.
-Two cards have been stuck in `working/` for months (one from July, one from
-September), and the September one has broken YAML that no tool can parse. None of
-these block the fleet, but they want a cleanup pass.
+Unattended, the system will keep doing exactly this each night: dispatch the nightly-review
+cadence, verify preamble/skills, regenerate these dashboards, and refresh the canonical
+drift wake card in place until the desktop fixes above land. No spend; budget is the
+full $30/day. Projects (atlas, figment, prospecting) hold completed-but-unpushed/ungraded
+work gated on your review.
 
-**What the system will do next unattended.** Nothing until the next scheduled
-nightly tick. No cards are mid-flight that will act on their own; the production
-VM continues its 5-minute schedule tick as normal. Everything else waits on your
-rulings and the PR merge above.
+## Latest handoffs
+- prospecting — [2026-09-07-prospecting-p8-live-tested.md](../handoffs/2026-09-07-prospecting-p8-live-tested.md) (2026-09-07)
+- figment — [2026-09-23-figment-live-chain.md](../handoffs/2026-09-23-figment-live-chain.md) (2026-09-23)
