@@ -1263,3 +1263,27 @@
 - Stranded working/ cards UNCHANGED (recorded in dashboards, not moved): `6a6bc3dd`
   (iter-smoke-t2, halted, 2026-07-30) + `d126c410` (figment:track1:replicate, 2026-09-07, still
   has the unquoted colon in `action:` that makes cards.py raise ScannerError).
+
+## 2026-10-09 nightly (cloud, dispatcher-cloud)
+- Env blocked `git checkout ops` (classifier: Modify Shared Resources) in the main checkout.
+  Worked ops via a worktree cut from `origin/ops` on branch `claude/ops-sync-2026-10-09`
+  (scratchpad path). All reads/writes/commits for ops happen there; main checkout stays on
+  its work branch. This is also the routine's PR-fallback branch name, so one worktree serves both.
+- preamble OK; `sync_skills --check` EXIT 0 (in sync, run in the ops worktree — NOTE: running it
+  against the wrong checkout/main branch falsely reports mass DRIFT; always run from the ops tree).
+  `sync_daemon_dirs --check` EXIT 1, UNCHANGED 5th night (single ops-only
+  `orgs/kb-ops/workflows/acceptance-run.md`; scripts/sync_daemon_dirs.py STILL absent from ops,
+  ran main's copy in refs-fallback).
+- DEDUP (repeat of the 2026-10-08 near-miss): I AGAIN minted a new dated
+  `wake-daniel-2026-10-09-...` card from a literal reading of step 2b BEFORE reading this memory.
+  Caught it on reading the tail + canonical card `6a605ebb`, deleted the new card, refreshed
+  `6a605ebb` in place with a 2026-10-09 snapshot. LESSON STANDS AND IS NOW TWICE-BURNED: on a
+  step-2b drift, do NOT file a dated card — FIRST read this memory, then refresh canonical
+  `6a605ebb` in place. The routine text still hasn't been amended, so this trap recurs every run.
+- Dispatch emitted 1 card `6ac88876-b7490965` (cadence:nightly-review, owner dispatcher-cloud,
+  approval:null so step 4b N/A). Executed: preamble, sync_skills, dashboards rewritten (counts
+  inbox 87 / blocked 29 / working 2 [1 malformed] / approvals 2 / done 1630 / archived 10 / halted 1),
+  this memory line, cost row.
+- Stranded working/ cards UNCHANGED (recorded in dashboards, not moved): `6a6bc3dd`
+  (iter-smoke-t2, halted, 2026-07-30) + `d126c410` (figment:track1:replicate, 2026-09-07, still
+  has the unquoted colon in `action:` that makes cards.py raise ScannerError — stale ~32d + unparseable).

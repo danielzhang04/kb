@@ -1,36 +1,38 @@
 # Executive Dashboard
-_Generated: 2026-10-08 06:20 UTC by dispatcher-cloud_
+_Generated: 2026-10-09 06:28 UTC by dispatcher-cloud_
 
 ## Action required
 Two cards await a human ruling in `queue/approvals/`:
 - `65d8f246-8a461521` — **figment** — GATE A eye-gate: operator rules creator-001 expansion-02 blind board (seven axes) before curation to 40 can proceed — **T3**
 - `6ab76543-b01ea7d5` — **kb** — wake:human-decision: desktop coordination tier degrading (dormant desktop cadences; daemon-dirs-sync not running; grades/activity ledgers frozen since 2026-07-21) — **T1**
 
-Also piling up in `queue/inbox/` (not auto-actioned): 15 open `wake-daniel-*-sync-daemon-dirs-*` cards (plus the canonical `6a605ebb`, refreshed in place tonight) tracking the same single-file ops drift. One desktop fix + the step-2b dedup amendment ends the pile-up (see Anomalies).
+Plus the long-open daemon-dir mirror drift: canonical card `6a605ebb-d86dff79` (refreshed in place this run) + **15 historical `wake-daniel-*-sync-daemon-dirs-*` cards** awaiting a human consolidation pass — see Anomalies. The owed fix is a desktop action.
 
 ## Queue
 | state | count |
 |-------|-------|
-| inbox | 120 |
-| working | 2 |
-| approvals | 2 |
-| done | 1626 |
+| done | 1630 |
+| inbox | 87 |
+| blocked | 29 |
 | archived | 10 |
+| approvals | 2 |
+| working | 2 (1 unparseable — see Anomalies) |
+| halted | 1 |
 
 ## Last 24h
-- **Cadences run:** `nightly-review` dispatched both nights — card `6ac5e503-b0dd66b8` (2026-10-07) and `6ac735bb-6d8d3533` (2026-10-08, this run). No other cadences fired.
-- **Cost:** 2026-10-08 cost ledger $0.00 (subscription steps log 0.0); 2026-10-07 logged 1 step (`nightly-review`, claude-opus-4-8, $0.00). Budget remaining today: **$30.00 / $30.00** daily ceiling.
-- **Activity ledger:** 0 rows today and yesterday — the inspector grading/activity pipeline remains frozen (see the kb approvals card).
-- **Notable:** nightly run healthy — preamble OK, `sync_skills --check` in sync; `sync_daemon_dirs --check` reports the known single-file drift (refs-fallback). This run took the **DIRECT-PUSH** path to ops (or the PR fallback if ops push is restricted — see run summary).
+- **Cadences:** `nightly-review` dispatched 2026-10-09 (card `6ac88876-b7490965`, this run) and 2026-10-08 (card `6ac735bb-6d8d3533`). No other cadence fired.
+- **Cost:** $0.00 billed today vs **$30.00** daily limit → **$30.00 remaining** (subscription steps log $0.00).
+- **Notable:** preamble OK; skills mirror in sync; dashboards regenerated. Daemon-dir mirror drift still open (canonical card refreshed in place, no new duplicate filed).
 
 ## Projects
-- **atlas** — Omni-interface foundation + adversarially-reviewed remediation complete locally on `codex/atlas-enhancements-20260820`; diff >400 lines, awaiting Daniel review before commit/push. V1 "Hands" merged & live (PR #44). V2 "Trust" is Daniel's go/no-go.
-- **faceless-youtube** — PARKED, no active work. STATE.md stale (2026-07-19); real last activity was the Bricks Variant-D arc in an external clone.
-- **figment** — Resumable `figment_train.py pipeline` drives anchor→…→video with gate halts; one gate writer, one prompt composer per era. Live replication card `d126c410` still in working/ (see Anomalies). GATE A board awaiting operator ruling (approvals).
-- **kb-ops** — Prod VM LIVE on release `e8ac49ad` (daemon schedule tick every 5 min, cadence execution profile, bridge admits `cadence:<agent>` cards). Ops history linear; next drain chain base `052c8355`.
-- **prospecting** — P1–P8 built across worktrees, all branches UNPUSHED. P8 affinity gate 953/953 at HEAD `52067386`; live-tested against real desktop store (campaign `camp_3147b42db58c4c15`), all Gate P8-B criteria green.
+- **atlas** — Omni-interface foundation + independently re-reviewed adversarial remediation complete **locally** on `codex/atlas-enhancements-20260820` (`280a67a9` + unstaged diff >400 lines); awaiting Daniel review before commit. V1 "Hands" merged (PR #44) and live on 127.0.0.1:5317; V2 "Trust" is Daniel's go/no-go.
+- **faceless-youtube** — **PARKED**, no active work. STATE.md stale (2026-07-19); last real activity was the Bricks Variant-D arc in external clone `kb-clones/bricks-arc` (`claude/bricks-variant-vd`, tip `4bc82dc2`, pushed).
+- **figment** — One resumable `pipeline` command drives `anchor → … → video` with gate halts and on-disk receipts; `detail`/`video` are now real gradeable stages; pins repaired (9 stages clean), Qwen3-VL auto-captioning + per-plan style-LoRA wired. Live-chain handoff 2026-09-23.
+- **kb-ops** — Production VM (`kb`, `100.89.73.118`) LIVE on release `e8ac49ad` (PR #203/#204 merged, deployed 2026-09-23 05:55Z); daemon-internal 5-min schedule tick verified live; ops history linear.
+- **prospecting** — P1–P8 built across `prospecting-p{1..8}` worktrees, all branches **UNPUSHED**. P8 affinity gate 953/953 at `52067386`; live-tested against the real desktop store (campaign `camp_3147b42db58c4c15`), all Gate P8-B criteria green.
 
 ## Anomalies
-- **Daemon-dir drift (recurring, unchanged 4th night).** `orgs/kb-ops/workflows/acceptance-run.md` is ops-only; `scripts/sync_daemon_dirs.py` is absent from `ops` so the literal gate command only runs via main's copy in refs-fallback mode. Tonight's run refreshed the canonical card `6a605ebb` in place (dedup decision) rather than minting a new dated duplicate; 15 older dated wake cards still open in inbox. Owed: desktop `--sync --prune`/ruling + a step-2b dedup amendment. Escalated in approvals card `6ab76543`.
-- **Stale working/ cards.** `d126c410-9bc54280` (figment track1 replicate, T2) last touched 2026-09-07 — ~31 days idle in working/. `6a6bc3dd-5494006b` (kb-ops iter-smoke-t2) sits in working/ in terminal state `halted` since 2026-07-30. Both exceed the 48h staleness window; candidates for the stranded-archiver or a human walk-back.
-- **Grading pipeline frozen.** grades + activity ledgers show no rows since 2026-07-21 (~79 days); desktop grades-reconcile cadence dormant. Tracked in approvals card `6ab76543`.
+- **sync_daemon_dirs main→ops mirror drift — STILL OPEN (desktop fix owed ~2 months).** `scripts/sync_daemon_dirs.py` is present on `origin/main` but absent from `origin/ops`, so the literal routine gate fails `No such file` (EXIT 2); ran via `main`'s copy in cloud refs-fallback mode. Drift = one ops-only file `orgs/kb-ops/workflows/acceptance-run.md` (EXIT 1), unchanged for 5 nights. Per the dispatcher-cloud dedup decision, the canonical card `6a605ebb-d86dff79` was refreshed in place (no new dated duplicate); **15** historical `wake-daniel-*-sync-daemon-dirs-*` cards (08-15 → 10-04) still sit in inbox awaiting a human consolidation pass + the owed step-2b amendment. Report-only gate — never blocks dispatch.
+- **Malformed working card** `queue/working/d126c410-9bc54280.md` (figment, owner `figment-expand`, in working/ since 2026-09-07 ≈ 32 days): its `action:` value contains an unquoted colon, so `cards.parse()` raises `mapping values are not allowed here`. The card is both stale (>48h) and unparseable by the card tooling — needs the `action` quoted or the card resolved.
+- **Long-halted card** `queue/working/6a6bc3dd-5494006b.md` (codex-worker, `iter-smoke-t2`, halted) sitting in working/ since 2026-07-30 — terminal state, never swept.
+- preamble: **OK**. sync_skills `--check`: **in sync** (EXIT 0).

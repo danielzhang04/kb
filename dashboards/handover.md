@@ -1,32 +1,30 @@
 # System Handover
-_Generated: 2026-10-08 06:20 UTC_
+_Generated: 2026-10-09 06:28 UTC_
 
 Overnight the cloud nightly dispatcher ran cleanly: the preamble passed, the skills
-mirror is in sync, and dashboards were regenerated. The one recurring snag is unchanged —
-the daemon-directory drift check still finds a single ops-only file
-(`orgs/kb-ops/workflows/acceptance-run.md`), and the checker script itself is still
-missing from the `ops` branch, so the gate only runs via the copy on `main`. Tonight's run
-refreshed the single canonical wake card (`6a605ebb`) in place rather than minting a new
-dated duplicate; the gate only reports, it never blocks, so dispatch continued normally.
+mirror is in sync, and both dashboards were regenerated. No money was spent (the whole
+$30 daily budget is free) and no new work was dispatched beyond the nightly-review
+cadence itself.
 
-Waiting on you (nothing auto-executes):
-- **Two approvals.** A figment GATE A eye-gate board (T3) needs an operator ruling before
-  curation to 40 can proceed, and a kb wake:human-decision (T1) flags that the desktop
-  coordination tier is degrading — desktop cadences are dormant, daemon-dirs-sync is not
-  running, and the grades/activity ledgers have been frozen since 2026-07-21.
-- **One desktop fix ends the nightly pile-up.** From the dashboard-ops worktree, restore
-  `scripts/sync_daemon_dirs.py` onto `ops`, rule on the drifting file (reconcile to `main`
-  or `--sync --prune`), and land the step-2b dedup amendment so the inbox's 15 older dated
-  duplicate cards can be consolidated.
-- **Two stale working/ cards** (`d126c410` figment, idle ~31 days; `6a6bc3dd` kb-ops, halted
-  since July) could be archived or walked back.
+What is waiting on you. Two items sit in `queue/approvals/` for a ruling: the figment
+**GATE A eye-gate** (T3 — blind board before curation to 40) and a kb **wake:human-decision**
+(T1) flagging that the desktop coordination tier is degrading. Separately, a stubborn
+desktop chore is now badly overdue: the `sync_daemon_dirs` main→ops mirror check still
+can't find its own script on the `ops` branch, and the single ops-only drift file
+(`orgs/kb-ops/workflows/acceptance-run.md`) remains. The finding is unchanged for five
+nights and is now tracked by a single canonical card (refreshed in place); **15 older
+duplicate wake-me cards** from mid-August still clutter the inbox awaiting a human
+consolidation pass. The fix (re-add the script to ops, decide the drift file, and amend
+the routine to stop re-filing duplicates) can only be done from the desktop. Two other
+things need a hand: a malformed figment
+card has been stuck unparseable in `working/` for ~32 days, and a codex card has sat
+halted in `working/` since July.
 
-Unattended, the system will keep doing exactly this each night: dispatch the nightly-review
-cadence, verify preamble/skills, regenerate these dashboards, and refresh the canonical
-drift wake card in place until the desktop fixes above land. No spend; budget is the
-full $30/day. Projects (atlas, figment, prospecting) hold completed-but-unpushed/ungraded
-work gated on your review.
+What the system will do unattended. Nothing beyond the next nightly dispatch — most
+project work (atlas remediation, prospecting P1–P8) is complete locally but **unpushed /
+awaiting your review**, and the kb-ops production VM keeps ticking its 5-minute schedule
+on its own. No autonomous spend or merges happen without you.
 
 ## Latest handoffs
-- prospecting — [2026-09-07-prospecting-p8-live-tested.md](../handoffs/2026-09-07-prospecting-p8-live-tested.md) (2026-09-07)
 - figment — [2026-09-23-figment-live-chain.md](../handoffs/2026-09-23-figment-live-chain.md) (2026-09-23)
+- prospecting — [2026-09-07-prospecting-p8-live-tested.md](../handoffs/2026-09-07-prospecting-p8-live-tested.md) (2026-09-07)
