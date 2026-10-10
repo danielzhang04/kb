@@ -1287,3 +1287,33 @@
 - Stranded working/ cards UNCHANGED (recorded in dashboards, not moved): `6a6bc3dd`
   (iter-smoke-t2, halted, 2026-07-30) + `d126c410` (figment:track1:replicate, 2026-09-07, still
   has the unquoted colon in `action:` that makes cards.py raise ScannerError — stale ~32d + unparseable).
+
+## 2026-10-10 nightly + FIRST weekly-audit in this stretch (cloud, dispatcher-cloud, Opus 4.8)
+- Worktree approach again (2026-10-08 lesson): `git worktree add <scratchpad>/ops-wt origin/ops`
+  (detached), ran the whole routine there; `git checkout ops` in the main checkout stays denied.
+- Today is Saturday → dispatch emitted TWO cards: `6ac9d849-2a9a4189` (nightly-review) and
+  `6ac9d849-00f41034` (weekly-audit, weekly:sat). Both owner dispatcher-cloud, approval:null
+  (step 4b N/A). Both executed and marked done this run.
+- cards.transition() GOTCHA (cost me a stray dir): queue_root must be `'queue'`, NOT `'.'`.
+  STATE_DIR maps working→'working', so transition(c,'working','.') wrote `./working/<id>.md` at
+  repo root, not `queue/working/`. Fixed by moving the file + rmdir. Always pass `'queue'`.
+- DEDUP done RIGHT this time (prior two nights I minted-then-deleted): read this memory FIRST,
+  then refreshed canonical drift card `6a605ebb` in place with a 2026-10-10 snapshot (6th night
+  unchanged — single ops-only `orgs/kb-ops/workflows/acceptance-run.md`, sync_daemon_dirs.py still
+  absent from ops, ran main's copy refs-fallback). Minted NO dated duplicate.
+- WEEKLY-AUDIT result: cloud cadences healthy (nightly-review ran all 7 days 10-04→10-10;
+  weekly-audit fired today). Desktop cadences DORMANT (zero dispatch rows all week; no
+  dispatcher-desktop ledgers exist at all): `daemon-dirs-sync` + `grades-reconcile` never ran →
+  mirror never auto-synced, grades/activity ledgers frozen since 2026-07-21. This is ALREADY
+  tracked by gap card `6a80039d` (unowned, awaits dispatch) + human-decision approval
+  `6ab76543`. Per dedup + the prior run's explicit restraint, I filed NO new cards — recorded
+  the audit in card 00f41034's ## Result and referenced the open cards. grades↔activity are
+  consistent at the last active day (2 grade rows ↔ 2 matching activity rows, keyed on card_id).
+- NEW observations recorded in dashboards (not carded): (a) prior 2026-10-09 dashboard counts
+  were WRONG — it claimed blocked 29 / done 1630 / inbox 87, but the committed tree at that HEAD
+  has NO queue/blocked/ dir (blocked 0), done 1627, inbox 120. Corrected from direct
+  `find queue/<state>`. (b) Cloud dispatcher was DOWN 2026-10-02→10-03 (no ledgers, so the 10-03
+  Saturday weekly-audit slot was missed), self-resolved — ran every day since 10-04. (c) Inbox
+  backlog is 120 (16 wake-daniel + 104 uuid-style undispatched).
+- Stranded working/ cards UNCHANGED (recorded, not moved): `6a6bc3dd` (halted, 2026-07-30) +
+  `d126c410` (figment, 2026-09-07, still the unquoted-colon parse failure; now ~33d stale).
