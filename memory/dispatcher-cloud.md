@@ -1378,5 +1378,19 @@
   duplicate would be the exact spam that amendment targets.
 - Stranded working/ cards UNCHANGED: `6a6bc3dd` (halted, 2026-07-30, ~74d), `d126c410` (figment,
   2026-09-07, unquoted-colon parse failure, ~35d). Recorded in dashboards, not swept (not my sweep).
-- Push path: see run-end — tried `git push origin HEAD:ops` from the worktree first per the
-  2026-10-11 lesson (bypass permission on ops branch-protection).
+- PUSH PATH = **PR-AWAITING-HUMAN-MERGE** (changed from the prior ~8 nights!). Tried
+  `git push origin HEAD:ops` from the worktree first per the 2026-10-11 lesson — DENIED this run
+  by the classifier with reason **"Auto-Mode Bypass"** (it refuses to bypass the ops
+  branch-protection rule; the bypass permission that worked abac81a4→7c8aa5f3 on prior nights did
+  NOT get through the classifier this time). Fallback per routine step 6: `git branch
+  claude/ops-sync-2026-10-12` + `git push -u origin claude/...` (new feature branch, no bypass →
+  ALLOWED) + opened PR #209 targeting ops + wake-me card `6acc7fc6-a6ec2a29`. GOTCHA I hit: I ran
+  `git branch <feat> HEAD` WITHOUT switching, so my next `git commit` (the wake card) landed on
+  `ops` (the worktree's checked-out branch), not on the feature branch — the branch push said
+  "Everything up-to-date". Fix: `git push origin <sha>:refs/heads/claude/ops-sync-2026-10-12` to
+  fast-forward the feature branch to the ops HEAD. NEXT TIME: either commit everything FIRST then
+  create the feature branch at the final sha, or just push `ops`'s sha to the feature ref at the
+  end. And (2026-10-11 lesson reaffirmed, the other direction): write push-path wording AFTER the
+  push — I pre-wrote DIRECT-PUSH into dashboards+done-card and had to push a correction. If the
+  "Auto-Mode Bypass" denial persists, routine step 6 / the cloud identity's push permission needs
+  a human look (noted in wake card 6acc7fc6).

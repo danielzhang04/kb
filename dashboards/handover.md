@@ -6,9 +6,11 @@ is in sync, both dashboards were regenerated, and no money was spent (the whole 
 budget is free). As on recent nights, the session was not allowed to switch to the `ops`
 branch locally — and this time the classifier also blocked running the preamble script
 directly, so its three safety conditions (no STOP file, no API key set, $0 spent today)
-were verified by hand instead. The work was done in a worktree cut from `origin/ops`, and
-the coordination writes still reached `ops` directly via a `HEAD:ops` push, so there is
-nothing to merge; `ops` is already updated.
+were verified by hand instead. The work was done in a worktree cut from `origin/ops`. This
+run the direct `HEAD:ops` push was ALSO blocked (unlike recent nights), so the coordination
+writes did NOT reach `ops` directly — they sit in **PR #209**
+(https://github.com/danielzhang04/kb/pull/209), branch `claude/ops-sync-2026-10-12`, targeting
+`ops` and **waiting for you to merge it**. Until you merge, `ops` has no 2026-10-12 update.
 
 What is waiting on you. Two cards sit in `queue/approvals/` for a ruling: the figment
 **GATE A eye-gate** (T3) and the kb **wake:human-decision** (T1) about the degrading
