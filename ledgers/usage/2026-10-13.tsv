@@ -1,0 +1,17 @@
+# accounting=v2 | est_ rates (per 1M tokens, comparison-only, NOT a real subscription bill): claude opus 15/75 sonnet 3/15 haiku 0.8/4 fable 15/75(assumed) cache-read 10% cache-create 125% | codex input 1.25 output 10.00 cached-input 50% | max_ctx_tokens = Claude-only per-request peak (input+cache_create+cache_read); codex_cumulative_total = Codex-only total_token_usage.total_tokens max-per-file -- the two are NOT the same signal, hence separate columns (fix round 1, C4) | turns = Claude unique message IDs per file (ID-less records separately), Codex task_started events; Codex cumulative snapshots attributed to session-start day, inherited fork history not deduplicated
+runtime	model	session	kind	project	input_tokens	cache_creation_tokens	cache_read_tokens	output_tokens	turns	max_ctx_tokens	codex_cumulative_total	est_usd
+claude	fable	146dbd53-5565-47f2-8a55-854ae9683a7d	top	C--Users-danie	66	29597	148297	347	3	60637		0.8044
+claude	fable	3bbb3981-c912-4f99-8a01-842224ef39c8	top	C--Users-danie-kb	36	57186	147061	247	3	68282		1.3119
+claude	opus	498b9c0d-c0f9-4ac4-a49a-5d7004995c08	top	C--Users-danie-kb	10	147911	391935	1456	5	130963		3.4706
+codex	codex-auto-review	01a1376a-e2f9-7e83-a124-62cb6133dcf6	top	-	478323	0	420096	1691	15		480014	0.3523
+codex	codex-auto-review	01a1376a-e2f9-7e83-a124-62cb6133dcf6	top	-	2572392	0	2439680	3345	36		2575737	1.7241
+codex	codex-auto-review	01a1376a-e2f9-7e83-a124-62cb6133dcf6	top	-	538124	0	473600	1583	13		539707	0.3925
+codex	codex-auto-review	01a1376a-e2f9-7e83-a124-62cb6133dcf6	top	-	541598	0	475648	1777	12		543375	0.3975
+codex	codex-auto-review	01a1376a-e2f9-7e83-a124-62cb6133dcf6	top	-	25482	0	8960	132	1		25614	0.0276
+codex	gpt-5.6-sol	01a137b5-18a1-7dd1-8a74-3cbabd154510	top	-	535446	0	510336	7477	1		542923	0.4251
+codex	gpt-6-astra	01a1376a-e2f9-7e83-a124-62cb6133dcf6	top	-	7598373	0	7300736	47422	12		7645795	5.4092
+codex	gpt-6-astra	01a1376a-e2f9-7e83-a124-62cb6133dcf6	top	-	456769	0	411904	4589	2		461358	0.3594
+codex	gpt-6-astra	01a1376a-e2f9-7e83-a124-62cb6133dcf6	top	-	757699	0	707584	4957	2		762656	0.5545
+codex	gpt-6-astra	01a1376a-e2f9-7e83-a124-62cb6133dcf6	top	-	379236	0	334336	3016	2		382252	0.2952
+codex	gpt-6-astra	01a1376a-e2f9-7e83-a124-62cb6133dcf6	top	-	343893	0	322560	3953	3		347846	0.2678
+_totals	-	-	-	-	14227447	234694	14092733	81992	110	130963	14307277	15.7921
