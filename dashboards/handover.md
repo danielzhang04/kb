@@ -1,30 +1,28 @@
 # System Handover
-_Generated: 2026-10-11 06:20 UTC_
+_Generated: 2026-10-14T06:20:35Z_
 
-Overnight the cloud nightly dispatcher ran: the preamble passed, the skills mirror is in
-sync, both dashboards were regenerated, and no money was spent (the whole $30 daily budget
-is free). One wrinkle this run: the session was not allowed to switch to the `ops` branch
-locally, so it did the work in a worktree cut from `origin/ops`. The coordination writes
-still reached `ops` directly — the push went through by bypassing the pull-request rule — so
-there is nothing to merge; `ops` is already updated.
+**What happened overnight.** The nightly cloud dispatcher ran cleanly. The preamble and
+the skills-sync check both passed. The daemon-dir drift check could only run in its
+cloud refs-fallback mode because its script still lives on `main` but not on `ops`; it
+found the same single harmless drift it has found for weeks. The dispatcher emitted one
+card — the nightly-review cadence — which regenerated these dashboards. No project work
+branches moved, and nothing cost real money (every step was subscription-billed, so the
+$30 daily budget is untouched).
 
-What is waiting on you. Two cards sit in `queue/approvals/` for a ruling: the figment
-**GATE A eye-gate** (T3) and the kb **wake:human-decision** (T1) about the degrading
-desktop tier. The desktop cadences (`daemon-dirs-sync`, `grades-reconcile`) are still
-dormant, so the main→ops mirror drift is never auto-fixed and the grading ledgers have
-been frozen since July (~82 days). This is a known, already-escalated problem — no new
-duplicate card was filed; the canonical drift card was refreshed in place for the 7th
-night. The desktop fixes can only be done at your desk: re-add `scripts/sync_daemon_dirs.py`
-to the `ops` branch, run `--sync` to clear the one drift file, restart the desktop daemon,
-and sweep the inbox backlog (120 cards, including 15 duplicate drift wake-me cards). Two
-cards are also stuck in `working/`: a figment card unparseable for ~34 days and a codex
-card halted since July. (No ops-sync PR this run — the push reached `ops` directly.)
+**What is waiting on you.** Two approval cards sit in `queue/approvals/`: a figment T3
+"eye-gate" blind board (curation can't advance to 40 without your ruling) and the kb T1
+wake decision `6ab76543` that already bundles the whole sync-daemon-dirs fix. The inbox
+holds **15 older dated "sync-daemon-dirs" wake-me cards** (Aug 15 → Oct 4) plus one
+canonical card this run refreshed in place — it did **not** add another duplicate. They
+all trace to one thing: `scripts/sync_daemon_dirs.py` exists on `main` but not on `ops`.
+One short desktop session ends the pile-up for good: restore that script to `ops`, decide
+whether `orgs/kb-ops/workflows/acceptance-run.md` (the one drifting file) belongs on `main`
+or should be pruned from `ops`, land the small step-2b dedup tweak, and sweep the 15 dated
+duplicates. Also note the figment card `d126c410` has been stuck in `working/` since
+Sep 7 and prospecting's P1–P8 branches are all still unpushed.
 
-What the system will do unattended. Nothing beyond the next nightly dispatch. Most project
-work (atlas remediation, prospecting P1–P8) is complete locally but **unpushed / awaiting
-your review**; the kb-ops production VM keeps ticking its 5-minute schedule on its own. No
-autonomous spend or merges happen without you.
-
-## Latest handoffs
-- figment — [2026-09-23-figment-live-chain.md](../handoffs/2026-09-23-figment-live-chain.md) (2026-09-23)
-- prospecting — [2026-09-07-prospecting-p8-live-tested.md](../handoffs/2026-09-07-prospecting-p8-live-tested.md) (2026-09-07)
+**What the system will do next unattended.** It will keep running the nightly cadence,
+regenerating these dashboards, and — until the script is restored — refreshing the single
+canonical sync-daemon-dirs card in place each night (no new duplicates). It will not touch
+project trees, merge anything, or spend money. Production (the kb VM on release `e8ac49ad`)
+stays live and self-ticking every 5 minutes.

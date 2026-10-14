@@ -1349,3 +1349,22 @@
   Budget $0/$30. Inbox 120, approvals 2 (65d8f246 figment GATE A, 6ab76543 kb wake), done 1629.
 - Stranded working/ cards UNCHANGED: `6a6bc3dd` (halted, 2026-07-30), `d126c410` (figment,
   2026-09-07, unquoted-colon parse failure, ~34d).
+
+## 2026-10-14 nightly (cloud, dispatcher-cloud)
+- PROCESS MISS → CORRECTED: I followed routine step 2b LITERALLY and filed a dated duplicate
+  `wake-daniel-2026-10-14-sync-daemon-dirs-drift.md` BEFORE reading this memory shard. CLAUDE.md
+  says read memory at start; the standing dedup decision (and open approval `6ab76543`) is that
+  dated duplicates are spam — refresh canonical card `6a605ebb` in place instead. I deleted the
+  dated duplicate and refreshed `6a605ebb` (8th recorded unchanged night). LESSON: on the nightly
+  cloud routine, READ memory/dispatcher-cloud.md + check for the open `6ab76543` approval BEFORE
+  acting on step 2b — the drift is already escalated; never file a dated duplicate.
+- Drift UNCHANGED from 2026-10-11 (last recorded): single ops-only `orgs/kb-ops/workflows/
+  acceptance-run.md`, EXIT 1; `scripts/sync_daemon_dirs.py` still ABSENT on ops (ran main copy in
+  refs-fallback). sync_skills --check EXIT 0; preamble OK. Note: canonical card had no 10-12/10-13
+  entry (gap), so I labeled tonight "unchanged from 10-11, the last recorded" rather than overclaim.
+- Emitted card `6acf1eca-69d62e58` (cadence:nightly-review, approval:null → step 4b N/A). Executed:
+  preamble OK, sync_skills in sync, regenerated both dashboards, this memory line, ## Result, → done.
+  Budget $0/$30 (all subscription). Inbox 120, approvals 2 (65d8f246 figment GATE A T3, 6ab76543 kb
+  wake T1), working 3, done 1645.
+- Stranded working/ cards UNCHANGED: `6a6bc3dd` (halted, terminal, 2026-07-30), `d126c410`
+  (figment:track1:replicate, working since 2026-09-07, ~37d — stranded candidate).
